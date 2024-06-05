@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "bf-fri",
+    "primitives",
+    "p3",
+    "scriptor"
+]
+
+
+[dependencies]
