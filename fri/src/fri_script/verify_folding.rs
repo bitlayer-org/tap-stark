@@ -3,22 +3,20 @@ use bitcoin::opcodes::{
     OP_GREATERTHAN, OP_PICK, OP_SWAP, OP_TOALTSTACK,
 };
 use bitcoin::secp256k1::ellswift;
+use bitcoin::taproot::TapLeafHash;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use p3_field::{AbstractField, TwoAdicField};
 use p3_util::{log2_ceil_u64, log2_ceil_usize, log2_strict_usize, reverse_bits_len};
-
-use bitcoin::taproot::TapLeafHash;
 use primitives::field::BfField;
 use scripts::pseudo::{
     OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4ROLL, OP_4TOALTSTACK, OP_NDUP,
 };
-use scripts::{BabyBearU31, U31Config};
 use scripts::u32_rrot::u8_extract_hbit;
 use scripts::u32_std::{u32_compress, u32_push};
 use scripts::{
     u31_add, u31_double, u31_equalverify, u31_mul, u31_sub, u31ext_add, u31ext_double,
-    u31ext_equalverify, u31ext_mul, u31ext_sub, BabyBear4
+    u31ext_equalverify, u31ext_mul, u31ext_sub, BabyBear4, BabyBearU31, U31Config,
 };
 
 define_pushable!();
@@ -297,8 +295,9 @@ mod tests {
     use rand::{random, Rng};
     type AF = BabyBear;
     type F = BinomialExtensionField<BabyBear, 4>;
-    use super::*;
     use scripts::{execute_script, execute_script_with_inputs};
+
+    use super::*;
 
     #[test]
     fn test_get_generator() {
@@ -1043,11 +1042,12 @@ mod tests2 {
     use bitcoin::opcodes::{OP_DROP, OP_EQUAL, OP_EQUALVERIFY, OP_FROMALTSTACK, OP_TOALTSTACK};
     use bitcoin::Script;
     use p3_baby_bear::BabyBear;
+    use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
-    use primitives::field::BfField;
-    use super::*;   
-    use scripts::{execute_script};
+    use scripts::execute_script;
+
+    use super::*;
 
     #[test]
     fn test_op4_op() {

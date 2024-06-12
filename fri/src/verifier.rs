@@ -1,19 +1,18 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use scripts::{execute_script_with_inputs}; 
- use crate::fri_script::point::{Point, PointsLeaf};
-use primitives::field::{BfField};
 use bitcoin::taproot::TapLeaf;
 use bitcoin::Script;
 use itertools::izip;
-
-use p3_challenger::{ CanObserve, CanSample};
-
+use p3_challenger::{CanObserve, CanSample};
 use p3_util::reverse_bits_len;
 use primitives::challenger::BfGrindingChallenger;
+use primitives::field::BfField;
+use scripts::execute_script_with_inputs;
+
 use crate::bf_mmcs::BFMmcs;
 use crate::error::{BfError, FriError};
+use crate::fri_script::point::{Point, PointsLeaf};
 use crate::{BfCommitPhaseProofStep, BfQueryProof, FriConfig, FriProof};
 
 #[derive(Debug)]

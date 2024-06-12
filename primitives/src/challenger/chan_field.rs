@@ -1,7 +1,7 @@
-use ::alloc::vec;
-use p3_baby_bear::BabyBear;
 use core::{alloc, array};
 
+use ::alloc::vec;
+use p3_baby_bear::BabyBear;
 use p3_field::PrimeField32;
 pub trait ChallengeField<const U8_NUM: usize>: PrimeField32 + Clone + Default + Copy + Ord {
     fn u8_num() -> usize {
@@ -17,9 +17,7 @@ pub trait ChallengeField<const U8_NUM: usize>: PrimeField32 + Clone + Default + 
     }
 }
 
-impl ChallengeField<4> for BabyBear {
-    
-}
+impl ChallengeField<4> for BabyBear {}
 
 // the PremutationField only support U8_NUM<=8
 // Use LittleEndian

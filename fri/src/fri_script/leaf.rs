@@ -10,20 +10,19 @@ use std::usize;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::rev;
-use p3_field::TwoAdicField;
-
-use scripts::bit_comm::*;
 use p3_baby_bear::BabyBear;
-use primitives::field::BfField;
-   
+use p3_field::TwoAdicField;
 use primitives::bit_comm::bit_comm_u32::BitCommitmentU32;
-use super::verify_folding::cal_neg_x_with_input;
+use primitives::field::BfField;
+use scripts::bit_comm::*;
 use scripts::u31::{u31_add, u31_equalverify};
 use scripts::{
     execute_script, execute_script_with_inputs, fold_degree, fold_degree_with_input, index_to_rou,
     reverse_bits_len_script_with_input, u31ext_add, u31ext_equalverify, value_square_with_input,
     winternitz, BCAssignment, BabyBear4, BabyBearU31,
 };
+
+use super::verify_folding::cal_neg_x_with_input;
 define_pushable!();
 
 pub trait SegmentLeaf {

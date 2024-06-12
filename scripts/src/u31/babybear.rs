@@ -6,7 +6,6 @@ use p3_util::{log2_ceil_u64, log2_ceil_usize, log2_strict_usize, reverse_bits_le
 
 use crate::u31::{babybear, U31Config};
 
-
 pub struct BabyBearU31;
 impl U31Config for BabyBearU31 {
     const MOD: u32 = 15 * (1 << 27) + 1;

@@ -65,14 +65,14 @@ impl BitCommitmentU32 {
         self.winternitz.sign_script(&self.message)
     }
 
-    pub  fn recover_message_at_stack(&self) -> Script {
+    pub fn recover_message_at_stack(&self) -> Script {
         script! {
             {self.checksig_verify_script()}
             {u32_compress()}
         }
     }
 
-    pub  fn recover_message_at_altstack(&self) -> Script {
+    pub fn recover_message_at_altstack(&self) -> Script {
         script! {
             {self.checksig_verify_script()}
             {u32_compress()}
@@ -80,7 +80,7 @@ impl BitCommitmentU32 {
         }
     }
 
-    pub  fn message_from_altstack(&self) -> Script {
+    pub fn message_from_altstack(&self) -> Script {
         script! {
           OP_FROMALTSTACK
         }
@@ -95,7 +95,7 @@ impl BitCommitmentU32 {
         }
     }
 
-    pub  fn signature(&self) -> Vec<Vec<u8>> {
+    pub fn signature(&self) -> Vec<Vec<u8>> {
         let mut sig = self.winternitz.sign(&self.message);
         for i in 0..sig.len() {
             if sig[i].len() == 1 && sig[i][0] == 0 {

@@ -1,17 +1,16 @@
-
 use core::ops::{Deref, DerefMut};
 use core::{mem, usize};
 
-use primitives::{field::BfField};
-use crate::fri_script::point::{PointsLeaf};
-use crate::fri_script::leaf::EvaluationLeaf;
 use bitcoin::taproot::LeafVersion::TapScript;
 use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
 use bitcoin::{ScriptBuf, TapNodeHash};
 use itertools::{Chunk, Itertools};
 use p3_util::{log2_strict_usize, reverse_slice_index_bits};
+use primitives::field::BfField;
 
 use crate::error::BfError;
+use crate::fri_script::leaf::EvaluationLeaf;
+use crate::fri_script::point::PointsLeaf;
 
 pub fn combine_two_nodes(a: NodeInfo, b: NodeInfo) -> Result<(NodeInfo, bool), BfError> {
     let parent = NodeInfo::combine_with_order(a, b)?;

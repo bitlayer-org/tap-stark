@@ -2,16 +2,16 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::{panic, usize};
 
-use crate::field::BfField;
 use bitcoin::hashes::Hash as Bitcoin_HASH;
 use bitcoin::TapNodeHash;
-use crate::challenger::chan_field::{u256_to_u32, u32_to_u256, U256, U32};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::log2_strict_usize;
 
 use super::bf_mmcs::BFMmcs;
+use crate::challenger::chan_field::{u256_to_u32, u32_to_u256, U256, U32};
 use crate::error::BfError;
+use crate::field::BfField;
 use crate::prover::LOG_DEFAULT_MATRIX_WIDTH;
 use crate::taptree::{verify_inclusion, PolyCommitTree};
 use crate::BfCommitPhaseProofStep;

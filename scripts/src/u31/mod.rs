@@ -137,7 +137,7 @@ mod test {
     use rand_chacha::ChaCha20Rng;
 
     use super::*;
-    use crate::{execute_script};
+    use crate::execute_script;
     #[test]
     fn test_rot() {
         let scripts = script! {

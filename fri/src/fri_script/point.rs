@@ -2,9 +2,8 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-
+use primitives::field::BfField;
 use scripts::bit_comm::*;
-use primitives::{field::BfField};
 define_pushable!();
 
 #[derive(Debug, Clone)]

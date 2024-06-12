@@ -2,10 +2,10 @@ use bitcoin::opcodes::OP_EQUALVERIFY;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::Itertools;
-
 use scripts::bit_comm_u32::*;
-use crate::field::*;
 use scripts::{u31_equalverify, u31ext_equalverify, BabyBear4};
+
+use crate::field::*;
 
 define_pushable!();
 
@@ -127,12 +127,12 @@ mod test {
     use p3_field::{AbstractExtensionField, AbstractField, PrimeField32};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
-
-    use super::*;
     use scripts::{
         execute_script, execute_script_with_inputs, u31ext_add, u31ext_double, u31ext_equalverify,
         BabyBear4,
     };
+
+    use super::*;
 
     type F = BabyBear;
     type EF = p3_field::extension::BinomialExtensionField<BabyBear, 4>;

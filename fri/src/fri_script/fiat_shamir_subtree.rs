@@ -10,12 +10,12 @@ use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::Itertools;
 use p3_baby_bear::BabyBear;
-use primitives::challenger::{BfChallenger, BitExtractor, Blake3Permutation};
-use p3_field::{PrimeField32};
+use p3_field::PrimeField32;
+use primitives::bit_comm::BitCommitment;
 use primitives::challenger::chan_field::{PermutationField, U32};
+use primitives::challenger::{BfChallenger, BitExtractor, Blake3Permutation};
 
 use super::bit_comm_u32::*;
-use primitives::bit_comm::BitCommitment;
 use crate::hashes::blake3;
 use crate::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4TOALTSTACK};
 use crate::u32_rrot::{u32_rrot, u8_extract_hbit};

@@ -2,15 +2,15 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::panic;
 
+use bitcoin::taproot::TapLeaf;
+use itertools::izip;
+use p3_challenger::{CanObserve, CanSample};
+use p3_util::reverse_bits_len;
+use primitives::challenger::BfChallenger;
 use scripts::{
     execute_script_with_inputs, BCAssignment, BfField, CalNegXLeaf, IndexToROULeaf, Point,
     PointsLeaf, ReductionLeaf, RevIndexLeaf, SegmentLeaf, SquareFLeaf, VerifyFoldingLeaf,
 };
-use bitcoin::taproot::TapLeaf;
-use itertools::izip;
-use p3_challenger::{ CanObserve, CanSample};
-use primitives::challenger::BfChallenger;
-use p3_util::reverse_bits_len;
 
 use crate::bf_mmcs::BFMmcs;
 use crate::error::{BfError, FriError, SVError};
@@ -22,7 +22,7 @@ pub fn bf_verify_challenges<F, M, Witness>(
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness>,
     challenges: &FriChallenges<F>,
-     reduced_openings: &[[F; 32]],
+    reduced_openings: &[[F; 32]],
 ) -> Result<(), FriError<M::Error>>
 where
     F: BfField,
