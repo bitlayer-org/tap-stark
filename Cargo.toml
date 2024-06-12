@@ -1,10 +1,8 @@
 [workspace]
-members = [
-    "bf-fri",
+members = [ "fri", "pcs",
+   
     "primitives",
-    "p3",
-    "scriptor"
+    "scripts",
+    "fri",
+    "pcs",
 ]
-
-
-[dependencies]

@@ -1,0 +1,64 @@
+[package]
+name = "fri"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+bitcoin-script = { git = "https://github.com/cyl19970726/rust-bitcoin-script", rev = "eda97c5" }
+bitcoin = { git = "https://github.com/cyl19970726/rust-bitcoin", rev = "ffad6f3" }
+bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "09c601e" }
+lazy_static = "1.4.0"
+
+rand_chacha = "0.3.1"
+rand = "0.8.5"
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-util =  { git = "https://github.com/Plonky3/Plonky3.git" }
+once_cell = "1.8.0"
+hex = "0.4.3"
+itertools = "0.12.1"
+
+
+scripts = {path = "../scripts"}
+primitives ={path = "../primitives"}
+
+[dev-dependencies]
+p3-dft =   { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-mersenne-31 =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-mds =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-merkle-tree =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-matrix=  { git = "https://github.com/Plonky3/Plonky3.git" }
+criterion = "0.5.1"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+blake3 = "1.5"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+incremental = true
+panic = 'abort'
+
+[profile.bench]
+opt-level = 3
+debug = false
+rpath = false
+lto = "thin"
+incremental = true
+debug-assertions = false
+
+[profile.dev]
+opt-level = 3
+panic = 'abort'
+
+[profile.test]
+opt-level = 3
+lto = "thin"
+incremental = true
+debug-assertions = true
+debug = true
