@@ -1,16 +1,5 @@
 use bitcoin::taproot::TaprootBuilderError;
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum BfError {
-    TaprootBuilderError(TaprootBuilderError),
-    TaprootError,
-    TapLeafError,
-    TapTreeError,
-    EvaluationLeafError,
-    ExecuteScriptError,
-    InvalidMerkleProof,
-    IndexWithEmptyLeaf(u32, u32),
-}
-
+use primitives::mmcs::error::BfError;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SVError {
     VerifyCalNegXScriptError,
@@ -21,12 +10,6 @@ pub enum SVError {
     VerifyCommitedPointError,
     VerifyReverseIndexScriptError,
     InvalidWitness,
-}
-
-impl From<TaprootBuilderError> for BfError {
-    fn from(error: TaprootBuilderError) -> Self {
-        BfError::TaprootBuilderError(error)
-    }
 }
 
 impl<M> From<BfError> for FriError<M> {

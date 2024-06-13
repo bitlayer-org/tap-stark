@@ -1,4 +1,3 @@
-
 use core::array;
 
 use p3_baby_bear::BabyBear;

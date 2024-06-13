@@ -11,38 +11,22 @@ use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::rev;
 use p3_field::TwoAdicField;
-
-use primitives::bit_comm::*;
-
-use primitives::{bit_comm::BitCommitment, field::BfField};
-use primitives::bit_comm::BCAssignment;
+use primitives::bit_comm::{BCAssignment, BitCommitment, *};
+use primitives::field::BfField;
+use scripts::bit_comm::winternitz;
 use scripts::bit_comm_u32::BitCommitmentU32;
-use super::verify_folding::cal_neg_x_with_input;
-use scripts::{u31_add, u31_equalverify};
-use super::verify_folding::{fold_degree,fold_degree_with_input,index_to_rou,reverse_bits_len_script_with_input,value_square_with_input};
 use scripts::{
-    execute_script, execute_script_with_inputs,
-     u31ext_add, u31ext_equalverify,
-     BabyBear4, BabyBearU31,bit_comm::winternitz
+    execute_script, execute_script_with_inputs, u31_add, u31_equalverify, u31ext_add,
+    u31ext_equalverify, BabyBear4, BabyBearU31,
+};
+use segment::SegmentLeaf;
+
+use super::verify_folding::{
+    cal_neg_x_with_input, fold_degree, fold_degree_with_input, index_to_rou,
+    reverse_bits_len_script_with_input, value_square_with_input,
 };
 
 define_pushable!();
-
-pub trait SegmentLeaf {
-    fn input(&self) -> Vec<Vec<u8>>;
-    fn check_input(&self) -> Script;
-    fn leaf_script(&self) -> Script;
-
-    fn execute_leaf_script(&self) -> bool {
-        let result = execute_script_with_inputs(self.leaf_script(), self.input());
-        result.success
-    }
-
-    fn leaf_script_witn_noeuqal(&self) -> Script {
-        self.leaf_script()
-    }
-}
-
 pub struct RevIndexLeaf {
     sub_group_bits: u32,
     index: u32,
@@ -476,75 +460,6 @@ impl<'a, const NUM_POLY: usize, F: BfField> SegmentLeaf for VerifyFoldingLeaf<NU
     }
 }
 
-pub struct EvaluationLeaf<const NUM_POLY: usize, F: BfField> {
-    leaf_index: usize,
-    x: F,
-    x_commitment: BitCommitment<F>,
-    neg_x_commitment: BitCommitment<F>,
-    evaluations: Vec<F>,
-    evaluations_commitments: Vec<BitCommitment<F>>,
-}
-
-impl<const NUM_POLY: usize, F: BfField> EvaluationLeaf<NUM_POLY, F> {
-    pub fn new(leaf_index: usize, x: F, evaluations: Vec<F>) -> Self {
-        assert_eq!(evaluations.len(), NUM_POLY);
-
-        let x_commitment = BitCommitment::new("b138982ce17ac813d505b5b40b665d404e9528e8", x);
-        let neg_x_commitment = BitCommitment::new(
-            "b138982ce17ac813d505b5b40b665d404e9528e8",
-            F::field_mod() - x,
-        );
-        let mut evaluations_commitments = Vec::new();
-        for i in 0..NUM_POLY {
-            evaluations_commitments.push(BitCommitment::new(
-                "b138982ce17ac813d505b5b40b665d404e9528e9",
-                evaluations[i],
-            ));
-        }
-
-        Self {
-            leaf_index,
-            x,
-            x_commitment,
-            neg_x_commitment,
-            evaluations,
-            evaluations_commitments,
-        }
-    }
-
-    pub fn leaf_script(&self) -> Script {
-        // equal to x script
-        let scripts = script! {
-            { self.x_commitment.commitments[0].checksig_verify_script() }
-            { self.x_commitment.commitments[0].commit_u32_as_4bytes_script() }
-            // todo: calculate to equal to -x
-            for i in 0..NUM_POLY{
-                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].checksig_verify_script() }
-                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].commit_u32_as_4bytes_script() }
-            }
-            OP_1
-        };
-
-        scripts
-    }
-
-    pub fn two_point_leaf_script(&self) -> Script {
-        // equal to x script
-        let scripts = script! {
-            { self.x_commitment.commitments[0].checksig_verify_script() }
-            { self.x_commitment.commitments[0].commit_u32_as_4bytes_script() }
-            { self.neg_x_commitment.commitments[0].checksig_verify_script() }
-            { self.neg_x_commitment.commitments[0].commit_u32_as_4bytes_script() }
-            for i in 0..NUM_POLY{
-                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].checksig_verify_script() }
-                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].commit_u32_as_4bytes_script() }
-            }
-            OP_1
-        };
-        scripts
-    }
-}
-
 pub fn u8_to_hex_str(byte: &u8) -> String {
     format!("{:02X}", byte)
 }
@@ -560,8 +475,9 @@ mod test {
 
     type AF = BabyBear;
     type F = BinomialExtensionField<BabyBear, 4>;
-    use super::*;
     use scripts::execute_script_with_inputs;
+
+    use super::*;
 
     #[test]
     fn test_rev_index_leaf() {

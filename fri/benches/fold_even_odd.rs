@@ -1,7 +1,7 @@
 use std::any::type_name;
 
-use fri::fold_even_odd;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use fri::fold_even_odd;
 use itertools::Itertools;
 use p3_baby_bear::BabyBear;
 use p3_field::extension::Complex;

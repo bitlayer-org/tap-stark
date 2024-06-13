@@ -2,24 +2,25 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::panic;
 
-use scripts::{
-    execute_script_with_inputs
-};
-use crate::fri_scripts::leaf::{CalNegXLeaf, IndexToROULeaf,SegmentLeaf,SquareFLeaf,ReductionLeaf, RevIndexLeaf, VerifyFoldingLeaf };
-use crate::fri_scripts::point::{ Point,
-    PointsLeaf};
-use primitives::bit_comm::BCAssignment;
-use primitives::field::BfField;
 use bitcoin::taproot::TapLeaf;
 use itertools::izip;
-use primitives::challenger::{BfGrindingChallenger};
-use p3_challenger::{ CanObserve, CanSample};
+use p3_challenger::{CanObserve, CanSample};
 use p3_util::reverse_bits_len;
+use primitives::bit_comm::BCAssignment;
+use primitives::challenger::BfGrindingChallenger;
+use primitives::field::BfField;
+use primitives::mmcs::bf_mmcs::BFMmcs;
+use primitives::mmcs::point::{Point, PointsLeaf};
+use primitives::mmcs::taptree_mmcs::CommitProof;
+use scripts::execute_script_with_inputs;
+use segment::SegmentLeaf;
 
-use crate::bf_mmcs::BFMmcs;
-use crate::error::{BfError, FriError, SVError};
+use crate::error::{FriError, SVError};
+use crate::fri_scripts::leaf::{
+    CalNegXLeaf, IndexToROULeaf, ReductionLeaf, RevIndexLeaf, SquareFLeaf, VerifyFoldingLeaf,
+};
 use crate::verifier::*;
-use crate::{BfCommitPhaseProofStep, BfQueryProof, FriConfig, FriProof};
+use crate::{BfQueryProof, FriConfig, FriProof};
 
 pub fn bf_verify_challenges<F, M, Witness>(
     assign: &mut BCAssignment,
@@ -30,7 +31,7 @@ pub fn bf_verify_challenges<F, M, Witness>(
 ) -> Result<(), FriError<M::Error>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitProof<F>>,
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     for (&index, query_proof, ro) in izip!(
@@ -69,7 +70,7 @@ fn bf_verify_query<F, M>(
 ) -> Result<F, FriError<M::Error>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitProof<F>>,
 {
     let mut folded_eval = F::zero();
 

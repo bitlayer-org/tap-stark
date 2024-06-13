@@ -1,12 +1,11 @@
 use alloc::vec::Vec;
 
-use crate::fri_scripts::point::PointsLeaf;
-use primitives::field::BfField;
 use bitcoin::taproot::LeafNode;
-
+use primitives::field::BfField;
 // use serde::{Deserialize, Serialize};
-use crate::bf_mmcs::BFMmcs;
-
+use primitives::mmcs::bf_mmcs::BFMmcs;
+use primitives::mmcs::point::PointsLeaf;
+use primitives::mmcs::taptree_mmcs::CommitProof;
 // #[derive(Serialize, Deserialize)]
 // #[serde(bound(
 //     serialize = "Witness: Serialize",
@@ -26,22 +25,7 @@ pub struct FriProof<F: BfField, M: BFMmcs<F>, Witness> {
 pub struct BfQueryProof<F: BfField> {
     /// For each commit phase commitment, this contains openings of a commit phase codeword at the
     /// queried location, along with an opening proof.
-    pub(crate) commit_phase_openings: Vec<BfCommitPhaseProofStep<F>>,
-}
-
-// #[derive(Serialize, Deserialize, Clone)]
-#[derive(Clone)]
-// #[serde(bound(serialize = "F: Serialize"))]
-// #[serde(bound = "")]
-pub struct BfCommitPhaseProofStep<F: BfField> {
-    /// The opening of the commit phase codeword at the sibling location.
-    // This may change to Vec<FC::Challenge> if the library is generalized to support other FRI
-    // folding arities besides 2, meaning that there can be multiple siblings.
-    pub(crate) points_leaf: PointsLeaf<F>,
-    // pub(crate) leaf_node: TapLeaf,
-
-    // pub(crate) merkle_branch: TaprootMerkleBranch,
-    pub leaf_node: LeafNode,
+    pub(crate) commit_phase_openings: Vec<CommitProof<F>>,
 }
 
 pub fn get_leaf_index_by_query_index(query_index: usize) -> (usize, usize, usize) {

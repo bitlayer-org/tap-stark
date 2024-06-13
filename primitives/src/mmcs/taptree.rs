@@ -1,23 +1,93 @@
-use alloc::vec::Vec;
-use alloc::{slice, vec};
 use core::ops::{Deref, DerefMut};
 use core::{mem, usize};
 
-
-use primitives::field::BfField;
-use crate::fri_scripts::leaf::{EvaluationLeaf};
-use crate::fri_scripts::point::PointsLeaf;
 use bitcoin::taproot::LeafVersion::TapScript;
 use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
 use bitcoin::{ScriptBuf, TapNodeHash};
 use itertools::{Chunk, Itertools};
 use p3_util::{log2_strict_usize, reverse_slice_index_bits};
 
-use crate::error::BfError;
+use super::error::BfError;
+use super::point::PointsLeaf;
+use crate::field::BfField;
 
 pub fn combine_two_nodes(a: NodeInfo, b: NodeInfo) -> Result<(NodeInfo, bool), BfError> {
     let parent = NodeInfo::combine_with_order(a, b)?;
     Ok(parent)
+}
+use bitcoin::ScriptBuf as Script;
+use bitcoin_script::{define_pushable, script};
+
+use crate::bit_comm::BitCommitment;
+define_pushable!();
+
+pub struct EvaluationLeaf<const NUM_POLY: usize, F: BfField> {
+    leaf_index: usize,
+    x: F,
+    x_commitment: BitCommitment<F>,
+    neg_x_commitment: BitCommitment<F>,
+    evaluations: Vec<F>,
+    evaluations_commitments: Vec<BitCommitment<F>>,
+}
+
+impl<const NUM_POLY: usize, F: BfField> EvaluationLeaf<NUM_POLY, F> {
+    pub fn new(leaf_index: usize, x: F, evaluations: Vec<F>) -> Self {
+        assert_eq!(evaluations.len(), NUM_POLY);
+
+        let x_commitment = BitCommitment::new("b138982ce17ac813d505b5b40b665d404e9528e8", x);
+        let neg_x_commitment = BitCommitment::new(
+            "b138982ce17ac813d505b5b40b665d404e9528e8",
+            F::field_mod() - x,
+        );
+        let mut evaluations_commitments = Vec::new();
+        for i in 0..NUM_POLY {
+            evaluations_commitments.push(BitCommitment::new(
+                "b138982ce17ac813d505b5b40b665d404e9528e9",
+                evaluations[i],
+            ));
+        }
+
+        Self {
+            leaf_index,
+            x,
+            x_commitment,
+            neg_x_commitment,
+            evaluations,
+            evaluations_commitments,
+        }
+    }
+
+    pub fn leaf_script(&self) -> Script {
+        // equal to x script
+        let scripts = script! {
+            { self.x_commitment.commitments[0].checksig_verify_script() }
+            { self.x_commitment.commitments[0].commit_u32_as_4bytes_script() }
+            // todo: calculate to equal to -x
+            for i in 0..NUM_POLY{
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].checksig_verify_script() }
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].commit_u32_as_4bytes_script() }
+            }
+            OP_1
+        };
+
+        scripts
+    }
+
+    pub fn two_point_leaf_script(&self) -> Script {
+        // equal to x script
+        let scripts = script! {
+            { self.x_commitment.commitments[0].checksig_verify_script() }
+            { self.x_commitment.commitments[0].commit_u32_as_4bytes_script() }
+            { self.neg_x_commitment.commitments[0].checksig_verify_script() }
+            { self.neg_x_commitment.commitments[0].commit_u32_as_4bytes_script() }
+            for i in 0..NUM_POLY{
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].checksig_verify_script() }
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].commit_u32_as_4bytes_script() }
+            }
+            OP_1
+        };
+        scripts
+    }
 }
 
 // Todo: use &[F] to replace Vec<F>

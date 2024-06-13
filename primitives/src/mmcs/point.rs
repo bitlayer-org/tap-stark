@@ -3,8 +3,8 @@ use std::usize;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 
-use scripts::bit_comm::*;
-use primitives::{bit_comm::{BCAssignment, BitCommitment},field::BfField};
+use crate::bit_comm::{BCAssignment, BitCommitment};
+use crate::field::BfField;
 define_pushable!();
 
 #[derive(Debug, Clone)]
@@ -168,10 +168,10 @@ mod test {
     use p3_field::{AbstractExtensionField, AbstractField, PrimeField32};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
+    use scripts::execute_script_with_inputs;
 
     use super::*;
-    use scripts::execute_script_with_inputs;
-    use primitives::field::BfField;
+    use crate::field::BfField;
 
     type F = BabyBear;
     type EF = p3_field::extension::BinomialExtensionField<BabyBear, 4>;

@@ -1,19 +1,20 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use primitives::field::BfField;
 use itertools::Itertools;
-use primitives::challenger::BfGrindingChallenger;
-use p3_challenger::{ CanObserve, CanSample};
+use p3_challenger::{CanObserve, CanSample};
 use p3_field::TwoAdicField;
 use p3_matrix::dense::RowMajorMatrix;
+use primitives::challenger::BfGrindingChallenger;
+use primitives::field::BfField;
+use primitives::mmcs::bf_mmcs::BFMmcs;
+use primitives::mmcs::taptree_mmcs::CommitProof;
 use tracing::{info_span, instrument};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-use crate::bf_mmcs::BFMmcs;
 use crate::fold_even_odd::fold_even_odd;
-use crate::{BfCommitPhaseProofStep, BfQueryProof, FriConfig, FriProof};
+use crate::{BfQueryProof, FriConfig, FriProof};
 
 #[instrument(name = "FRI prover", skip_all)]
 pub fn bf_prove<F, M, Challenger>(
@@ -23,7 +24,7 @@ pub fn bf_prove<F, M, Challenger>(
 ) -> (FriProof<F, M, Challenger::Witness>, Vec<usize>)
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitProof<F>>,
     Challenger: BfGrindingChallenger + CanObserve<M::Commitment> + CanSample<F>,
 {
     // 1. rposition start iterator from the end and calculate the valid leagth of the polynomial want commit
@@ -62,7 +63,7 @@ fn bf_answer_query<F, M>(
 ) -> BfQueryProof<F>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitProof<F>>,
 {
     let commit_phase_openings = commit_phase_commits
         .iter()
@@ -138,26 +139,26 @@ struct CommitPhaseResult<F: Send + Sync, M: BFMmcs<F>> {
 #[cfg(test)]
 mod tests {
 
-    use primitives::bit_comm::BCAssignment;
-    use p3_baby_bear::BabyBear;
     use itertools::Itertools;
-    use primitives::challenger::{BfChallenger, Blake3Permutation,chan_field::U32};
+    use p3_baby_bear::BabyBear;
     use p3_challenger::CanSampleBits;
     use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
     use p3_field::extension::BinomialExtensionField;
-    use p3_field::{AbstractField};
+    use p3_field::AbstractField;
     use p3_matrix::util::reverse_matrix_index_bits;
     use p3_matrix::Matrix;
     use p3_symmetric::{CryptographicPermutation, Permutation};
     use p3_util::log2_strict_usize;
+    use primitives::bit_comm::BCAssignment;
+    use primitives::challenger::chan_field::U32;
+    use primitives::challenger::{BfChallenger, Blake3Permutation};
+    use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
     use tracing_subscriber::fmt;
 
     use super::*;
-    use crate::mmcs::taptree_mmcs::ROOT_WIDTH;
     use crate::script_verifier::bf_verify_challenges;
-    use crate::taptree_mmcs::TapTreeMmcs;
     use crate::verifier;
 
     type PF = U32;
@@ -460,18 +461,19 @@ mod tests {
 #[cfg(test)]
 mod tests2 {
 
-    use primitives::bit_comm::BCAssignment;
-    use p3_baby_bear::BabyBear;
     use itertools::Itertools;
-    use primitives::challenger::{BfChallenger, Blake3Permutation,chan_field::U32};
+    use p3_baby_bear::BabyBear;
     use p3_challenger::CanSampleBits;
     use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
     use p3_field::extension::BinomialExtensionField;
-    use p3_field::{AbstractField};
+    use p3_field::AbstractField;
     use p3_matrix::util::reverse_matrix_index_bits;
     use p3_matrix::Matrix;
     use p3_symmetric::{CryptographicPermutation, Permutation};
     use p3_util::log2_strict_usize;
+    use primitives::bit_comm::BCAssignment;
+    use primitives::challenger::chan_field::U32;
+    use primitives::challenger::{BfChallenger, Blake3Permutation};
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
     use tracing_subscriber::fmt;

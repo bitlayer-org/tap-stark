@@ -4,5 +4,5 @@ members = [
     "primitives",
     "p3",
     "scripts"
-]
+, "segment"]
 

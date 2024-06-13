@@ -1,22 +1,25 @@
-use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::{panic, usize};
 
-use primitives::field::BfField;
 use bitcoin::hashes::Hash as Bitcoin_HASH;
+use bitcoin::taproot::LeafNode;
 use bitcoin::TapNodeHash;
-use primitives::challenger::chan_field::{u256_to_u32, u32_to_u256, U256, U32};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::log2_strict_usize;
 
 use super::bf_mmcs::BFMmcs;
-use crate::error::BfError;
-use crate::prover::LOG_DEFAULT_MATRIX_WIDTH;
-use crate::taptree::{verify_inclusion, PolyCommitTree};
-use crate::BfCommitPhaseProofStep;
+use super::error::BfError;
+use super::point::PointsLeaf;
+use super::taptree::{verify_inclusion, PolyCommitTree};
+use crate::challenger::chan_field::{u256_to_u32, u32_to_u256, U256, U32};
+use crate::field::BfField;
 
 pub type TreeRoot = [U32; ROOT_WIDTH];
+// Commit two adjacent points to a leaf node
+pub const DEFAULT_MATRIX_WIDTH: usize = 2;
+pub const LOG_DEFAULT_MATRIX_WIDTH: usize = 1;
+
 pub const ROOT_WIDTH: usize = 8;
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct TapTreeMmcs<F> {
@@ -30,9 +33,16 @@ impl<F> TapTreeMmcs<F> {
         }
     }
 }
+
+#[derive(Clone)]
+pub struct CommitProof<F: BfField> {
+    pub points_leaf: PointsLeaf<F>,
+    pub leaf_node: LeafNode,
+}
+
 impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
     type ProverData = PolyCommitTree<F, 1>;
-    type Proof = BfCommitPhaseProofStep<F>;
+    type Proof = CommitProof<F>;
     type Commitment = TreeRoot;
     type Error = BfError;
 
@@ -52,7 +62,7 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
             }
         };
         let open_leaf = prover_data.get_points_leaf(leaf_index).clone();
-        BfCommitPhaseProofStep {
+        CommitProof {
             points_leaf: open_leaf,
             leaf_node: opening_leaf.clone(),
         }

@@ -4,7 +4,6 @@ extern crate alloc;
 
 mod config;
 mod fold_even_odd;
-pub mod mmcs;
 mod proof;
 pub mod prover;
 // mod two_adic_pcs;
@@ -14,7 +13,6 @@ pub mod verifier;
 
 pub use config::*;
 pub use fold_even_odd::*;
-pub use mmcs::*;
 pub use proof::*;
 pub use script_verifier::*;
 pub mod fri_scripts;

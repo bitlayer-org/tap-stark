@@ -9,19 +9,16 @@ use bitcoin::script::{self, scriptint_vec};
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::Itertools;
-use primitives::challenger::{BfChallenger, BitExtractor, Blake3Permutation};
-use primitives::challenger::chan_field::{PermutationField, U32};
 use p3_field::PrimeField32;
-
+use primitives::bit_comm::{BCAssignment, BitCommitment};
+use primitives::challenger::chan_field::{PermutationField, U32};
+use primitives::challenger::{BfChallenger, BitExtractor, Blake3Permutation};
+use primitives::field::BfField;
 use scripts::bit_comm_u32::*;
-use primitives::bit_comm::BitCommitment;
-use scripts::blake3;
 use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4TOALTSTACK};
 use scripts::u32_rrot::{u32_rrot, u8_extract_hbit};
 use scripts::u32_std::{u32_compress, u32_equal, u32_equalverify, u32_push};
-use primitives::bit_comm::BCAssignment;
-use primitives::field::BfField;
-use scripts::BabyBearU31;
+use scripts::{blake3, BabyBearU31};
 
 /// fiat shamir subtree contains a series script leafs and coressponding
 trait SubTree {
@@ -409,20 +406,17 @@ mod test {
     use bitcoin_script::{define_pushable, script};
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
-    use p3_challenger::{
-        CanObserve, CanSample, CanSampleBits,
-    };
-    use primitives::challenger::{BfChallenger, BfGrindingChallenger, Blake3Permutation};
+    use p3_challenger::{CanObserve, CanSample, CanSampleBits};
     use p3_field::extension::BinomialExtensionField;
-    use p3_field::{AbstractField,  PrimeField32, };
-    use primitives::challenger::chan_field::{PermutationField,U32};
-
-    use super::{new_u32_bit_commit, Commit, FiatShamirSubTree, SubTree};
-    use scripts::bit_comm::pushable;
-    use super::new_challenge_commit;
+    use p3_field::{AbstractField, PrimeField32};
     use primitives::bit_comm::BCAssignment;
+    use primitives::challenger::chan_field::{PermutationField, U32};
+    use primitives::challenger::{BfChallenger, BfGrindingChallenger, Blake3Permutation};
+    use scripts::bit_comm::pushable;
     use scripts::{execute_script, execute_script_with_inputs, to_digits, BabyBear4};
-    
+
+    use super::{new_challenge_commit, new_u32_bit_commit, Commit, FiatShamirSubTree, SubTree};
+
     fn verify_u32_4bytes_script(value: u32) -> Script {
         let message = to_digits(value, 8);
         let mut commit_message = vec![0u8; 8 / 2];
