@@ -1,14 +1,17 @@
+use std::marker::PhantomData;
+
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::Itertools;
 
 use super::bit_comm_u32::BitCommitmentU32;
+use super::secret_generator::{SecretGen, ThreadSecretGen};
 use super::{AsU32Vec, Witness};
 define_pushable!();
 
 // BitCommitment
 // 1. Create a new BitCommitment through BCAssignment is a better way.
-// 2. after run this `execute_script_with_wittness(bc.check_commitment_script(), bc.witness())`,
+// 2. after run this `execute_script_with_input(bc.check_and_recover(), bc.witness())`,
 //    the u32 values should be placed on the stack for any bc.
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -19,11 +22,11 @@ pub struct BitCommitment<F: AsU32Vec> {
 }
 
 impl<F: AsU32Vec> BitCommitment<F> {
-    pub fn new(secret_key: &str, value: F) -> Self {
+    pub fn new<S: SecretGen>(value: F) -> Self {
         let u32_values = value.bc_as_u32_vec();
         let commitments = u32_values
             .iter()
-            .map(|v| BitCommitmentU32::new(secret_key, *v))
+            .map(|v| BitCommitmentU32::new(&S::gen(), *v))
             .collect_vec();
         Self {
             value,
@@ -145,8 +148,8 @@ mod test {
 
         let a = rng.gen::<EF>();
         let b = rng.gen::<EF>();
-        let a_commit = BitCommitment::new("b138982ce17ac813d505b5b40b665d404e9528e7", a);
-        let b_commit = BitCommitment::new("b138982ce17ac813d505b5b40b665d404e9528e6", b);
+        let a_commit = BitCommitment::new::<ThreadSecretGen>(a);
+        let b_commit = BitCommitment::new::<ThreadSecretGen>(b);
 
         let c = a.add(b);
 
@@ -195,7 +198,7 @@ mod test {
             ]
             .as_slice(),
         );
-        let a_commit = BitCommitment::new("b138982ce17ac813d505b5b40b665d404e9528e7", a);
+        let a_commit = BitCommitment::new::<ThreadSecretGen>(a);
 
         let script = script! {
             {recover_message_euqal_to_commit_message(a_commit.clone())}
@@ -212,7 +215,7 @@ mod test {
         let mut rng = ChaCha20Rng::seed_from_u64(0u64);
         let mut a = rng.gen::<F>();
         a = BabyBear::from_u32(1u32);
-        let a_commit = BitCommitment::new("b138982ce17ac813d505b5b40b665d404e9528e7", a);
+        let a_commit = BitCommitment::new::<ThreadSecretGen>(a);
 
         let script = script! {
             {recover_message_euqal_to_commit_message(a_commit.clone())}

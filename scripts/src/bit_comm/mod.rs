@@ -2,6 +2,7 @@
 
 pub mod bit_comm;
 mod bit_comm_u32;
+mod secret_generator;
 mod winternitz;
 
 use primitives::field::{BabyBear, BfField, BinomialExtensionField};
