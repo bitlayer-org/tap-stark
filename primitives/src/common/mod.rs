@@ -3,7 +3,7 @@ use p3_field::extension::BinomialExtensionField;
 
 use super::field::*;
 
-pub trait AsU32Vec: Clone + Default {
+pub trait AsU32Vec {
     fn bc_as_u32_vec(&self) -> Vec<u32>;
 }
 

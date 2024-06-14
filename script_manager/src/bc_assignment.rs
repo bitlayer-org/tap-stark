@@ -29,16 +29,16 @@ impl<S: SecretGen> BCAssignment<S> {
 
     pub fn assign<F: AsU32Vec>(&mut self, value: F) -> BitCommitment<F> {
         let x = BitCommitment::new::<S>(value);
-        for i in x.clone().commitments {
+        for i in x.commitments.clone() {
             self.value_assigns.entry(i.value).or_insert_with(|| i);
         }
         x
     }
 
     // pre assign a commitment without value
-    pub fn pre_assign_var<F: AsU32Vec>(&mut self) -> (BitCommitment<F>, String) {
+    pub fn pre_assign_var<F: AsU32Vec + Default>(&mut self) -> (BitCommitment<F>, String) {
         self.indexer += 1;
-        let x = BitCommitment::new::<S>(F::default());
+        let x = BitCommitment::<F>::new::<S>(F::default());
         self.varible_assigns
             .entry(self.indexer.to_string())
             .or_insert_with(|| x.commitments.clone());
