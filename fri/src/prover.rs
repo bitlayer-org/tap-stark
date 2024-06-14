@@ -8,7 +8,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::taptree_mmcs::CommitProof;
+use primitives::mmcs::taptree_mmcs::{CommitProof, DEFAULT_MATRIX_WIDTH};
 use tracing::{info_span, instrument};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -80,9 +80,6 @@ where
         commit_phase_openings,
     }
 }
-// Commit two adjacent points to a leaf node
-pub const DEFAULT_MATRIX_WIDTH: usize = 2;
-pub const LOG_DEFAULT_MATRIX_WIDTH: usize = 1;
 
 #[instrument(name = "commit phase", skip_all)]
 fn bf_commit_phase<F, M, Challenger>(
@@ -474,13 +471,12 @@ mod tests2 {
     use primitives::bit_comm::BCAssignment;
     use primitives::challenger::chan_field::U32;
     use primitives::challenger::{BfChallenger, Blake3Permutation};
+    use primitives::mmcs::taptree_mmcs::{TapTreeMmcs, ROOT_WIDTH};
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
     use tracing_subscriber::fmt;
 
     use super::*;
-    use crate::mmcs::taptree_mmcs::ROOT_WIDTH;
-    use crate::taptree_mmcs::TapTreeMmcs;
     use crate::{bf_verify_challenges, verifier};
 
     type PF = U32;

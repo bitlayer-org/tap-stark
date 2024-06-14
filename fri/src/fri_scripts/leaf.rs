@@ -471,6 +471,7 @@ mod test {
     use p3_field::extension::BinomialExtensionField;
     use p3_field::AbstractField;
     use p3_util::reverse_bits_len;
+    use primitives::mmcs::taptree::EvaluationLeaf;
     use rand::Rng;
 
     type AF = BabyBear;
@@ -691,81 +692,6 @@ mod test {
                 let result = execute_script_with_inputs(folding_script, input);
                 assert!(result.success);
             }
-        }
-    }
-
-    #[test]
-    fn test_check_x_neg_x_equal_script() {
-        const num_polys: usize = 1;
-        let x = BabyBear::from_u32(0x11654321);
-        let neg_x = BabyBear::field_mod() - x; // 669ABCE0
-        let expect_neg_x = BabyBear::from_u32(0x669ABCE0);
-        assert_eq!(neg_x, expect_neg_x);
-        let leaf =
-            EvaluationLeaf::<num_polys, BabyBear>::new(0, x, vec![BabyBear::from_u32(0x11654321)]);
-
-        // check signature and verify the value
-        let signature = leaf.x_commitment.commitments[0].signature();
-        // check equal to r
-        let exec_scripts = script! {
-            { leaf.x_commitment.commitments[0].checksig_verify_script() }
-            { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
-            OP_1
-        };
-        let exec_result = execute_script_with_inputs(exec_scripts, signature);
-        assert!(exec_result.success);
-
-        // check equal to -r
-        let signature = leaf.x_commitment.commitments[0].signature();
-        let exec_scripts = script! {
-            { leaf.x_commitment.commitments[0].checksig_verify_script() }
-            { leaf.neg_x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.x_commitment.commitments[0]) }
-            OP_1
-        };
-        let exec_result = execute_script_with_inputs(exec_scripts, signature);
-        assert!(exec_result.success);
-
-        for _ in 0..30 {
-            let mut rng = rand::thread_rng();
-            let random_number: u32 = rng.gen();
-            let x = random_number % BabyBear::MOD;
-            let x = BabyBear::from_u32(x);
-            let neg_x = BabyBear::field_mod() - x;
-            let leaf = EvaluationLeaf::<num_polys, BabyBear>::new(
-                0,
-                x,
-                vec![BabyBear::from_u32(0x11654321)],
-            );
-
-            // check signature and verify the value
-            let signature = leaf.x_commitment.commitments[0].signature();
-            // check equal to r
-            let exec_scripts = script! {
-                { leaf.x_commitment.commitments[0].checksig_verify_script() }
-                { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
-                OP_1
-            };
-            let exec_result = execute_script_with_inputs(exec_scripts, signature);
-            assert!(exec_result.success);
-
-            // check equal to -r
-            let signature = leaf.x_commitment.commitments[0].signature();
-            let exec_scripts = script! {
-                { leaf.x_commitment.commitments[0].checksig_verify_script() }
-                { leaf.neg_x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.x_commitment.commitments[0]) }
-                OP_1
-            };
-            let exec_result = execute_script_with_inputs(exec_scripts, signature);
-            assert!(exec_result.success);
-
-            let signature = leaf.neg_x_commitment.commitments[0].signature();
-            let exec_scripts = script! {
-                { leaf.neg_x_commitment.commitments[0].checksig_verify_script() }
-                { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
-                OP_1
-            };
-            let exec_result = execute_script_with_inputs(exec_scripts, signature);
-            assert!(exec_result.success);
         }
     }
 
