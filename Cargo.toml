@@ -3,7 +3,8 @@ members = [
     "fri",
     "primitives",
     "p3",
-    "scripts", 
+    "scripts",
+    "script_manager",
     "segment"
-    ]
+]
 

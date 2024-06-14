@@ -24,6 +24,16 @@ impl BitCommitmentU32 {
         }
     }
 
+    pub fn change_value(&mut self, value: &u32) -> Self {
+        let message = to_digits(value.clone(), winternitz::N0);
+        let winternitz = self.winternitz.clone();
+        Self {
+            value: value.clone(),
+            winternitz,
+            message,
+        }
+    }
+
     pub fn commit_u32_as_4bytes(&self) -> Vec<u8> {
         let message = self.message.clone();
         let mut commit_message = vec![0u8; winternitz::N0 / 2];

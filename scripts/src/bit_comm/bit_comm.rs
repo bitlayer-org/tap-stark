@@ -35,6 +35,21 @@ impl<F: AsU32Vec> BitCommitment<F> {
         }
     }
 
+    pub fn new_with_commits(value: F, commits: Vec<BitCommitmentU32>) -> Self {
+        let u32_values = value.bc_as_u32_vec();
+        assert_eq!(u32_values.len(), commits.len());
+        let commitments = u32_values
+            .iter()
+            .enumerate()
+            .map(|(idx, value)| commits.get(idx).unwrap().clone().change_value(value))
+            .collect_vec();
+        Self {
+            value,
+            u32_values,
+            commitments,
+        }
+    }
+
     // execute with witness
     // check bitcommitment and left u32_values to alt stack
     pub fn check_and_recover_to_altstack(&self) -> Script {

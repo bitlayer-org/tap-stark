@@ -1086,6 +1086,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "script_manager"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "bitcoin-script",
+ "bitcoin-scriptexec",
+ "hex",
+ "itertools 0.12.1",
+ "lazy_static",
+ "once_cell",
+ "p3-baby-bear",
+ "p3-challenger",
+ "p3-field",
+ "p3-util",
+ "primitives",
+ "rand",
+ "rand_chacha",
+ "scripts",
+]
+
+[[package]]
 name = "scripts"
 version = "0.1.0"
 dependencies = [

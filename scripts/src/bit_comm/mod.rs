@@ -1,14 +1,12 @@
-// This trait is used to manage bit commitments
-
 pub mod bit_comm;
-mod bit_comm_u32;
-mod secret_generator;
+pub mod bit_comm_u32;
+pub mod secret_generator;
 mod winternitz;
 
 use primitives::field::{BabyBear, BfField, BinomialExtensionField};
 use winternitz::*;
 
-pub trait AsU32Vec {
+pub trait AsU32Vec: Clone + Default {
     fn bc_as_u32_vec(&self) -> Vec<u32>;
 }
 type Witness = Vec<Vec<u8>>;
