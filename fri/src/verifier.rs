@@ -13,8 +13,12 @@ use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use scripts::execute_script_with_inputs;
 
-use crate::error::FriError;
-use crate::{BfQueryProof, FriConfig, FriProof};
+use crate::bf_mmcs::BFMmcs;
+use crate::error::{BfError, FriError, FriError};
+use crate::fri_scripts::point::{Point, PointsLeaf};
+use crate::{
+    BfCommitPhaseProofStep, BfQueryProof, BfQueryProof, FriConfig, FriConfig, FriProof, FriProof,
+};
 
 #[derive(Debug)]
 pub struct FriChallenges<F> {
@@ -144,7 +148,7 @@ where
         let mut xs = vec![x; 2];
         xs[index_sibling % 2] = neg_x;
 
-        let input = open_leaf.signature();
+        let input = open_leaf.witness();
 
         if let TapLeaf::Script(script, _ver) = step.leaf_node.leaf().clone() {
             assert_eq!(script, open_leaf.recover_points_euqal_to_commited_point());

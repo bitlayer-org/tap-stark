@@ -2,9 +2,10 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-
-use scripts::bit_comm::*;
-use primitives::{bit_comm::{BCAssignment, BitCommitment},field::BfField};
+use primitives::field::BfField;
+use script_manager::bc_assignment::ThreadBCAssignment;
+use scripts::bit_comm::bit_comm::BitCommitment;
+use scripts::secret_generator::ConstantSecretGen;
 define_pushable!();
 
 #[derive(Debug, Clone)]
@@ -40,9 +41,9 @@ impl<F: BfField> PointsLeaf<F> {
         scripts
     }
 
-    pub fn signature(&self) -> Vec<Vec<u8>> {
-        let mut p1_sigs = self.points.p1.signature();
-        let mut p2_sigs = self.points.p2.signature();
+    pub fn witness(&self) -> Vec<Vec<u8>> {
+        let mut p1_sigs = self.points.p1.witness();
+        let mut p2_sigs = self.points.p2.witness();
         p2_sigs.append(p1_sigs.as_mut());
         p2_sigs
     }
@@ -79,9 +80,9 @@ impl<F: BfField> Points<F> {
         scripts
     }
 
-    pub fn signature(&self) -> Vec<Vec<u8>> {
-        let mut p1_sigs = self.p1.signature();
-        let mut p2_sigs = self.p2.signature();
+    pub fn witness(&self) -> Vec<Vec<u8>> {
+        let mut p1_sigs = self.p1.witness();
+        let mut p2_sigs = self.p2.witness();
         p2_sigs.append(p1_sigs.as_mut());
         p2_sigs
     }
@@ -96,9 +97,9 @@ pub struct Point<F: BfField> {
 }
 
 impl<F: BfField> Point<F> {
-    pub fn new_from_assign(x: F, y: F, bc_assign: &mut BCAssignment) -> Point<F> {
-        let x_commit = bc_assign.assign_field(x);
-        let y_commit = bc_assign.assign_field(y);
+    pub fn new_from_assign(x: F, y: F, bc_assign: &mut ThreadBCAssignment) -> Point<F> {
+        let x_commit = bc_assign.assign(x);
+        let y_commit = bc_assign.assign(y);
         Self {
             x,
             y,
@@ -108,8 +109,8 @@ impl<F: BfField> Point<F> {
     }
 
     pub fn new(x: F, y: F) -> Point<F> {
-        let x_commit = BitCommitment::<F>::new("b138982ce17ac813d505b5b40b665d404e9528e8", x);
-        let y_commit = BitCommitment::<F>::new("b138982ce17ac813d505b5b40b665d404e9528e8", y);
+        let x_commit = BitCommitment::<F>::new::<ConstantSecretGen>(x);
+        let y_commit = BitCommitment::<F>::new::<ConstantSecretGen>(y);
         Self {
             x: x,
             y: y,
@@ -129,8 +130,8 @@ impl<F: BfField> Point<F> {
 
     pub fn recover_point_x_at_altstack_y_at_stack(&self) -> Script {
         let scripts = script! {
-            { self.x_commit.recover_message_at_altstack() }
-            { self.y_commit.recover_message_at_stack() }
+            { self.x_commit.check_and_recover_to_altstack() }
+            { self.y_commit.check_and_recover() }
         };
 
         scripts
@@ -138,8 +139,8 @@ impl<F: BfField> Point<F> {
 
     pub fn recover_point_at_altstack(&self) -> Script {
         let scripts = script! {
-            { self.x_commit.recover_message_at_altstack() }
-            { self.y_commit.recover_message_at_altstack() }
+            { self.x_commit.check_and_recover_to_altstack() }
+            { self.y_commit.check_and_recover_to_altstack() }
         };
 
         scripts
@@ -147,16 +148,16 @@ impl<F: BfField> Point<F> {
 
     pub fn recover_point_at_stack(&self) -> Script {
         let scripts = script! {
-            { self.x_commit.recover_message_at_stack() }
-            { self.y_commit.recover_message_at_stack() }
+            { self.x_commit.check_and_recover() }
+            { self.y_commit.check_and_recover() }
         };
 
         scripts
     }
 
-    pub fn signature(&self) -> Vec<Vec<u8>> {
-        let mut x_sigs = self.x_commit.signature();
-        let mut y_sigs = self.y_commit.signature();
+    pub fn witness(&self) -> Vec<Vec<u8>> {
+        let mut x_sigs = self.x_commit.witness();
+        let mut y_sigs = self.y_commit.witness();
         y_sigs.append(x_sigs.as_mut());
         y_sigs
     }
@@ -166,12 +167,12 @@ impl<F: BfField> Point<F> {
 mod test {
     use p3_baby_bear::BabyBear;
     use p3_field::{AbstractExtensionField, AbstractField, PrimeField32};
+    use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
+    use scripts::execute_script_with_inputs;
 
     use super::*;
-    use scripts::execute_script_with_inputs;
-    use primitives::field::BfField;
 
     type F = BabyBear;
     type EF = p3_field::extension::BinomialExtensionField<BabyBear, 4>;
@@ -185,7 +186,7 @@ mod test {
             {p.recover_point_euqal_to_commited_point()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }
@@ -203,7 +204,7 @@ mod test {
             {p.recover_point_euqal_to_commited_point()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }
@@ -222,7 +223,7 @@ mod test {
             {p.recover_points_euqal_to_commited_points()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }
@@ -242,7 +243,7 @@ mod test {
             {p.recover_points_euqal_to_commited_points()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }

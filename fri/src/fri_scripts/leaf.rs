@@ -9,12 +9,20 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
+use itertools::rev;
+use p3_field::TwoAdicField;
 use primitives::bit_comm::{BCAssignment, BitCommitment, *};
 use primitives::field::BfField;
+use script_manager::bc_assignment::ThreadBCAssignment;
+use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::bit_comm_u32::BitCommitmentU32;
-use scripts::execute_script_with_inputs;
+use scripts::secret_generator::ConstantSecretGen;
 use scripts::u31_lib::{
     u31_add, u31_equalverify, u31ext_add, u31ext_equalverify, BabyBear4, BabyBearU31,
+};
+use scripts::{
+    execute_script, execute_script_with_inputs, execute_script_with_inputs, u31_add,
+    u31_equalverify, u31ext_add, u31ext_equalverify, AsU32Vec, BabyBear4, BabyBearU31,
 };
 use segment::SegmentLeaf;
 
@@ -27,16 +35,16 @@ define_pushable!();
 pub struct RevIndexLeaf {
     sub_group_bits: u32,
     index: u32,
-    index_bc: BitCommitmentU32,
+    index_bc: BitCommitment<u32>,
     rev_index: u32,
-    rev_index_bc: BitCommitmentU32,
+    rev_index_bc: BitCommitment<u32>,
 }
 impl RevIndexLeaf {
     pub fn new_from_assign(
         sub_group_bits: u32,
         index: u32,
         rev_index: u32,
-        assign: &mut BCAssignment,
+        assign: &mut ThreadBCAssignment,
     ) -> Self {
         let index_bc = assign.assign(index);
         let rev_index_bc = assign.assign(rev_index);
@@ -46,9 +54,9 @@ impl RevIndexLeaf {
     pub fn new(
         sub_group_bits: u32,
         index: u32,
-        index_bc: BitCommitmentU32,
+        index_bc: BitCommitment<u32>,
         rev_index: u32,
-        rev_index_bc: BitCommitmentU32,
+        rev_index_bc: BitCommitment<u32>,
     ) -> Self {
         Self {
             sub_group_bits,
@@ -62,8 +70,8 @@ impl RevIndexLeaf {
 
 impl SegmentLeaf for RevIndexLeaf {
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs1 = self.index_bc.signature();
-        let mut sigs0 = self.rev_index_bc.signature();
+        let mut sigs1 = self.index_bc.witness();
+        let mut sigs0 = self.rev_index_bc.witness();
         sigs1.append(&mut sigs0);
         sigs1
     }
@@ -78,8 +86,8 @@ impl SegmentLeaf for RevIndexLeaf {
 
     fn leaf_script(&self) -> Script {
         script! {
-            {self.rev_index_bc.recover_message_at_altstack()}
-            {self.index_bc.recover_message_at_stack()}
+            {self.rev_index_bc.check_and_recover_to_altstack()}
+            {self.index_bc.check_and_recover()}
             {self.rev_index_bc.message_from_altstack()}
             {reverse_bits_len_script_with_input(self.index,self.sub_group_bits as usize )}
         }
@@ -91,10 +99,10 @@ pub struct SquareFLeaf<const NUM_POLY: usize, F: BfField> {
     value_square_bc: BitCommitment<F>,
 }
 impl<const NUM_POLY: usize, F: BfField> SquareFLeaf<NUM_POLY, F> {
-    pub fn new_from_assign(value: F, value_suqare: F, assign: &mut BCAssignment) -> Self {
+    pub fn new_from_assign(value: F, value_suqare: F, assign: &mut ThreadBCAssignment) -> Self {
         assert_eq!(value * value, value_suqare);
-        let val_bc = assign.assign_field(value);
-        let val_square_bc = assign.assign_field(value_suqare);
+        let val_bc = assign.assign(value);
+        let val_square_bc = assign.assign(value_suqare);
         Self::new(val_bc, val_square_bc)
     }
 
@@ -108,8 +116,8 @@ impl<const NUM_POLY: usize, F: BfField> SquareFLeaf<NUM_POLY, F> {
 
 impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for SquareFLeaf<NUM_POLY, F> {
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs1 = self.value_square_bc.signature();
-        let mut sigs0 = self.value_bc.signature();
+        let mut sigs1 = self.value_square_bc.witness();
+        let mut sigs0 = self.value_bc.witness();
         sigs1.append(&mut sigs0);
         sigs1
     }
@@ -124,8 +132,8 @@ impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for SquareFLeaf<NUM_POLY, F>
 
     fn leaf_script(&self) -> Script {
         script! {
-            {self.value_bc.recover_message_at_altstack()}
-            {self.value_square_bc.recover_message_at_stack()}
+            {self.value_bc.check_and_recover_to_altstack()}
+            {self.value_square_bc.check_and_recover()}
             {self.value_bc.message_from_altstack()}
             {value_square_with_input::<F>()}
         }
@@ -137,9 +145,9 @@ pub struct CalNegXLeaf<const NUM_POLY: usize, F: BfField> {
     neg_x_bc: BitCommitment<F>,
 }
 impl<const NUM_POLY: usize, F: BfField> CalNegXLeaf<NUM_POLY, F> {
-    pub fn new_from_assign(x: F, neg_x: F, assign: &mut BCAssignment) -> Self {
-        let x_bc = assign.assign_field(x);
-        let neg_x_bc = assign.assign_field(neg_x);
+    pub fn new_from_assign(x: F, neg_x: F, assign: &mut ThreadBCAssignment) -> Self {
+        let x_bc = assign.assign(x);
+        let neg_x_bc = assign.assign(neg_x);
         Self::new(x_bc, neg_x_bc)
     }
 
@@ -150,8 +158,8 @@ impl<const NUM_POLY: usize, F: BfField> CalNegXLeaf<NUM_POLY, F> {
 
 impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for CalNegXLeaf<NUM_POLY, F> {
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs1 = self.neg_x_bc.signature();
-        let mut sigs0 = self.x_bc.signature();
+        let mut sigs1 = self.neg_x_bc.witness();
+        let mut sigs0 = self.x_bc.witness();
         sigs1.append(&mut sigs0);
         sigs1
     }
@@ -166,8 +174,8 @@ impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for CalNegXLeaf<NUM_POLY, F>
 
     fn leaf_script(&self) -> Script {
         script! {
-            {self.x_bc.recover_message_at_altstack()}
-            {self.neg_x_bc.recover_message_at_stack()}
+            {self.x_bc.check_and_recover_to_altstack()}
+            {self.neg_x_bc.check_and_recover()}
             {self.x_bc.message_from_altstack()}
             {cal_neg_x_with_input::<F>()}
         }
@@ -179,7 +187,7 @@ pub struct IndexToROULeaf<const NUM_POLY: usize, F: BfField> {
     index: usize,
     subgroup_bit_size: usize,
     generator: F,
-    index_bc: BitCommitmentU32,
+    index_bc: BitCommitment<u32>,
     x_bc: BitCommitment<F>,
 }
 impl<const NUM_POLY: usize, F: BfField> IndexToROULeaf<NUM_POLY, F> {
@@ -187,9 +195,9 @@ impl<const NUM_POLY: usize, F: BfField> IndexToROULeaf<NUM_POLY, F> {
         index: usize,
         subgroup_bit_size: usize,
         x: F,
-        assign: &mut BCAssignment,
+        assign: &mut ThreadBCAssignment,
     ) -> Self {
-        let x_bc = assign.assign_field(x);
+        let x_bc = assign.assign(x);
         let index_bc = assign.assign(index as u32);
         let gen = F::two_adic_generator(subgroup_bit_size);
         Self::new(index, subgroup_bit_size, gen, index_bc, x_bc)
@@ -199,7 +207,7 @@ impl<const NUM_POLY: usize, F: BfField> IndexToROULeaf<NUM_POLY, F> {
         index: usize,
         subgroup_bit_size: usize,
         generator: F,
-        index_bc: BitCommitmentU32,
+        index_bc: BitCommitment<u32>,
         x_bc: BitCommitment<F>,
     ) -> Self {
         IndexToROULeaf {
@@ -218,8 +226,8 @@ impl<const NUM_POLY: usize, F: BfField> IndexToROULeaf<NUM_POLY, F> {
 
 impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for IndexToROULeaf<NUM_POLY, F> {
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs0 = self.x_bc.signature();
-        let mut sigs1 = self.index_bc.signature();
+        let mut sigs0 = self.x_bc.witness();
+        let mut sigs1 = self.index_bc.witness();
         sigs1.extend(sigs0);
         sigs1
     }
@@ -238,8 +246,8 @@ impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for IndexToROULeaf<NUM_POLY,
             //  x_preimage   <-- top
             //  index_preimage
             //  generator
-            {self.x_bc.recover_message_at_altstack()}
-            {self.index_bc.recover_message_at_stack()}
+            {self.x_bc.check_and_recover_to_altstack()}
+            {self.index_bc.check_and_recover()}
             {self.x_bc.message_from_altstack()}
             // Stack State:
             //  x   <-- top
@@ -262,11 +270,11 @@ impl<const NUM_POLY: usize, F: BfField> ReductionLeaf<NUM_POLY, F> {
         prev_fold: F,
         opening: F,
         result: F,
-        assign: &'a mut BCAssignment,
+        assign: &'a mut ThreadBCAssignment,
     ) -> Self {
-        let prev_fold_bc = assign.assign_field(prev_fold);
-        let opening_bc = assign.assign_field(opening);
-        let result_bc = assign.assign_field(result);
+        let prev_fold_bc = assign.assign(prev_fold);
+        let opening_bc = assign.assign(opening);
+        let result_bc = assign.assign(result);
         Self::new(prev_fold_bc, opening_bc, result_bc)
     }
 
@@ -285,9 +293,9 @@ impl<const NUM_POLY: usize, F: BfField> ReductionLeaf<NUM_POLY, F> {
 
 impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for ReductionLeaf<NUM_POLY, F> {
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs0 = self.result_bc.signature();
-        let sigs1 = self.opening_bc.signature();
-        let sigs2 = self.prev_fold_bc.signature();
+        let mut sigs0 = self.result_bc.witness();
+        let sigs1 = self.opening_bc.witness();
+        let sigs2 = self.prev_fold_bc.witness();
 
         sigs0.extend(sigs1.iter().cloned());
         sigs0.extend(sigs2.iter().cloned());
@@ -305,9 +313,9 @@ impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for ReductionLeaf<NUM_POLY, 
 
     fn leaf_script(&self) -> Script {
         script! {
-            {self.prev_fold_bc.recover_message_at_altstack()}
-            {self.opening_bc.recover_message_at_altstack()}
-            {self.result_bc.recover_message_at_stack()}
+            {self.prev_fold_bc.check_and_recover_to_altstack()}
+            {self.opening_bc.check_and_recover_to_altstack()}
+            {self.result_bc.check_and_recover()}
             {self.opening_bc.message_from_altstack()}
             {self.prev_fold_bc.message_from_altstack()}
             if F::U32_SIZE == 1 {
@@ -338,13 +346,13 @@ impl<'a, const NUM_POLY: usize, F: BfField> VerifyFoldingLeaf<NUM_POLY, F> {
         x: F,
         beta: F,
         y_1_x_square: F,
-        assgin: &'a mut BCAssignment,
+        assgin: &'a mut ThreadBCAssignment,
     ) -> Self {
-        let x_bc = assgin.assign_field(x);
-        let beta_bc = assgin.assign_field(beta);
-        let y_0_x_bc = assgin.assign_field(y_0_x);
-        let y_0_neg_x_bc = assgin.assign_field(y_0_neg_x);
-        let y_1_x_square_bc = assgin.assign_field(y_1_x_square);
+        let x_bc = assgin.assign(x);
+        let beta_bc = assgin.assign(beta);
+        let y_0_x_bc = assgin.assign(y_0_x);
+        let y_0_neg_x_bc = assgin.assign(y_0_neg_x);
+        let y_1_x_square_bc = assgin.assign(y_1_x_square);
         Self::new(y_0_x_bc, y_0_neg_x_bc, x_bc, beta_bc, y_1_x_square_bc)
     }
 
@@ -365,11 +373,11 @@ impl<'a, const NUM_POLY: usize, F: BfField> VerifyFoldingLeaf<NUM_POLY, F> {
     }
 
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs0 = self.y_1_x_square_bc.signature();
-        let sigs1 = self.beta_bc.signature();
-        let sigs2 = self.x_bc.signature();
-        let sigs3 = self.y_0_neg_x_bc.signature();
-        let sigs4 = self.y_0_x_bc.signature();
+        let mut sigs0 = self.y_1_x_square_bc.witness();
+        let sigs1 = self.beta_bc.witness();
+        let sigs2 = self.x_bc.witness();
+        let sigs3 = self.y_0_neg_x_bc.witness();
+        let sigs4 = self.y_0_x_bc.witness();
 
         sigs0.extend(sigs1.iter().cloned());
         sigs0.extend(sigs2.iter().cloned());
@@ -391,11 +399,11 @@ impl<'a, const NUM_POLY: usize, F: BfField> VerifyFoldingLeaf<NUM_POLY, F> {
 
     fn leaf_script(&self) -> Script {
         script! {
-            {self.y_0_x_bc.recover_message_at_altstack()}
-            {self.y_0_neg_x_bc.recover_message_at_altstack()}
-            {self.x_bc.recover_message_at_altstack()}
-            {self.beta_bc.recover_message_at_altstack()}
-            {self.y_1_x_square_bc.recover_message_at_stack()}
+            {self.y_0_x_bc.check_and_recover_to_altstack()}
+            {self.y_0_neg_x_bc.check_and_recover_to_altstack()}
+            {self.x_bc.check_and_recover_to_altstack()}
+            {self.beta_bc.check_and_recover_to_altstack()}
+            {self.y_1_x_square_bc.check_and_recover()}
             {self.beta_bc.message_from_altstack()}
             {self.x_bc.message_from_altstack()}
             {self.y_0_neg_x_bc.message_from_altstack()}
@@ -417,11 +425,11 @@ impl<'a, const NUM_POLY: usize, F: BfField> VerifyFoldingLeaf<NUM_POLY, F> {
 
 impl<'a, const NUM_POLY: usize, F: BfField> SegmentLeaf for VerifyFoldingLeaf<NUM_POLY, F> {
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs0 = self.y_1_x_square_bc.signature();
-        let sigs1 = self.beta_bc.signature();
-        let sigs2 = self.x_bc.signature();
-        let sigs3 = self.y_0_neg_x_bc.signature();
-        let sigs4 = self.y_0_x_bc.signature();
+        let mut sigs0 = self.y_1_x_square_bc.witness();
+        let sigs1 = self.beta_bc.witness();
+        let sigs2 = self.x_bc.witness();
+        let sigs3 = self.y_0_neg_x_bc.witness();
+        let sigs4 = self.y_0_x_bc.witness();
 
         sigs0.extend(sigs1.iter().cloned());
         sigs0.extend(sigs2.iter().cloned());
@@ -443,17 +451,80 @@ impl<'a, const NUM_POLY: usize, F: BfField> SegmentLeaf for VerifyFoldingLeaf<NU
 
     fn leaf_script(&self) -> Script {
         script! {
-            {self.y_0_x_bc.recover_message_at_altstack()}
-            {self.y_0_neg_x_bc.recover_message_at_altstack()}
-            {self.x_bc.recover_message_at_altstack()}
-            {self.beta_bc.recover_message_at_altstack()}
-            {self.y_1_x_square_bc.recover_message_at_stack()}
+            {self.y_0_x_bc.check_and_recover_to_altstack()}
+            {self.y_0_neg_x_bc.check_and_recover_to_altstack()}
+            {self.x_bc.check_and_recover_to_altstack()}
+            {self.beta_bc.check_and_recover_to_altstack()}
+            {self.y_1_x_square_bc.check_and_recover()}
             {self.beta_bc.message_from_altstack()}
             {self.x_bc.message_from_altstack()}
             {self.y_0_neg_x_bc.message_from_altstack()}
             {self.y_0_x_bc.message_from_altstack()}
             {fold_degree_with_input::<F>()}
         }
+    }
+}
+
+pub struct EvaluationLeaf<const NUM_POLY: usize, F: BfField> {
+    leaf_index: usize,
+    x: F,
+    x_commitment: BitCommitment<F>,
+    neg_x_commitment: BitCommitment<F>,
+    evaluations: Vec<F>,
+    evaluations_commitments: Vec<BitCommitment<F>>,
+}
+
+impl<const NUM_POLY: usize, F: BfField> EvaluationLeaf<NUM_POLY, F> {
+    pub fn new(leaf_index: usize, x: F, evaluations: Vec<F>) -> Self {
+        assert_eq!(evaluations.len(), NUM_POLY);
+
+        let x_commitment = BitCommitment::new::<ConstantSecretGen>(x);
+        let neg_x_commitment = BitCommitment::new::<ConstantSecretGen>(F::field_mod() - x);
+        let mut evaluations_commitments = Vec::new();
+        for i in 0..NUM_POLY {
+            evaluations_commitments.push(BitCommitment::new::<ConstantSecretGen>(evaluations[i]));
+        }
+
+        Self {
+            leaf_index,
+            x,
+            x_commitment,
+            neg_x_commitment,
+            evaluations,
+            evaluations_commitments,
+        }
+    }
+
+    pub fn leaf_script(&self) -> Script {
+        // equal to x script
+        let scripts = script! {
+            { self.x_commitment.commitments[0].checksig_verify_script() }
+            { self.x_commitment.commitments[0].commit_u32_as_4bytes_script() }
+            // todo: calculate to equal to -x
+            for i in 0..NUM_POLY{
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].checksig_verify_script() }
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].commit_u32_as_4bytes_script() }
+            }
+            OP_1
+        };
+
+        scripts
+    }
+
+    pub fn two_point_leaf_script(&self) -> Script {
+        // equal to x script
+        let scripts = script! {
+            { self.x_commitment.commitments[0].checksig_verify_script() }
+            { self.x_commitment.commitments[0].commit_u32_as_4bytes_script() }
+            { self.neg_x_commitment.commitments[0].checksig_verify_script() }
+            { self.neg_x_commitment.commitments[0].commit_u32_as_4bytes_script() }
+            for i in 0..NUM_POLY{
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].checksig_verify_script() }
+                { self.evaluations_commitments[NUM_POLY-1-i].commitments[0].commit_u32_as_4bytes_script() }
+            }
+            OP_1
+        };
+        scripts
     }
 }
 
@@ -480,7 +551,7 @@ mod test {
 
     #[test]
     fn test_rev_index_leaf() {
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
 
         let bits = 10;
 
@@ -499,7 +570,7 @@ mod test {
 
     #[test]
     fn test_value_square_leaf() {
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
         let index = 6;
         let subgroup_bit_size = 3;
 
@@ -526,7 +597,7 @@ mod test {
 
     #[test]
     fn test_cal_neg_x_leaf() {
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
         let index = 6;
         let subgroup_bit_size = 3;
 
@@ -553,7 +624,7 @@ mod test {
 
     #[test]
     fn test_index_to_root_of_unity_leaf() {
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
         let num: usize = 100;
         let subgroup_bit_size = 12;
         for index in 0..num {
@@ -574,7 +645,7 @@ mod test {
 
     #[test]
     fn test_index_to_root_of_unity_leaf_over_extension() {
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
         let num: usize = 100;
         let subgroup_bit_size = 12;
         for index in 0..num {
@@ -595,7 +666,7 @@ mod test {
 
     #[test]
     fn test_reduction_leaf() {
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
         let a = BabyBear::from_canonical_u32(133);
         let b = BabyBear::from_canonical_u32(2222);
         let c = a + b;
@@ -610,7 +681,7 @@ mod test {
         let result = execute_script_with_inputs(reduction_script, input);
         assert!(result.success);
 
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
         let a = F::from_canonical_u32(133);
         let b = F::from_canonical_u32(2222);
         let c = a + b;
@@ -661,7 +732,7 @@ mod test {
 
             let subgroup = BabyBear::sub_group(*log_n as usize);
 
-            let mut assign = BCAssignment::new();
+            let mut assign = ThreadBCAssignment::new();
 
             for j in 0..n as usize {
                 let x_index = j;
@@ -690,6 +761,81 @@ mod test {
                 let result = execute_script_with_inputs(folding_script, input);
                 assert!(result.success);
             }
+        }
+    }
+
+    #[test]
+    fn test_check_x_neg_x_equal_script() {
+        const num_polys: usize = 1;
+        let x = BabyBear::from_u32(0x11654321);
+        let neg_x = BabyBear::field_mod() - x; // 669ABCE0
+        let expect_neg_x = BabyBear::from_u32(0x669ABCE0);
+        assert_eq!(neg_x, expect_neg_x);
+        let leaf =
+            EvaluationLeaf::<num_polys, BabyBear>::new(0, x, vec![BabyBear::from_u32(0x11654321)]);
+
+        // check witness and verify the value
+        let witness = leaf.x_commitment.commitments[0].signature();
+        // check equal to r
+        let exec_scripts = script! {
+            { leaf.x_commitment.commitments[0].checksig_verify_script() }
+            { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
+            OP_1
+        };
+        let exec_result = execute_script_with_inputs(exec_scripts, witness);
+        assert!(exec_result.success);
+
+        // check equal to -r
+        let witness = leaf.x_commitment.commitments[0].signature();
+        let exec_scripts = script! {
+            { leaf.x_commitment.commitments[0].checksig_verify_script() }
+            { leaf.neg_x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.x_commitment.commitments[0]) }
+            OP_1
+        };
+        let exec_result = execute_script_with_inputs(exec_scripts, witness);
+        assert!(exec_result.success);
+
+        for _ in 0..30 {
+            let mut rng = rand::thread_rng();
+            let random_number: u32 = rng.gen();
+            let x = random_number % BabyBear::MOD;
+            let x = BabyBear::from_u32(x);
+            let neg_x = BabyBear::field_mod() - x;
+            let leaf = EvaluationLeaf::<num_polys, BabyBear>::new(
+                0,
+                x,
+                vec![BabyBear::from_u32(0x11654321)],
+            );
+
+            // check witness and verify the value
+            let witness = leaf.x_commitment.commitments[0].signature();
+            // check equal to r
+            let exec_scripts = script! {
+                { leaf.x_commitment.commitments[0].checksig_verify_script() }
+                { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
+                OP_1
+            };
+            let exec_result = execute_script_with_inputs(exec_scripts, witness);
+            assert!(exec_result.success);
+
+            // check equal to -r
+            let witness = leaf.x_commitment.commitments[0].signature();
+            let exec_scripts = script! {
+                { leaf.x_commitment.commitments[0].checksig_verify_script() }
+                { leaf.neg_x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.x_commitment.commitments[0]) }
+                OP_1
+            };
+            let exec_result = execute_script_with_inputs(exec_scripts, witness);
+            assert!(exec_result.success);
+
+            let witness = leaf.neg_x_commitment.commitments[0].signature();
+            let exec_scripts = script! {
+                { leaf.neg_x_commitment.commitments[0].checksig_verify_script() }
+                { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
+                OP_1
+            };
+            let exec_result = execute_script_with_inputs(exec_scripts, witness);
+            assert!(exec_result.success);
         }
     }
 

@@ -2,7 +2,9 @@ pub use p3_baby_bear::BabyBear;
 pub use p3_field::extension::BinomialExtensionField;
 pub use p3_field::{AbstractExtensionField, AbstractField, PrimeField32, TwoAdicField};
 
-pub trait BfField: AbstractField + TwoAdicField + Clone + Copy {
+use crate::common::AsU32Vec;
+
+pub trait BfField: AbstractField + TwoAdicField + Clone + Copy + AsU32Vec {
     const BIS_SIZE: usize;
     const MOD: u32;
     const U32_SIZE: usize;

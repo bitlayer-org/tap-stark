@@ -28,6 +28,8 @@ rand = "0.8.5"
 scripts = { path = "../scripts"}
 primitives = {path = "../primitives"}
 segment ={ path = "../segment"}
+script_manager = {path = "../script_manager"}
+
 p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-symmetric =  { git = "https://github.com/Plonky3/Plonky3.git" }
 [dev-dependencies]

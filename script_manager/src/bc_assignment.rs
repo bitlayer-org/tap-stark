@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use scripts::bit_comm::bit_comm::BitCommitment;
-use scripts::bit_comm::AsU32Vec;
 use scripts::bit_comm_u32::BitCommitmentU32;
-use scripts::secret_generator::SecretGen;
+use scripts::secret_generator::{SecretGen, ThreadSecretGen};
+use scripts::AsU32Vec;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct BCAssignment<S: SecretGen> {
+pub struct BCAssignment<S: SecretGen> {
     // from u32 value -> u32 bitcommitment
     pub value_assigns: HashMap<u32, BitCommitmentU32>,
     // from index -> u32 bitcommitment
@@ -14,6 +14,8 @@ struct BCAssignment<S: SecretGen> {
     pub indexer: u32,
     pub secret_gen: S,
 }
+
+pub type ThreadBCAssignment = BCAssignment<ThreadSecretGen>;
 
 impl<S: SecretGen> BCAssignment<S> {
     pub fn new() -> Self {

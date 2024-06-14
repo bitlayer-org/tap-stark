@@ -409,6 +409,7 @@ dependencies = [
  "primitives",
  "rand",
  "rand_chacha",
+ "script_manager",
  "scripts",
  "segment",
  "serde",

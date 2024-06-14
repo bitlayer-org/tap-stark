@@ -148,10 +148,11 @@ mod tests {
     use p3_util::log2_strict_usize;
     use primitives::bit_comm::BCAssignment;
     use primitives::challenger::chan_field::U32;
-    use primitives::challenger::{BfChallenger, Blake3Permutation};
+    use primitives::challenger::{BfChallenger, Blake3Permutation, Blake3Permutation};
     use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
+    use script_manager::bc_assignment::ThreadBCAssignment;
     use tracing_subscriber::fmt;
 
     use super::*;
@@ -284,7 +285,7 @@ mod tests {
             mmcs,
         };
 
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
 
         let dft = Radix2Dit::default();
 
@@ -470,10 +471,11 @@ mod tests2 {
     use p3_util::log2_strict_usize;
     use primitives::bit_comm::BCAssignment;
     use primitives::challenger::chan_field::U32;
-    use primitives::challenger::{BfChallenger, Blake3Permutation};
+    use primitives::challenger::{BfChallenger, Blake3Permutation, Blake3Permutation};
     use primitives::mmcs::taptree_mmcs::{TapTreeMmcs, ROOT_WIDTH};
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
+    use script_manager::bc_assignment::ThreadBCAssignment;
     use tracing_subscriber::fmt;
 
     use super::*;
@@ -605,7 +607,7 @@ mod tests2 {
             mmcs,
         };
 
-        let mut assign = BCAssignment::new();
+        let mut assign = ThreadBCAssignment::new();
 
         let dft = Radix2Dit::default();
 

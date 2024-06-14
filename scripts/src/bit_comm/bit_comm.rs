@@ -3,10 +3,12 @@ use std::marker::PhantomData;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::Itertools;
+use primitives::common::AsU32Vec;
 
 use super::bit_comm_u32::BitCommitmentU32;
 use super::secret_generator::{SecretGen, ThreadSecretGen};
-use super::{AsU32Vec, Witness};
+use super::Witness;
+use crate::{u31_equalverify, u31ext_equalverify, BabyBear4};
 define_pushable!();
 
 // BitCommitment
@@ -69,7 +71,7 @@ impl<F: AsU32Vec> BitCommitment<F> {
         self.signature()
     }
 
-    fn message_to_altstack(&self) -> Script {
+    pub fn message_to_altstack(&self) -> Script {
         script! {
             for _ in 0..self.u32_values.len(){
                 OP_TOALTSTACK
@@ -77,10 +79,29 @@ impl<F: AsU32Vec> BitCommitment<F> {
         }
     }
 
-    fn message_from_altstack(&self) -> Script {
+    pub fn message_from_altstack(&self) -> Script {
         script! {
             for _ in 0..self.u32_values.len(){
                 OP_FROMALTSTACK
+            }
+        }
+    }
+
+    // bad function, just for uint test, need to be removed
+    pub fn recover_message_euqal_to_commit_message(&self) -> Script {
+        // signuture is the input of this script
+        let u32_values = self.value.bc_as_u32_vec();
+        script! {
+            {self.check_and_recover()}
+            for i in (0..self.u32_values.len()).rev(){
+                // the value compare sequence: { u32_values[3] } { u32_values[2]} { u32_values[1] } { u32_values[0]}
+                {u32_values[i]}
+            }
+
+            if self.u32_values.len() == 1{
+                {u31_equalverify()}
+            }else {
+                {u31ext_equalverify::<BabyBear4>()}
             }
         }
     }

@@ -12,18 +12,23 @@ use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
+use script_manager::bc_assignment::ThreadBCAssignment;
 use scripts::execute_script_with_inputs;
 use segment::SegmentLeaf;
 
-use crate::error::{FriError, SVError};
+use crate::bf_mmcs::BFMmcs;
+use crate::error::{BfError, FriError, FriError, SVError, SVError};
 use crate::fri_scripts::leaf::{
-    CalNegXLeaf, IndexToROULeaf, ReductionLeaf, RevIndexLeaf, SquareFLeaf, VerifyFoldingLeaf,
+    CalNegXLeaf, CalNegXLeaf, IndexToROULeaf, IndexToROULeaf, ReductionLeaf, ReductionLeaf,
+    RevIndexLeaf, RevIndexLeaf, SegmentLeaf, SquareFLeaf, SquareFLeaf, VerifyFoldingLeaf,
+    VerifyFoldingLeaf,
 };
+use crate::fri_scripts::point::{Point, PointsLeaf};
 use crate::verifier::*;
 use crate::{BfQueryProof, FriConfig, FriProof};
 
 pub fn bf_verify_challenges<F, M, Witness>(
-    assign: &mut BCAssignment,
+    assign: &mut ThreadBCAssignment,
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness>,
     challenges: &FriChallenges<F>,
@@ -59,7 +64,7 @@ where
 }
 
 fn bf_verify_query<F, M>(
-    assign: &mut BCAssignment,
+    assign: &mut ThreadBCAssignment,
     config: &FriConfig<M>,
     commit_phase_commits: &[M::Commitment],
     mut index: usize,
@@ -148,7 +153,7 @@ where
         let mut xs = vec![x; 2];
         xs[index_sibling % 2] = neg_x;
 
-        let input = poins_leaf.signature();
+        let input = poins_leaf.witness();
         if let TapLeaf::Script(script, _ver) = step.leaf_node.leaf().clone() {
             assert_eq!(script, poins_leaf.recover_points_euqal_to_commited_point());
             let res = execute_script_with_inputs(
