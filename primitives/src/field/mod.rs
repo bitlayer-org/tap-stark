@@ -1,6 +1,6 @@
-use p3_baby_bear::BabyBear;
-use p3_field::extension::BinomialExtensionField;
-use p3_field::{AbstractExtensionField, AbstractField, PrimeField32, TwoAdicField};
+pub use p3_baby_bear::BabyBear;
+pub use p3_field::extension::BinomialExtensionField;
+pub use p3_field::{AbstractExtensionField, AbstractField, PrimeField32, TwoAdicField};
 
 pub trait BfField: AbstractField + TwoAdicField + Clone + Copy {
     const BIS_SIZE: usize;

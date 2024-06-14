@@ -1,10 +1,9 @@
-use bitcoin::opcodes::OP_FROMALTSTACK;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 
 use super::winternitz::*;
+use crate::bit_comm::winternitz;
 use crate::u32_std::u32_compress;
-use crate::winternitz;
 define_pushable!();
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -61,7 +61,7 @@ mod tests {
     use p3_field::AbstractExtensionField;
     use primitives::field::BfField;
     use rand::{thread_rng, Rng};
-    use scripts::execute_script;
+    use scripts::{execute_script, ext_fold_degree1, BabyBear4};
 
     use super::*;
     use crate::fri_scripts::verify_folding::fold_degree;

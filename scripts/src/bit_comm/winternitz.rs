@@ -1,7 +1,8 @@
 //
-// Winternitz One-time Signatures
+// License Claim: This file is optimized based https://github.com/BitVM/BitVM/blob/main/src/signatures/winternitz.rs
 //
 
+// Winternitz One-time Signatures
 //
 // Winternitz signatures are an improved version of Lamport signatures.
 // A detailed introduction to Winternitz signatures can be found

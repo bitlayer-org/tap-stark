@@ -1109,6 +1109,7 @@ dependencies = [
  "p3-poseidon2",
  "p3-symmetric",
  "p3-util",
+ "primitives",
  "rand",
  "rand_chacha",
  "rust-bitcoin-u31-or-u30",

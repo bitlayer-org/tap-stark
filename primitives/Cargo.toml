@@ -31,3 +31,4 @@ segment ={ path = "../segment" }
 [dev-dependencies]
 p3-interpolation = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-dft =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-maybe-rayon ={ git = "https://github.com/Plonky3/Plonky3.git" }
