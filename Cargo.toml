@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "fri",
+    "primitives",
+    "p3",
+    "scripts"
+]
+
