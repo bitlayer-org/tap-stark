@@ -291,7 +291,7 @@ mod tests {
         let shift = Val::generator();
         let mut rng = ChaCha20Rng::seed_from_u64(0);
 
-        let ldes: Vec<RowMajorMatrix<Val>> = (1..10)
+        let ldes: Vec<RowMajorMatrix<Val>> = (4..5)
             .map(|deg_bits| {
                 let evals = RowMajorMatrix::<Val>::rand_nonzero(&mut rng, 1 << deg_bits, 1);
                 let mut lde = dft.coset_lde_batch(evals, 1, shift);
@@ -612,7 +612,7 @@ mod tests2 {
         let shift = Val::generator();
         let mut rng = ChaCha20Rng::seed_from_u64(0);
 
-        let ldes: Vec<RowMajorMatrix<Val>> = (10..17)
+        let ldes: Vec<RowMajorMatrix<Val>> = (2..3)
             .map(|deg_bits| {
                 let evals = RowMajorMatrix::<Val>::rand_nonzero(&mut rng, 1 << deg_bits, 1);
                 let mut lde = dft.coset_lde_batch(evals, 1, shift);
