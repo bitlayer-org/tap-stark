@@ -7,8 +7,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 bitcoin-script = { git = "https://github.com/cyl19970726/rust-bitcoin-script", rev = "eda97c5" }
 bitcoin = { git = "https://github.com/cyl19970726/rust-bitcoin", rev = "ffad6f3" }
-bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "09c601e" }
-
+bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "205b90c"}
 
 p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-dft =  { git = "https://github.com/Plonky3/Plonky3.git" }
@@ -28,11 +27,11 @@ rand = "0.8.5"
 
 scripts = { path = "../scripts"}
 primitives = {path = "../primitives"}
+segment ={ path = "../segment"}
 p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-symmetric =  { git = "https://github.com/Plonky3/Plonky3.git" }
 [dev-dependencies]
 p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-dft =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-goldilocks =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-mersenne-31 =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-mds =  { git = "https://github.com/Plonky3/Plonky3.git" }

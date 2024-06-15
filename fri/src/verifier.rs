@@ -1,19 +1,20 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use scripts::{execute_script_with_inputs};
-use crate::fri_scripts::point::{Point, PointsLeaf};
-use primitives::field::{BfField};
 use bitcoin::taproot::TapLeaf;
 use bitcoin::Script;
 use itertools::izip;
-use primitives::challenger::BfGrindingChallenger;
 use p3_challenger::{CanObserve, CanSample};
 use p3_util::reverse_bits_len;
+use primitives::challenger::BfGrindingChallenger;
+use primitives::field::BfField;
+use primitives::mmcs::bf_mmcs::BFMmcs;
+use primitives::mmcs::point::{Point, PointsLeaf};
+use primitives::mmcs::taptree_mmcs::CommitProof;
+use scripts::execute_script_with_inputs;
 
-use crate::bf_mmcs::BFMmcs;
-use crate::error::{BfError, FriError};
-use crate::{BfCommitPhaseProofStep, BfQueryProof, FriConfig, FriProof};
+use crate::error::FriError;
+use crate::{BfQueryProof, FriConfig, FriProof};
 
 #[derive(Debug)]
 pub struct FriChallenges<F> {
@@ -28,7 +29,7 @@ pub fn verify_shape_and_sample_challenges<F, M, Challenger>(
 ) -> Result<FriChallenges<F>, FriError<M::Error>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitProof<F>>,
     Challenger: BfGrindingChallenger + CanObserve<M::Commitment> + CanSample<F>,
 {
     let betas: Vec<F> = proof
@@ -69,7 +70,7 @@ pub fn verify_challenges<F, M, Witness>(
 ) -> Result<(), FriError<M::Error>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitProof<F>>,
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     for (&index, query_proof, ro) in izip!(
@@ -106,7 +107,7 @@ fn verify_query<F, M>(
 ) -> Result<F, FriError<M::Error>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitProof<F>>,
 {
     let mut folded_eval = F::zero();
 

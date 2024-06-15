@@ -148,7 +148,7 @@ dependencies = [
 [[package]]
 name = "bitcoin-scriptexec"
 version = "0.0.0"
-source = "git+https://github.com/cyl19970726/rust-bitcoin-scriptexec?rev=09c601e#09c601e9dc48f3ffec795177855677275e3633c7"
+source = "git+https://github.com/cyl19970726/rust-bitcoin-scriptexec?rev=205b90c#205b90c19009342bc8e2249bd222cdebe7947342"
 dependencies = [
  "bitcoin",
  "clap",
@@ -411,6 +411,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "scripts",
+ "segment",
  "serde",
  "tracing",
  "tracing-subscriber",
@@ -903,13 +904,17 @@ dependencies = [
  "lazy_static",
  "p3-baby-bear",
  "p3-challenger",
+ "p3-dft",
  "p3-field",
+ "p3-interpolation",
+ "p3-matrix",
  "p3-maybe-rayon",
  "p3-symmetric",
  "p3-util",
  "rand",
  "rand_chacha",
  "scripts",
+ "segment",
  "serde",
  "tracing",
  "tracing-subscriber",
@@ -1112,6 +1117,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1433bd67156263443f14d603720b082dd3121779323fce20cba2aa07b874bc1b"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "segment"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "bitcoin-script",
+ "bitcoin-scriptexec",
+ "scripts",
 ]
 
 [[package]]

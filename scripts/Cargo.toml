@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 bitcoin-script = { git = "https://github.com/cyl19970726/rust-bitcoin-script", rev = "eda97c5" }
 bitcoin = { git = "https://github.com/cyl19970726/rust-bitcoin", rev = "ffad6f3" }
-bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "09c601e" }
+bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "205b90c"}
 lazy_static = "1.4.0"
 
 rand_chacha = "0.3.1"

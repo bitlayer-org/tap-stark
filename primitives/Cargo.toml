@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 bitcoin-script = { git = "https://github.com/cyl19970726/rust-bitcoin-script", rev = "eda97c5" }
 bitcoin = { git = "https://github.com/cyl19970726/rust-bitcoin", rev = "ffad6f3" }
-bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "09c601e" }
+bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "205b90c"}
 lazy_static = "1.4.0"
 itertools = "0.12.0"
 tracing = "0.1.37"
@@ -23,5 +23,11 @@ p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-maybe-rayon ={ git = "https://github.com/Plonky3/Plonky3.git" }
+p3-matrix =  { git = "https://github.com/Plonky3/Plonky3.git" }
 
 scripts ={ path = "../scripts" }
+segment ={ path = "../segment" }
+
+[dev-dependencies]
+p3-interpolation = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-dft =  { git = "https://github.com/Plonky3/Plonky3.git" }

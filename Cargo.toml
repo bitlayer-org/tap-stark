@@ -3,6 +3,7 @@ members = [
     "fri",
     "primitives",
     "p3",
-    "scripts"
-]
+    "scripts", 
+    "segment"
+    ]
 

@@ -54,17 +54,17 @@ pub fn fold_even_odd<F: TwoAdicField>(poly: Vec<F>, beta: F) -> Vec<F> {
 #[cfg(test)]
 mod tests {
 
-    use crate::fri_scripts::verify_folding::fold_degree;
-    use scripts::{execute_script, ext_fold_degree1, BabyBear4};
-    use primitives::field::BfField;
     use itertools::izip;
     use p3_baby_bear::BabyBear;
     use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
     use p3_field::extension::BinomialExtensionField;
     use p3_field::AbstractExtensionField;
+    use primitives::field::BfField;
     use rand::{thread_rng, Rng};
+    use scripts::execute_script;
 
     use super::*;
+    use crate::fri_scripts::verify_folding::fold_degree;
 
     #[test]
     fn test_fold_even_odd() {

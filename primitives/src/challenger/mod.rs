@@ -1,22 +1,20 @@
-
 use core::array;
 use core::marker::PhantomData;
 use std::any::{Any, TypeId};
 
 use bitcoin::hashes::serde::Serializer;
+use chan_field::{ChallengeField, PermutationField, U32};
 use p3_baby_bear::BabyBear;
+use p3_challenger::{CanObserve, CanSample, CanSampleBits};
 use p3_field::extension::BinomialExtensionField;
 use p3_field::{
-    AbstractExtensionField, AbstractField,ExtensionField, Field, PackedValue,
-     PrimeField, PrimeField32,
+    AbstractExtensionField, AbstractField, ExtensionField, Field, PackedValue, PrimeField,
+    PrimeField32,
 };
-use chan_field::{PermutationField,ChallengeField,U32};
 use p3_maybe_rayon::prelude::*;
 use p3_symmetric::{CryptographicPermutation, Hash, Permutation};
 use tracing;
 use tracing::instrument;
-
-use p3_challenger::{CanObserve, CanSample, CanSampleBits};
 
 pub mod chan_field;
 /// A challenger that operates natively on PF but produces challenges of F: Field + BitExtractor,.

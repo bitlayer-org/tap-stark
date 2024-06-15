@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use itertools::Itertools;
-
-use super::BitCommitment;
 use scripts::bit_comm_u32::BitCommitmentU32;
+use super::BitCommitment;
 use crate::field::BfField;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
