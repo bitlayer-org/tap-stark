@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bitcoin-script = { git = "https://github.com/cyl19970726/rust-bitcoin-script", rev = "eda97c5" }
-bitcoin = { git = "https://github.com/cyl19970726/rust-bitcoin", rev = "ffad6f3" }
-bitcoin-scriptexec = { git = "https://github.com/cyl19970726/rust-bitcoin-scriptexec",rev = "205b90c"}
+bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
+bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
+bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
 scripts ={ path = "../scripts"}

@@ -71,7 +71,7 @@ pub fn reverse_bits_len_script_with_input(input_index: u32, bits: usize) -> Scri
         }
         {reverse_bits_len_script(bits)}
         OP_FROMALTSTACK
-        {OP_EQUAL}
+        OP_EQUAL
     }
 }
 
