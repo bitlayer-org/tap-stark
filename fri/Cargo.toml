@@ -32,7 +32,6 @@ p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-symmetric =  { git = "https://github.com/Plonky3/Plonky3.git" }
 [dev-dependencies]
 p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
-# p3-dft={ git = "https://github.com/Plonky3/Plonky3.git" }
 p3-goldilocks =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-mersenne-31 =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-mds =  { git = "https://github.com/Plonky3/Plonky3.git" }

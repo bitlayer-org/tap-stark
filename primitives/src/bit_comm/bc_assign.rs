@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 use scripts::bit_comm_u32::BitCommitmentU32;
-
 use super::BitCommitment;
 use crate::field::BfField;
 
