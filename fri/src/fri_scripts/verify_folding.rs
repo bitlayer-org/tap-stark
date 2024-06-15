@@ -1,22 +1,12 @@
-use bitcoin::opcodes::{
-    OP_DEPTH, OP_DROP, OP_DUP, OP_ELSE, OP_ENDIF, OP_EQUAL, OP_EQUALVERIFY, OP_FROMALTSTACK,
-    OP_GREATERTHAN, OP_PICK, OP_SWAP, OP_TOALTSTACK,
-};
-use bitcoin::secp256k1::ellswift;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-use p3_baby_bear::BabyBear;
-use p3_field::{AbstractField, TwoAdicField};
-use p3_util::{log2_ceil_u64, log2_ceil_usize, log2_strict_usize, reverse_bits_len};
 use primitives::field::BfField;
 use scripts::pseudo::{
     OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4ROLL, OP_4TOALTSTACK, OP_NDUP,
 };
-use scripts::u32_rrot::u8_extract_hbit;
-use scripts::u32_std::{u32_compress, u32_push};
-use scripts::{
-    u31_add, u31_double, u31_equalverify, u31_mul, u31_sub, u31ext_add, u31ext_double,
-    u31ext_equalverify, u31ext_mul, u31ext_sub, BabyBear4, BabyBearU31, U31Config,
+use scripts::u31_lib::{
+    u31_add, u31_double, u31_mul, u31_sub, u31ext_add, u31ext_double, u31ext_equalverify,
+    u31ext_mul, u31ext_sub, BabyBear4, BabyBearU31,
 };
 
 define_pushable!();
@@ -286,11 +276,12 @@ pub fn value_square_with_input<F: BfField>() -> Script {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::MulAssign;
 
     use bitcoin::opcodes::{OP_DEPTH, OP_EQUAL};
-    use bitcoin::script;
+    use p3_baby_bear::BabyBear;
     use p3_field::extension::BinomialExtensionField;
+    use p3_field::{AbstractField, TwoAdicField};
+    use p3_util::reverse_bits_len;
     use rand::{random, Rng};
     type AF = BabyBear;
     type F = BinomialExtensionField<BabyBear, 4>;
@@ -628,7 +619,7 @@ mod tests {
                     }
                     {reverse_bits_len_script(bits)}
                     {reverse_bits_len(x as usize, bits)}
-                    {OP_EQUAL}
+                    OP_EQUAL
                 };
                 let res = execute_script(script);
                 // println!("{:?}", res);

@@ -1056,6 +1056,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 
 [[package]]
+name = "rust-bitcoin-u31-or-u30"
+version = "0.1.0"
+source = "git+https://github.com/bitlayer-org/rust-bitcoin-m31-or-babybear.git?branch=bf-stark#5d28e196d7306d6f3094a8f02ad04dfdff370f30"
+dependencies = [
+ "bitcoin",
+ "bitcoin-script",
+ "bitcoin-scriptexec",
+ "p3-baby-bear",
+ "p3-field",
+ "p3-mersenne-31",
+ "rand",
+ "rand_chacha",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1096,6 +1111,7 @@ dependencies = [
  "p3-util",
  "rand",
  "rand_chacha",
+ "rust-bitcoin-u31-or-u30",
 ]
 
 [[package]]

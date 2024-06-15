@@ -9,15 +9,12 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-use itertools::rev;
-use p3_field::TwoAdicField;
 use primitives::bit_comm::{BCAssignment, BitCommitment, *};
 use primitives::field::BfField;
-use scripts::bit_comm::winternitz;
 use scripts::bit_comm_u32::BitCommitmentU32;
-use scripts::{
-    execute_script, execute_script_with_inputs, u31_add, u31_equalverify, u31ext_add,
-    u31ext_equalverify, BabyBear4, BabyBearU31,
+use scripts::execute_script_with_inputs;
+use scripts::u31_lib::{
+    u31_add, u31_equalverify, u31ext_add, u31ext_equalverify, BabyBear4, BabyBearU31,
 };
 use segment::SegmentLeaf;
 
@@ -466,13 +463,14 @@ pub fn u8_to_hex_str(byte: &u8) -> String {
 
 #[cfg(test)]
 mod test {
-    use itertools::equal;
+    use itertools::{equal, rev};
     use p3_baby_bear::BabyBear;
     use p3_field::extension::BinomialExtensionField;
-    use p3_field::AbstractField;
+    use p3_field::{AbstractField, TwoAdicField};
     use p3_util::reverse_bits_len;
     use primitives::mmcs::taptree::EvaluationLeaf;
     use rand::Rng;
+    use scripts::execute_script;
 
     type AF = BabyBear;
     type F = BinomialExtensionField<BabyBear, 4>;

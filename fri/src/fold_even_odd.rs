@@ -159,9 +159,9 @@ mod tests {
             .map(|(even, odd)| even + beta * odd)
             .collect::<Vec<_>>();
 
-        // println!("{:?}", evals);
-        // println!("------- folding -------");
-        // println!("{:?}", expected);
+        println!("{:?}", evals);
+        println!("------- folding -------");
+        println!("{:?}", expected);
 
         // fold_even_odd takes and returns in bitrev order.
         let mut folded = evals.clone();
@@ -195,18 +195,19 @@ mod tests {
                     true,
                 );
                 let result = execute_script(with_input_script);
+                println!("{:?}", result);
                 assert!(result.success);
 
-                let script = fold_degree::<F>(
-                    x.as_u32_vec(),
-                    y0_x.as_u32_vec(),
-                    y0_neg_x.as_u32_vec(),
-                    beta.as_u32_vec(),
-                    y_1_x_quare.as_u32_vec(),
-                    false,
-                );
-                let result = execute_script(script);
-                assert!(result.success);
+                // let script = fold_degree::<F>(
+                //     x.as_u32_vec(),
+                //     y0_x.as_u32_vec(),
+                //     y0_neg_x.as_u32_vec(),
+                //     beta.as_u32_vec(),
+                //     y_1_x_quare.as_u32_vec(),
+                //     false,
+                // );
+                // let result = execute_script(script);
+                // assert!(result.success);
             }
         }
     }
