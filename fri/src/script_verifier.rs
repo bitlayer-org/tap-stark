@@ -6,24 +6,19 @@ use bitcoin::taproot::TapLeaf;
 use itertools::izip;
 use p3_challenger::{CanObserve, CanSample};
 use p3_util::reverse_bits_len;
-use primitives::bit_comm::BCAssignment;
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
-use script_manager::bc_assignment::ThreadBCAssignment;
+use script_manager::bc_assignment::{BCAssignment, ThreadBCAssignment};
 use scripts::execute_script_with_inputs;
 use segment::SegmentLeaf;
 
-use crate::bf_mmcs::BFMmcs;
-use crate::error::{BfError, FriError, FriError, SVError, SVError};
+use crate::error::{FriError, SVError};
 use crate::fri_scripts::leaf::{
-    CalNegXLeaf, CalNegXLeaf, IndexToROULeaf, IndexToROULeaf, ReductionLeaf, ReductionLeaf,
-    RevIndexLeaf, RevIndexLeaf, SegmentLeaf, SquareFLeaf, SquareFLeaf, VerifyFoldingLeaf,
-    VerifyFoldingLeaf,
+    CalNegXLeaf, IndexToROULeaf, ReductionLeaf, RevIndexLeaf, SquareFLeaf, VerifyFoldingLeaf,
 };
-use crate::fri_scripts::point::{Point, PointsLeaf};
 use crate::verifier::*;
 use crate::{BfQueryProof, FriConfig, FriProof};
 

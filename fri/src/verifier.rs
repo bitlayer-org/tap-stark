@@ -13,12 +13,8 @@ use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use scripts::execute_script_with_inputs;
 
-use crate::bf_mmcs::BFMmcs;
-use crate::error::{BfError, FriError, FriError};
-use crate::fri_scripts::point::{Point, PointsLeaf};
-use crate::{
-    BfCommitPhaseProofStep, BfQueryProof, BfQueryProof, FriConfig, FriConfig, FriProof, FriProof,
-};
+use crate::error::FriError;
+use crate::{BfQueryProof, FriConfig, FriProof};
 
 #[derive(Debug)]
 pub struct FriChallenges<F> {

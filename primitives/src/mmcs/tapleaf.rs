@@ -1,9 +1,6 @@
-use alloc::vec::Vec;
-
-use bitcoin::{witness, ScriptBuf as Script, ScriptBuf as Script, TapNodeHash};
+use bitcoin::ScriptBuf as Script;
 use segment::SegmentLeaf;
 
-use crate::fri_scripts::leaf::SegmentLeaf;
 pub trait Tapleaf {
     fn unlock_witness(&self) -> Vec<Vec<u8>>;
     fn script(&self) -> Script;

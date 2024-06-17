@@ -2,8 +2,10 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
+use script_manager::bc_assignment::{BCAssignment, ThreadBCAssignment};
+use scripts::bit_comm::bit_comm::BitCommitment;
+use scripts::secret_generator::ConstantSecretGen;
 
-use crate::bit_comm::{BCAssignment, BitCommitment};
 use crate::field::BfField;
 define_pushable!();
 
@@ -40,7 +42,7 @@ impl<F: BfField> PointsLeaf<F> {
         scripts
     }
 
-    pub fn signature(&self) -> Vec<Vec<u8>> {
+    pub fn witness(&self) -> Vec<Vec<u8>> {
         let mut p1_sigs = self.points.p1.signature();
         let mut p2_sigs = self.points.p2.signature();
         p2_sigs.append(p1_sigs.as_mut());
@@ -96,9 +98,9 @@ pub struct Point<F: BfField> {
 }
 
 impl<F: BfField> Point<F> {
-    pub fn new_from_assign(x: F, y: F, bc_assign: &mut BCAssignment) -> Point<F> {
-        let x_commit = bc_assign.assign_field(x);
-        let y_commit = bc_assign.assign_field(y);
+    pub fn new_from_assign(x: F, y: F, bc_assign: &mut ThreadBCAssignment) -> Point<F> {
+        let x_commit = bc_assign.assign(x);
+        let y_commit = bc_assign.assign(y);
         Self {
             x,
             y,
@@ -108,8 +110,8 @@ impl<F: BfField> Point<F> {
     }
 
     pub fn new(x: F, y: F) -> Point<F> {
-        let x_commit = BitCommitment::<F>::new("b138982ce17ac813d505b5b40b665d404e9528e8", x);
-        let y_commit = BitCommitment::<F>::new("b138982ce17ac813d505b5b40b665d404e9528e8", y);
+        let x_commit = BitCommitment::<F>::new::<ConstantSecretGen>(x);
+        let y_commit = BitCommitment::<F>::new::<ConstantSecretGen>(y);
         Self {
             x: x,
             y: y,
@@ -129,8 +131,8 @@ impl<F: BfField> Point<F> {
 
     pub fn recover_point_x_at_altstack_y_at_stack(&self) -> Script {
         let scripts = script! {
-            { self.x_commit.recover_message_at_altstack() }
-            { self.y_commit.recover_message_at_stack() }
+            { self.x_commit.check_and_recover_to_altstack() }
+            { self.y_commit.check_and_recover() }
         };
 
         scripts
@@ -138,8 +140,8 @@ impl<F: BfField> Point<F> {
 
     pub fn recover_point_at_altstack(&self) -> Script {
         let scripts = script! {
-            { self.x_commit.recover_message_at_altstack() }
-            { self.y_commit.recover_message_at_altstack() }
+            { self.x_commit.check_and_recover_to_altstack() }
+            { self.y_commit.check_and_recover() }
         };
 
         scripts
@@ -147,16 +149,16 @@ impl<F: BfField> Point<F> {
 
     pub fn recover_point_at_stack(&self) -> Script {
         let scripts = script! {
-            { self.x_commit.recover_message_at_stack() }
-            { self.y_commit.recover_message_at_stack() }
+            { self.x_commit.check_and_recover_to_altstack() }
+            { self.y_commit.check_and_recover() }
         };
 
         scripts
     }
 
     pub fn signature(&self) -> Vec<Vec<u8>> {
-        let mut x_sigs = self.x_commit.signature();
-        let mut y_sigs = self.y_commit.signature();
+        let mut x_sigs = self.x_commit.witness();
+        let mut y_sigs = self.y_commit.witness();
         y_sigs.append(x_sigs.as_mut());
         y_sigs
     }

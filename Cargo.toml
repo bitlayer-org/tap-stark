@@ -5,6 +5,7 @@ members = [
     "p3",
     "scripts",
     "script_manager",
-    "segment"
+    "segment",
+    "common"
 ]
 

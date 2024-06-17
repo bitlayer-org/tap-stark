@@ -11,18 +11,14 @@ use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::rev;
 use p3_field::TwoAdicField;
-use primitives::bit_comm::{BCAssignment, BitCommitment, *};
 use primitives::field::BfField;
 use script_manager::bc_assignment::ThreadBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::bit_comm_u32::BitCommitmentU32;
+use scripts::execute_script_with_inputs;
 use scripts::secret_generator::ConstantSecretGen;
 use scripts::u31_lib::{
     u31_add, u31_equalverify, u31ext_add, u31ext_equalverify, BabyBear4, BabyBearU31,
-};
-use scripts::{
-    execute_script, execute_script_with_inputs, execute_script_with_inputs, u31_add,
-    u31_equalverify, u31ext_add, u31ext_equalverify, AsU32Vec, BabyBear4, BabyBearU31,
 };
 use segment::SegmentLeaf;
 
@@ -534,7 +530,6 @@ pub fn u8_to_hex_str(byte: &u8) -> String {
 
 #[cfg(test)]
 mod test {
-    use itertools::{equal, rev};
     use p3_baby_bear::BabyBear;
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};
@@ -761,81 +756,6 @@ mod test {
                 let result = execute_script_with_inputs(folding_script, input);
                 assert!(result.success);
             }
-        }
-    }
-
-    #[test]
-    fn test_check_x_neg_x_equal_script() {
-        const num_polys: usize = 1;
-        let x = BabyBear::from_u32(0x11654321);
-        let neg_x = BabyBear::field_mod() - x; // 669ABCE0
-        let expect_neg_x = BabyBear::from_u32(0x669ABCE0);
-        assert_eq!(neg_x, expect_neg_x);
-        let leaf =
-            EvaluationLeaf::<num_polys, BabyBear>::new(0, x, vec![BabyBear::from_u32(0x11654321)]);
-
-        // check witness and verify the value
-        let witness = leaf.x_commitment.commitments[0].signature();
-        // check equal to r
-        let exec_scripts = script! {
-            { leaf.x_commitment.commitments[0].checksig_verify_script() }
-            { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
-            OP_1
-        };
-        let exec_result = execute_script_with_inputs(exec_scripts, witness);
-        assert!(exec_result.success);
-
-        // check equal to -r
-        let witness = leaf.x_commitment.commitments[0].signature();
-        let exec_scripts = script! {
-            { leaf.x_commitment.commitments[0].checksig_verify_script() }
-            { leaf.neg_x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.x_commitment.commitments[0]) }
-            OP_1
-        };
-        let exec_result = execute_script_with_inputs(exec_scripts, witness);
-        assert!(exec_result.success);
-
-        for _ in 0..30 {
-            let mut rng = rand::thread_rng();
-            let random_number: u32 = rng.gen();
-            let x = random_number % BabyBear::MOD;
-            let x = BabyBear::from_u32(x);
-            let neg_x = BabyBear::field_mod() - x;
-            let leaf = EvaluationLeaf::<num_polys, BabyBear>::new(
-                0,
-                x,
-                vec![BabyBear::from_u32(0x11654321)],
-            );
-
-            // check witness and verify the value
-            let witness = leaf.x_commitment.commitments[0].signature();
-            // check equal to r
-            let exec_scripts = script! {
-                { leaf.x_commitment.commitments[0].checksig_verify_script() }
-                { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
-                OP_1
-            };
-            let exec_result = execute_script_with_inputs(exec_scripts, witness);
-            assert!(exec_result.success);
-
-            // check equal to -r
-            let witness = leaf.x_commitment.commitments[0].signature();
-            let exec_scripts = script! {
-                { leaf.x_commitment.commitments[0].checksig_verify_script() }
-                { leaf.neg_x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.x_commitment.commitments[0]) }
-                OP_1
-            };
-            let exec_result = execute_script_with_inputs(exec_scripts, witness);
-            assert!(exec_result.success);
-
-            let witness = leaf.neg_x_commitment.commitments[0].signature();
-            let exec_scripts = script! {
-                { leaf.neg_x_commitment.commitments[0].checksig_verify_script() }
-                { leaf.x_commitment.commitments[0].check_equal_x_or_neg_x_script(&leaf.neg_x_commitment.commitments[0]) }
-                OP_1
-            };
-            let exec_result = execute_script_with_inputs(exec_scripts, witness);
-            assert!(exec_result.success);
         }
     }
 

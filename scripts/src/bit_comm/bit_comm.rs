@@ -3,14 +3,14 @@ use std::sync::Arc;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
+use common::AsU32Vec;
 use itertools::Itertools;
-use primitives::common::AsU32Vec;
 
 use super::bit_comm_u32::BitCommitmentU32;
 use super::secret_generator::{SecretGen, ThreadSecretGen};
 use super::Witness;
-use crate::{u31_equalverify, u31ext_equalverify, BabyBear4};
-define_pushable!();
+use crate::pushable;
+use crate::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
 
 // BitCommitment
 // 1. Create a new BitCommitment through BCAssignment is a better way.
@@ -164,10 +164,10 @@ mod test {
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
-    use crate::{
-        execute_script, execute_script_with_inputs, u31_equalverify, u31ext_add, u31ext_double,
-        u31ext_equalverify, BabyBear4,
+    use crate::u31_lib::{
+        u31_equalverify, u31ext_add, u31ext_double, u31ext_equalverify, BabyBear4,
     };
+    use crate::{execute_script, execute_script_with_inputs};
 
     // signuture is the input of this script
     pub fn recover_message_euqal_to_commit_message<F: AsU32Vec>(

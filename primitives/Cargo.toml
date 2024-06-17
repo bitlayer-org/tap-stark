@@ -25,8 +25,10 @@ p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-maybe-rayon ={ git = "https://github.com/Plonky3/Plonky3.git" }
 p3-matrix =  { git = "https://github.com/Plonky3/Plonky3.git" }
 
-scripts ={ path = "../scripts" }
 segment ={ path = "../segment" }
+common = { path = "../common"}
+scripts = {path = "../scripts"}
+script_manager = {path = "../script_manager"}
 
 [dev-dependencies]
 p3-interpolation = { git = "https://github.com/Plonky3/Plonky3.git" }
