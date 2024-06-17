@@ -15,10 +15,10 @@ use primitives::challenger::chan_field::{PermutationField, U32};
 use primitives::challenger::{BfChallenger, BitExtractor, Blake3Permutation};
 use primitives::field::BfField;
 use scripts::bit_comm_u32::*;
+use scripts::blake3;
 use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4TOALTSTACK};
 use scripts::u32_rrot::{u32_rrot, u8_extract_hbit};
 use scripts::u32_std::{u32_compress, u32_equal, u32_equalverify, u32_push};
-use scripts::{blake3, BabyBearU31};
 
 /// fiat shamir subtree contains a series script leafs and coressponding
 trait SubTree {
@@ -413,7 +413,8 @@ mod test {
     use primitives::challenger::chan_field::{PermutationField, U32};
     use primitives::challenger::{BfChallenger, BfGrindingChallenger, Blake3Permutation};
     use scripts::bit_comm::pushable;
-    use scripts::{execute_script, execute_script_with_inputs, to_digits, BabyBear4};
+    use scripts::u31_lib::BabyBear4;
+    use scripts::{execute_script, execute_script_with_inputs, to_digits};
 
     use super::{new_challenge_commit, new_u32_bit_commit, Commit, FiatShamirSubTree, SubTree};
 

@@ -6,11 +6,6 @@ use bitcoin::hashes::Hash;
 use bitcoin::taproot::TapLeafHash;
 use bitcoin_script::define_pushable;
 use bitcoin_scriptexec::{Exec, ExecCtx, ExecutionResult, Options, TxTemplate};
-mod u31;
-pub use u31::*;
-
-mod u31_ext;
-pub use u31_ext::*;
 
 pub mod bit_comm;
 pub use bit_comm::*;
@@ -25,6 +20,23 @@ pub use hashes::*;
 
 define_pushable!();
 
+#[allow(dead_code)]
+pub mod u31_lib {
+    pub use bitcoin::ScriptBuf as Script;
+    pub use bitcoin_script::{define_pushable, script};
+    define_pushable!();
+
+    pub use rust_bitcoin_u31_or_u30::{
+        u31_add, u31_double, u31_mul, u31_sub, u31ext_add, u31ext_double, u31ext_equalverify,
+        u31ext_mul, u31ext_sub, BabyBear as BabyBearU31, BabyBear4,
+    };
+
+    pub fn u31_equalverify() -> Script {
+        script! {
+            OP_EQUALVERIFY
+        }
+    }
+}
 #[allow(dead_code)]
 // Re-export what is needed to write treepp scripts
 pub mod treepp {
