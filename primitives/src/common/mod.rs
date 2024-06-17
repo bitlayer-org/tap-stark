@@ -5,6 +5,7 @@ use super::field::*;
 
 pub trait AsU32Vec {
     fn bc_as_u32_vec(&self) -> Vec<u32>;
+    // fn u32_clone(&self) -> Self;
 }
 
 impl AsU32Vec for u32 {

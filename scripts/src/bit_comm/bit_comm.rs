@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
@@ -17,10 +18,25 @@ define_pushable!();
 //    the u32 values should be placed on the stack for any bc.
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct BitCommitment<F: AsU32Vec> {
-    pub value: F,
+pub struct BitCommitment<F: AsU32Vec + ?Sized + 'static> {
     pub u32_values: Vec<u32>,
     pub commitments: Vec<BitCommitmentU32>,
+    pub value: Arc<Box<F>>,
+}
+
+impl<F: AsU32Vec + ?Sized> BitCommitment<F> {
+    pub fn new_with_box<S: SecretGen>(value: &Arc<Box<F>>) -> Box<Self> {
+        let u32_values = value.bc_as_u32_vec();
+        let commitments = u32_values
+            .iter()
+            .map(|v| BitCommitmentU32::new(&S::gen(), *v))
+            .collect_vec();
+        Box::new(Self {
+            u32_values,
+            commitments,
+            value: value.clone(),
+        })
+    }
 }
 
 impl<F: AsU32Vec> BitCommitment<F> {
@@ -31,9 +47,9 @@ impl<F: AsU32Vec> BitCommitment<F> {
             .map(|v| BitCommitmentU32::new(&S::gen(), *v))
             .collect_vec();
         Self {
-            value,
             u32_values,
             commitments,
+            value: Arc::new(Box::new(value)),
         }
     }
 
@@ -46,12 +62,13 @@ impl<F: AsU32Vec> BitCommitment<F> {
             .map(|(idx, value)| commits.get(idx).unwrap().clone().change_value(value))
             .collect_vec();
         Self {
-            value,
             u32_values,
             commitments,
+            value: Arc::new(Box::new(value)),
         }
     }
-
+}
+impl<F: AsU32Vec + ?Sized> BitCommitment<F> {
     // execute with witness
     // check bitcommitment and left u32_values to alt stack
     pub fn check_and_recover_to_altstack(&self) -> Script {
