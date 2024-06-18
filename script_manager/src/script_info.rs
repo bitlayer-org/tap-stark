@@ -51,7 +51,7 @@ impl ScriptInfo {
         }
     }
 
-    // witness: [..., input1, input0, output0, output1, ...]
+    // witness: [..., output1, output0, ..., input1, input0]
     // success with eq_script, and fail in neq_script
     pub fn witness(&mut self) -> Vec<Vec<u8>> {
         match self.final_script.clone() {
@@ -70,24 +70,6 @@ impl ScriptInfo {
         let mut script_bytes = vec![];
         let mut move_back_bytes = vec![];
         let mut witness: VecDeque<Vec<u8>> = Default::default();
-
-        for value in (&self.output_values).into_iter().rev() {
-            let value_commitment = bc_assigner.assign_arc(value);
-            script_bytes.extend_from_slice(
-                script! {
-                    {value_commitment.as_ref().check_and_recover()}
-                    {value_commitment.as_ref().message_to_altstack()}
-                }
-                .as_bytes(),
-            );
-
-            // witness.extend(value_commitment.witness());
-            value_commitment
-                .witness()
-                .iter()
-                .rev()
-                .for_each(|x| witness.push_front(x.clone()));
-        }
 
         for value in &self.intput_values {
             let value_commitment = bc_assigner.assign_arc(value);
@@ -113,6 +95,31 @@ impl ScriptInfo {
                 .for_each(|x| witness.push_front(x.clone()));
         }
 
+        for value in &self.output_values {
+            let value_commitment = bc_assigner.assign_arc(value);
+            script_bytes.extend_from_slice(
+                script! {
+                    {value_commitment.as_ref().check_and_recover()}
+                    {value_commitment.as_ref().message_to_altstack()}
+                }
+                .as_bytes(),
+            );
+
+            move_back_bytes.extend_from_slice(
+                script! {
+                    {value_commitment.as_ref().message_from_altstack()}
+                }
+                .as_bytes(),
+            );
+
+            // witness.extend(value_commitment.witness());
+            value_commitment
+                .witness()
+                .iter()
+                .rev()
+                .for_each(|x| witness.push_front(x.clone()));
+        }
+
         script_bytes.extend(move_back_bytes);
 
         let final_script = (ScriptBuf::from(script_bytes), witness.into());
@@ -122,10 +129,6 @@ impl ScriptInfo {
 
     pub fn ext_equalverify(size: u32, eq: bool) -> ScriptBuf {
         script! {
-            for _ in 0..size {
-                OP_FROMALTSTACK
-            }
-
             { unroll(size - 1, |i| {
                 let gap = size - i;
                 script!{
@@ -136,16 +139,19 @@ impl ScriptInfo {
         }
     }
 
+    fn get_output_total_size(&self) -> u32 {
+        self.output_values
+            .iter()
+            .fold(0, |sum, x| sum + x.bc_as_u32_vec().len()) as u32
+    }
+
     // for debug and unit test
     pub fn get_eq_script(&mut self) -> ScriptBuf {
         script! {
             {self.check_witness()}
             {self.script.clone()}
-            // OP_RESERVED
             // check equal
-            for value in &self.output_values {
-                {Self::ext_equalverify(value.bc_as_u32_vec().len() as u32, true)}
-            }
+            {Self::ext_equalverify(self.get_output_total_size(), true)}
             OP_TRUE
         }
     }
@@ -156,9 +162,7 @@ impl ScriptInfo {
             {self.check_witness()}
             {self.script.clone()}
             // check no equal
-            for value in &self.output_values {
-                {Self::ext_equalverify(value.bc_as_u32_vec().len() as u32, false)}
-            }
+            {Self::ext_equalverify(self.get_output_total_size(), false)}
             OP_TRUE
         }
     }
