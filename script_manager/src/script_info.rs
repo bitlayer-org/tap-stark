@@ -40,9 +40,13 @@ impl ScriptInfo {
         self
     }
 
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
     /// After executing this script, the stacks will be like this.
     /// stack: [..., input1, input0], altstack: [..., output1, ouput0]
-    fn check_witness(&mut self) -> ScriptBuf {
+    fn check_witness(&self) -> ScriptBuf {
         match self.final_script.clone() {
             Some((script, _)) => script,
             None => {
@@ -53,7 +57,7 @@ impl ScriptInfo {
 
     // witness: [..., output1, output0, ..., input1, input0]
     // success with eq_script, and fail in neq_script
-    pub fn witness(&mut self) -> Vec<Vec<u8>> {
+    pub fn witness(&self) -> Vec<Vec<u8>> {
         match self.final_script.clone() {
             Some((_, witness)) => witness,
             None => {
@@ -62,7 +66,7 @@ impl ScriptInfo {
         }
     }
 
-    pub fn gen(&mut self, bc_assigner: &mut DefaultBCAssignment) -> &mut Self {
+    pub fn gen(&mut self, bc_assigner: &mut DefaultBCAssignment) -> &Self {
         if !self.final_script.is_none() {
             return self;
         }
@@ -146,7 +150,7 @@ impl ScriptInfo {
     }
 
     // for debug and unit test
-    pub fn get_eq_script(&mut self) -> ScriptBuf {
+    pub fn get_eq_script(&self) -> ScriptBuf {
         script! {
             {self.check_witness()}
             {self.script.clone()}
@@ -157,7 +161,7 @@ impl ScriptInfo {
     }
 
     // for release
-    pub fn get_neq_script(&mut self) -> ScriptBuf {
+    pub fn get_neq_script(&self) -> ScriptBuf {
         script! {
             {self.check_witness()}
             {self.script.clone()}
@@ -171,11 +175,11 @@ impl ScriptInfo {
         true
     }
 
-    pub fn script_size(&mut self) -> usize {
+    pub fn script_size(&self) -> usize {
         self.get_neq_script().len()
     }
 
-    pub fn witness_size(&mut self) -> usize {
+    pub fn witness_size(&self) -> usize {
         let mut res = 0;
         self.witness().iter().for_each(|x| res += x.len());
         res

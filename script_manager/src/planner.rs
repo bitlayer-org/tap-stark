@@ -1,3 +1,6 @@
+use std::fmt::DebugList;
+use std::hash::DefaultHasher;
+
 use bitcoin::ScriptBuf;
 
 use crate::bc_assignment::DefaultBCAssignment;
@@ -6,8 +9,28 @@ use crate::script_info::ScriptInfo;
 struct TaprootLeaf {
     script_buf: ScriptBuf,
     witness: Vec<Vec<u8>>,
-    meta_info: Vec<String>, // record name of combined scriptInfo
+    meta_info: String, // record name of combined scriptInfo
     debug: bool,
+}
+
+impl TaprootLeaf {
+    fn from_eq(value: &ScriptInfo) -> Self {
+        Self {
+            script_buf: value.get_eq_script(),
+            witness: value.witness(),
+            meta_info: value.name(),
+            debug: true,
+        }
+    }
+
+    fn from_neq(value: &ScriptInfo) -> Self {
+        Self {
+            script_buf: value.get_neq_script(),
+            witness: value.witness(),
+            meta_info: value.name(),
+            debug: true,
+        }
+    }
 }
 
 type DefaultPlanner = SimplePlanner;
@@ -15,9 +38,9 @@ const SCRIPT_LIMIT: usize = 350 * 1000; // 350kb
 
 trait Planner {
     /// combine
-    fn combine(infos: Vec<ScriptInfo>) -> Vec<ScriptInfo>;
-    /// compile infos to a set of success taprootleafs in debug mode
-    fn compile_to_eq(infos: Vec<ScriptInfo>) -> (Vec<TaprootLeaf>, DefaultBCAssignment) {
+    fn core_combine(infos: Vec<ScriptInfo>) -> ScriptInfo;
+
+    fn combine(infos: Vec<ScriptInfo>) -> Vec<ScriptInfo> {
         let mut acc = 0;
         let mut combined_infos: Vec<ScriptInfo> = vec![];
         let mut res = vec![];
@@ -27,22 +50,44 @@ trait Planner {
                 acc += info_size;
                 combined_infos.push(info);
             } else {
-                res.push(Self::combine(combined_infos));
+                res.push(Self::core_combine(combined_infos));
 
                 // clear status
                 combined_infos = vec![info];
                 acc = info_size;
             }
         }
+        res
+    }
 
+    /// compile infos to a set of success taprootleafs in debug mode
+    fn compile_to_eq(infos: Vec<ScriptInfo>) -> (Vec<TaprootLeaf>, DefaultBCAssignment) {
         // now process res infos
+        let mut bc_assginer = DefaultBCAssignment::new();
+        let taproot_leafs = Self::combine(infos)
+            .iter_mut()
+            .map(|info: &mut ScriptInfo| TaprootLeaf::from_eq(info.gen(&mut bc_assginer)))
+            .collect::<Vec<TaprootLeaf>>();
 
+        (taproot_leafs, bc_assginer)
+    }
+
+    /// compile infos to a set of fail taprootleafs in release mode
+    fn compile_to_neq(infos: Vec<ScriptInfo>) -> (Vec<TaprootLeaf>, DefaultBCAssignment) {
+        // now process res infos
+        let mut bc_assginer = DefaultBCAssignment::new();
+        let taproot_leafs = Self::combine(infos)
+            .iter_mut()
+            .map(|info: &mut ScriptInfo| TaprootLeaf::from_eq(info.gen(&mut bc_assginer)))
+            .collect::<Vec<TaprootLeaf>>();
+
+        (taproot_leafs, bc_assginer)
+    }
+
+    /// check whether all infos can be linked with commitments
+    fn integrity_check(infos: Vec<ScriptInfo>) -> bool {
         todo!()
     }
-    /// compile infos to a set of fail taprootleafs in release mode
-    fn compile_to_neq(infos: Vec<ScriptInfo>) -> (Vec<TaprootLeaf>, DefaultBCAssignment);
-    /// check whether all infos can be linked with commitments
-    fn integrity_check(infos: Vec<ScriptInfo>) -> bool;
 }
 
 /// There no too much combine rules in the simple planner
@@ -51,7 +96,11 @@ trait Planner {
 /// 3. For before script's output and after script's input, equivalent bitcommitment is eliminated.
 /// 4. u32_add_1 or u32_dec_1 can be thinked of it as equivalent.
 struct SimplePlanner {}
-// impl Planner for SimplePlanner {}
+impl Planner for SimplePlanner {
+    fn core_combine(infos: Vec<ScriptInfo>) -> ScriptInfo {
+        todo!()
+    }
+}
 
 mod test {
     // some tests

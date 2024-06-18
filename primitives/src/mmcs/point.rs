@@ -2,7 +2,7 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::secret_generator::ConstantSecretGen;
 
