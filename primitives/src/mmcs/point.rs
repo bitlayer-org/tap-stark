@@ -37,7 +37,7 @@ impl<F: BfField> PointsLeaf<F> {
     }
 
     pub fn witness(&self) -> Vec<Vec<u8>> {
-        self.points.signature()
+        self.points.witness()
     }
 
     pub fn get_point_by_index(&self, index: usize) -> Option<&Point<F>> {
@@ -86,10 +86,10 @@ impl<F: BfField> Points<F> {
         scripts
     }
 
-    pub fn signature(&self) -> Vec<Vec<u8>> {
+    pub fn witness(&self) -> Vec<Vec<u8>> {
         let mut sigs = vec![];
         for p in self.points.iter().rev() {
-            sigs.extend(p.signature());
+            sigs.extend(p.witness());
         }
         sigs
     }
@@ -162,7 +162,7 @@ impl<F: BfField> Point<F> {
         scripts
     }
 
-    pub fn signature(&self) -> Vec<Vec<u8>> {
+    pub fn witness(&self) -> Vec<Vec<u8>> {
         let mut x_sigs = self.x_commit.witness();
         let mut y_sigs = self.y_commit.witness();
         y_sigs.append(x_sigs.as_mut());
@@ -193,7 +193,7 @@ mod test {
             {p.recover_point_euqal_to_commited_point()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }
@@ -211,7 +211,7 @@ mod test {
             {p.recover_point_euqal_to_commited_point()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }
@@ -228,7 +228,7 @@ mod test {
             {p.recover_points_euqal_to_commited_points()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }
@@ -252,7 +252,7 @@ mod test {
             {p.recover_points_euqal_to_commited_points()}
             OP_1
         };
-        let inputs = p.signature();
+        let inputs = p.witness();
         let res = execute_script_with_inputs(script, inputs);
         assert!(res.success);
     }
