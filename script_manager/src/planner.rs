@@ -43,11 +43,13 @@ trait Planner {
     /// combine
     fn core_combine(infos: Vec<ScriptInfo>, debug: bool) -> ScriptInfo;
 
-    fn combine(infos: Vec<ScriptInfo>, debug: bool) -> Vec<ScriptInfo> {
+    fn combine(mut infos: Vec<ScriptInfo>, debug: bool) -> Vec<ScriptInfo> {
+        Self::dry_run_infos(&mut infos);
+
         let mut acc = 0;
         let mut combined_infos: Vec<ScriptInfo> = vec![];
         let mut res = vec![];
-        for mut info in infos {
+        for info in infos {
             let info_size = info.script_size() + info.witness_size();
             if acc + info_size < SCRIPT_LIMIT {
                 acc += info_size;
@@ -60,19 +62,31 @@ trait Planner {
                 acc = info_size;
             }
         }
+
+        if !combined_infos.is_empty() {
+            res.push(Self::core_combine(combined_infos, debug));
+        }
+
         res
+    }
+
+    fn dry_run_infos(infos: &mut Vec<ScriptInfo>) {
+        let mut mock_bc_assginer = DefaultBCAssignment::new();
+        for info in infos {
+            info.gen(&mut mock_bc_assginer);
+        }
     }
 
     /// compile infos to a set of success taprootleafs in debug mode
     fn compile_to_eq(infos: Vec<ScriptInfo>) -> (Vec<TaprootLeaf>, DefaultBCAssignment) {
         // now process res infos
-        let mut bc_assginer = DefaultBCAssignment::new();
+        let mut bc_assigner = DefaultBCAssignment::new();
         let taproot_leafs = Self::combine(infos, true)
             .iter_mut()
-            .map(|info: &mut ScriptInfo| TaprootLeaf::from_eq(info.gen(&mut bc_assginer)))
+            .map(|info: &mut ScriptInfo| TaprootLeaf::from_eq(info.gen(&mut bc_assigner)))
             .collect::<Vec<TaprootLeaf>>();
 
-        (taproot_leafs, bc_assginer)
+        (taproot_leafs, bc_assigner)
     }
 
     /// compile infos to a set of fail taprootleafs in release mode
@@ -164,19 +178,21 @@ impl Planner for SimplePlanner {
         for (i, cells) in big_table.iter_mut().enumerate() {
             for cell in cells.iter_mut() {
                 // Can this cell be founded before ?
-                for j in 0..i - 1 {
-                    let dup_cell = cloned_table
-                        .get(j)
-                        .unwrap()
-                        .iter()
-                        .find(|x| x.value == cell.value);
-                    match dup_cell {
-                        Some(inner_cell) => {
-                            // Push currect offset
-                            cell.source = inner_cell.source;
-                            break;
+                if i > 0 {
+                    for j in 0..i - 1 {
+                        let dup_cell = cloned_table
+                            .get(j)
+                            .unwrap()
+                            .iter()
+                            .find(|x| x.value == cell.value);
+                        match dup_cell {
+                            Some(inner_cell) => {
+                                // Push currect offset
+                                cell.source = inner_cell.source;
+                                break;
+                            }
+                            None => cell.source = offset,
                         }
-                        None => cell.source = offset,
                     }
                 }
                 offset += 1;
@@ -230,9 +246,42 @@ impl Planner for SimplePlanner {
 }
 
 mod test {
+    use bitcoin_script::script;
+    use scripts::{execute_script_with_inputs, pushable};
+
+    use crate::bc_assignment::DefaultBCAssignment;
+    use crate::planner::{Planner, SimplePlanner};
+    use crate::script_info;
+    use crate::script_info::ScriptInfo;
+
     // some tests
     #[test]
     fn test_simple_planner() {
-        assert!(true)
+        let mut bc_assigner = DefaultBCAssignment::new();
+        let mut script1 = script_info!(
+            "add1",
+            script! {
+                OP_ADD
+                // OP_ADD
+            },
+            [1, 2],
+            [3]
+        );
+
+        let mut script2 = script_info!(
+            "add1",
+            script! {
+                OP_ADD
+                // OP_ADD
+            },
+            [3, 1],
+            [4]
+        );
+
+        let mut script = SimplePlanner::core_combine(vec![script1, script2], true);
+        script.gen(&mut bc_assigner);
+        let res = execute_script_with_inputs(script.get_eq_script(), script.witness());
+        assert!(res.success);
+        assert_eq!(bc_assigner.value_assigns.len(), 4);
     }
 }

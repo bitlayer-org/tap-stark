@@ -3,11 +3,9 @@ use std::sync::Arc;
 
 use bitcoin::{Script, ScriptBuf};
 use bitcoin_script::{define_pushable, script};
-use scripts::bit_comm::bit_comm::BitCommitment;
-use scripts::secret_generator::ThreadSecretGen;
 use scripts::{pushable, unroll, AsU32Vec};
 
-use crate::bc_assignment::{BCAssignment, DefaultBCAssignment};
+use crate::bc_assignment::DefaultBCAssignment;
 
 // Implement basic script, and can be commpiled by planner
 #[derive(Default, Clone)]
@@ -24,7 +22,7 @@ impl ScriptInfo {
     pub fn new(name: &str, script: ScriptBuf) -> Self {
         assert!(Self::is_valid_name(name));
         Self {
-            name: name.clone().into(),
+            name: name.into(),
             intput_values: vec![],
             output_values: vec![],
             script,
