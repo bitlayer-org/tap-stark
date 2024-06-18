@@ -293,6 +293,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "p3-baby-bear",
+ "p3-field",
+]
+
+[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -409,6 +417,7 @@ dependencies = [
  "primitives",
  "rand",
  "rand_chacha",
+ "script_manager",
  "scripts",
  "segment",
  "serde",
@@ -899,6 +908,7 @@ dependencies = [
  "bitcoin-script",
  "bitcoin-scriptexec",
  "blake3",
+ "common",
  "itertools 0.12.1",
  "lazy_static",
  "p3-baby-bear",
@@ -912,6 +922,7 @@ dependencies = [
  "p3-util",
  "rand",
  "rand_chacha",
+ "script_manager",
  "scripts",
  "segment",
  "serde",
@@ -1086,6 +1097,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "script_manager"
+version = "0.1.0"
+dependencies = [
+ "bitcoin",
+ "bitcoin-script",
+ "bitcoin-scriptexec",
+ "hex",
+ "itertools 0.12.1",
+ "lazy_static",
+ "once_cell",
+ "p3-baby-bear",
+ "p3-challenger",
+ "p3-field",
+ "p3-util",
+ "primitives",
+ "rand",
+ "rand_chacha",
+ "scripts",
+]
+
+[[package]]
 name = "scripts"
 version = "0.1.0"
 dependencies = [
@@ -1093,6 +1125,7 @@ dependencies = [
  "bitcoin-script",
  "bitcoin-scriptexec",
  "blake3",
+ "common",
  "criterion",
  "hex",
  "itertools 0.12.1",
@@ -1109,6 +1142,7 @@ dependencies = [
  "p3-poseidon2",
  "p3-symmetric",
  "p3-util",
+ "primitives",
  "rand",
  "rand_chacha",
  "rust-bitcoin-u31-or-u30",

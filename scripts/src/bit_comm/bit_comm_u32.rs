@@ -1,10 +1,9 @@
-use bitcoin::opcodes::OP_FROMALTSTACK;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 
 use super::winternitz::*;
+use crate::bit_comm::winternitz;
 use crate::u32_std::u32_compress;
-use crate::winternitz;
 define_pushable!();
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,6 +19,16 @@ impl BitCommitmentU32 {
         let message = to_digits(value, winternitz::N0);
         Self {
             value,
+            winternitz,
+            message,
+        }
+    }
+
+    pub fn change_value(&mut self, value: &u32) -> Self {
+        let message = to_digits(value.clone(), winternitz::N0);
+        let winternitz = self.winternitz.clone();
+        Self {
+            value: value.clone(),
             winternitz,
             message,
         }

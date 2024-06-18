@@ -144,7 +144,7 @@ where
         let mut xs = vec![x; 2];
         xs[index_sibling % 2] = neg_x;
 
-        let input = open_leaf.signature();
+        let input = open_leaf.witness();
 
         if let TapLeaf::Script(script, _ver) = step.leaf_node.leaf().clone() {
             assert_eq!(script, open_leaf.recover_points_euqal_to_commited_point());

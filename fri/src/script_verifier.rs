@@ -6,12 +6,12 @@ use bitcoin::taproot::TapLeaf;
 use itertools::izip;
 use p3_challenger::{CanObserve, CanSample};
 use p3_util::reverse_bits_len;
-use primitives::bit_comm::BCAssignment;
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
+use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
 use scripts::execute_script_with_inputs;
 use segment::SegmentLeaf;
 
@@ -23,7 +23,7 @@ use crate::verifier::*;
 use crate::{BfQueryProof, FriConfig, FriProof};
 
 pub fn bf_verify_challenges<F, M, Witness>(
-    assign: &mut BCAssignment,
+    assign: &mut DefaultBCAssignment,
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness>,
     challenges: &FriChallenges<F>,
@@ -59,7 +59,7 @@ where
 }
 
 fn bf_verify_query<F, M>(
-    assign: &mut BCAssignment,
+    assign: &mut DefaultBCAssignment,
     config: &FriConfig<M>,
     commit_phase_commits: &[M::Commitment],
     mut index: usize,
@@ -148,7 +148,7 @@ where
         let mut xs = vec![x; 2];
         xs[index_sibling % 2] = neg_x;
 
-        let input = poins_leaf.signature();
+        let input = poins_leaf.witness();
         if let TapLeaf::Script(script, _ver) = step.leaf_node.leaf().clone() {
             assert_eq!(script, poins_leaf.recover_points_euqal_to_commited_point());
             let res = execute_script_with_inputs(

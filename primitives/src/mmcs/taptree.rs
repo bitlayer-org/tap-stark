@@ -6,6 +6,7 @@ use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
 use bitcoin::{ScriptBuf, TapNodeHash};
 use itertools::{Chunk, Itertools};
 use p3_util::{log2_strict_usize, reverse_slice_index_bits};
+use scripts::secret_generator::ThreadSecretGen;
 
 use super::error::BfError;
 use super::point::PointsLeaf;
@@ -17,8 +18,7 @@ pub fn combine_two_nodes(a: NodeInfo, b: NodeInfo) -> Result<(NodeInfo, bool), B
 }
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-
-use crate::bit_comm::BitCommitment;
+use scripts::bit_comm::bit_comm::BitCommitment;
 define_pushable!();
 
 pub struct EvaluationLeaf<const NUM_POLY: usize, F: BfField> {
@@ -34,17 +34,11 @@ impl<const NUM_POLY: usize, F: BfField> EvaluationLeaf<NUM_POLY, F> {
     pub fn new(leaf_index: usize, x: F, evaluations: Vec<F>) -> Self {
         assert_eq!(evaluations.len(), NUM_POLY);
 
-        let x_commitment = BitCommitment::new("b138982ce17ac813d505b5b40b665d404e9528e8", x);
-        let neg_x_commitment = BitCommitment::new(
-            "b138982ce17ac813d505b5b40b665d404e9528e8",
-            F::field_mod() - x,
-        );
+        let x_commitment = BitCommitment::new::<ThreadSecretGen>(x);
+        let neg_x_commitment = BitCommitment::new::<ThreadSecretGen>(F::field_mod() - x);
         let mut evaluations_commitments = Vec::new();
         for i in 0..NUM_POLY {
-            evaluations_commitments.push(BitCommitment::new(
-                "b138982ce17ac813d505b5b40b665d404e9528e9",
-                evaluations[i],
-            ));
+            evaluations_commitments.push(BitCommitment::new::<ThreadSecretGen>(evaluations[i]));
         }
 
         Self {
