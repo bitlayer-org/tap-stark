@@ -151,7 +151,7 @@ mod tests {
     use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    use script_manager::bc_assignment::{BCAssignment, ThreadBCAssignment};
+    use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
     use tracing_subscriber::fmt;
 
     use super::*;
@@ -284,7 +284,7 @@ mod tests {
             mmcs,
         };
 
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
 
         let dft = Radix2Dit::default();
 
@@ -473,7 +473,7 @@ mod tests2 {
     use primitives::mmcs::taptree_mmcs::{TapTreeMmcs, ROOT_WIDTH};
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    use script_manager::bc_assignment::{BCAssignment, ThreadBCAssignment};
+    use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
     use tracing_subscriber::fmt;
 
     use super::*;
@@ -605,7 +605,7 @@ mod tests2 {
             mmcs,
         };
 
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
 
         let dft = Radix2Dit::default();
 

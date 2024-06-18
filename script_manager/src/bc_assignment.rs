@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::bit_comm_u32::BitCommitmentU32;
@@ -15,7 +16,7 @@ pub struct BCAssignment<S: SecretGen> {
     pub secret_gen: S,
 }
 
-pub type ThreadBCAssignment = BCAssignment<ThreadSecretGen>;
+pub type DefaultBCAssignment = BCAssignment<ThreadSecretGen>;
 
 impl<S: SecretGen> BCAssignment<S> {
     pub fn new() -> Self {
@@ -29,6 +30,17 @@ impl<S: SecretGen> BCAssignment<S> {
 
     pub fn assign<F: AsU32Vec>(&mut self, value: F) -> BitCommitment<F> {
         let x = BitCommitment::new::<S>(value);
+        for i in x.commitments.clone() {
+            self.value_assigns.entry(i.value).or_insert_with(|| i);
+        }
+        x
+    }
+
+    pub fn assign_arc<F: AsU32Vec + 'static + ?Sized>(
+        &mut self,
+        value: &Arc<Box<F>>,
+    ) -> Box<BitCommitment<F>> {
+        let x = BitCommitment::new_with_box::<S>(value);
         for i in x.commitments.clone() {
             self.value_assigns.entry(i.value).or_insert_with(|| i);
         }

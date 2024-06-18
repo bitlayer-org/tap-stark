@@ -2,7 +2,7 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-use script_manager::bc_assignment::{BCAssignment, ThreadBCAssignment};
+use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::secret_generator::ConstantSecretGen;
 
@@ -98,7 +98,7 @@ pub struct Point<F: BfField> {
 }
 
 impl<F: BfField> Point<F> {
-    pub fn new_from_assign(x: F, y: F, bc_assign: &mut ThreadBCAssignment) -> Point<F> {
+    pub fn new_from_assign(x: F, y: F, bc_assign: &mut DefaultBCAssignment) -> Point<F> {
         let x_commit = bc_assign.assign(x);
         let y_commit = bc_assign.assign(y);
         Self {

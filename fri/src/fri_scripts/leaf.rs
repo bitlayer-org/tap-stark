@@ -12,7 +12,7 @@ use bitcoin_script::{define_pushable, script};
 use itertools::rev;
 use p3_field::TwoAdicField;
 use primitives::field::BfField;
-use script_manager::bc_assignment::ThreadBCAssignment;
+use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::bit_comm_u32::BitCommitmentU32;
 use scripts::execute_script_with_inputs;
@@ -40,7 +40,7 @@ impl RevIndexLeaf {
         sub_group_bits: u32,
         index: u32,
         rev_index: u32,
-        assign: &mut ThreadBCAssignment,
+        assign: &mut DefaultBCAssignment,
     ) -> Self {
         let index_bc = assign.assign(index);
         let rev_index_bc = assign.assign(rev_index);
@@ -95,7 +95,7 @@ pub struct SquareFLeaf<const NUM_POLY: usize, F: BfField> {
     value_square_bc: BitCommitment<F>,
 }
 impl<const NUM_POLY: usize, F: BfField> SquareFLeaf<NUM_POLY, F> {
-    pub fn new_from_assign(value: F, value_suqare: F, assign: &mut ThreadBCAssignment) -> Self {
+    pub fn new_from_assign(value: F, value_suqare: F, assign: &mut DefaultBCAssignment) -> Self {
         assert_eq!(value * value, value_suqare);
         let val_bc = assign.assign(value);
         let val_square_bc = assign.assign(value_suqare);
@@ -141,7 +141,7 @@ pub struct CalNegXLeaf<const NUM_POLY: usize, F: BfField> {
     neg_x_bc: BitCommitment<F>,
 }
 impl<const NUM_POLY: usize, F: BfField> CalNegXLeaf<NUM_POLY, F> {
-    pub fn new_from_assign(x: F, neg_x: F, assign: &mut ThreadBCAssignment) -> Self {
+    pub fn new_from_assign(x: F, neg_x: F, assign: &mut DefaultBCAssignment) -> Self {
         let x_bc = assign.assign(x);
         let neg_x_bc = assign.assign(neg_x);
         Self::new(x_bc, neg_x_bc)
@@ -191,7 +191,7 @@ impl<const NUM_POLY: usize, F: BfField> IndexToROULeaf<NUM_POLY, F> {
         index: usize,
         subgroup_bit_size: usize,
         x: F,
-        assign: &mut ThreadBCAssignment,
+        assign: &mut DefaultBCAssignment,
     ) -> Self {
         let x_bc = assign.assign(x);
         let index_bc = assign.assign(index as u32);
@@ -266,7 +266,7 @@ impl<const NUM_POLY: usize, F: BfField> ReductionLeaf<NUM_POLY, F> {
         prev_fold: F,
         opening: F,
         result: F,
-        assign: &'a mut ThreadBCAssignment,
+        assign: &'a mut DefaultBCAssignment,
     ) -> Self {
         let prev_fold_bc = assign.assign(prev_fold);
         let opening_bc = assign.assign(opening);
@@ -342,7 +342,7 @@ impl<'a, const NUM_POLY: usize, F: BfField> VerifyFoldingLeaf<NUM_POLY, F> {
         x: F,
         beta: F,
         y_1_x_square: F,
-        assgin: &'a mut ThreadBCAssignment,
+        assgin: &'a mut DefaultBCAssignment,
     ) -> Self {
         let x_bc = assgin.assign(x);
         let beta_bc = assgin.assign(beta);
@@ -546,7 +546,7 @@ mod test {
 
     #[test]
     fn test_rev_index_leaf() {
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
 
         let bits = 10;
 
@@ -565,7 +565,7 @@ mod test {
 
     #[test]
     fn test_value_square_leaf() {
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
         let index = 6;
         let subgroup_bit_size = 3;
 
@@ -592,7 +592,7 @@ mod test {
 
     #[test]
     fn test_cal_neg_x_leaf() {
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
         let index = 6;
         let subgroup_bit_size = 3;
 
@@ -619,7 +619,7 @@ mod test {
 
     #[test]
     fn test_index_to_root_of_unity_leaf() {
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
         let num: usize = 100;
         let subgroup_bit_size = 12;
         for index in 0..num {
@@ -640,7 +640,7 @@ mod test {
 
     #[test]
     fn test_index_to_root_of_unity_leaf_over_extension() {
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
         let num: usize = 100;
         let subgroup_bit_size = 12;
         for index in 0..num {
@@ -661,7 +661,7 @@ mod test {
 
     #[test]
     fn test_reduction_leaf() {
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
         let a = BabyBear::from_canonical_u32(133);
         let b = BabyBear::from_canonical_u32(2222);
         let c = a + b;
@@ -676,7 +676,7 @@ mod test {
         let result = execute_script_with_inputs(reduction_script, input);
         assert!(result.success);
 
-        let mut assign = ThreadBCAssignment::new();
+        let mut assign = DefaultBCAssignment::new();
         let a = F::from_canonical_u32(133);
         let b = F::from_canonical_u32(2222);
         let c = a + b;
@@ -727,7 +727,7 @@ mod test {
 
             let subgroup = BabyBear::sub_group(*log_n as usize);
 
-            let mut assign = ThreadBCAssignment::new();
+            let mut assign = DefaultBCAssignment::new();
 
             for j in 0..n as usize {
                 let x_index = j;

@@ -13,7 +13,7 @@ use p3_field::PrimeField32;
 use primitives::challenger::chan_field::{PermutationField, U32};
 use primitives::challenger::{BfChallenger, BitExtractor, Blake3Permutation};
 use primitives::field::BfField;
-use script_manager::bc_assignment::ThreadBCAssignment;
+use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::bit_comm_u32::*;
 use scripts::blake3;
@@ -72,7 +72,7 @@ where
     /// currently just implement Blake3Permuation with U32;16
     fn new_from_fri_challenger(
         challenger: &BfChallenger<F, U32, Blake3Permutation, 16>,
-        bc_assignment: &mut ThreadBCAssignment,
+        bc_assignment: &mut DefaultBCAssignment,
     ) -> FiatShamirSubTree<F> {
         assert_eq!(
             challenger.permutation_input_records.len(),
@@ -136,7 +136,7 @@ where
         fs_subtree
     }
 
-    fn commit(&mut self, bc_assignment: &mut ThreadBCAssignment) {
+    fn commit(&mut self, bc_assignment: &mut DefaultBCAssignment) {
         self.input_commits.clear();
         self.output_commits.clear();
         self.sample_input_commits.clear();
@@ -222,7 +222,7 @@ fn u32_to_compressed_babybear() -> Script {
     )
 }
 
-fn new_u32_bit_commit(bc_assignment: &mut ThreadBCAssignment, value: U32) -> Commit {
+fn new_u32_bit_commit(bc_assignment: &mut DefaultBCAssignment, value: U32) -> Commit {
     let mut bitcommit = bc_assignment.assign(U32_to_u32(value));
     let locking = script! {
         { bitcommit.commitments.get(0).unwrap().checksig_verify_script() }
@@ -233,7 +233,7 @@ fn new_u32_bit_commit(bc_assignment: &mut ThreadBCAssignment, value: U32) -> Com
     }
 }
 
-fn new_challenge_commit<F>(bc_assignment: &mut ThreadBCAssignment, value: F) -> Commit
+fn new_challenge_commit<F>(bc_assignment: &mut DefaultBCAssignment, value: F) -> Commit
 where
     F: BfField,
 {
@@ -412,7 +412,7 @@ mod test {
     use p3_field::{AbstractField, PrimeField32};
     use primitives::challenger::chan_field::{PermutationField, U32};
     use primitives::challenger::{BfChallenger, BfGrindingChallenger, Blake3Permutation};
-    use script_manager::bc_assignment::{BCAssignment, ThreadBCAssignment};
+    use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
     use scripts::bit_comm::winternitz::{pushable, to_digits};
     use scripts::u31_lib::BabyBear4;
     use scripts::{execute_script, execute_script_with_inputs};
@@ -435,7 +435,7 @@ mod test {
 
     #[test]
     fn test_bitcommit() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
         let scripts = new_u32_bit_commit(&mut bc_assignment, U32::from_u64(0x28121614));
         println!("verify scripts: {:?}", verify_u32_4bytes_script(0x28121614));
         let exec_script = script! {
@@ -454,7 +454,7 @@ mod test {
             let point = BabyBear::from_canonical_u64(value);
             let point_as_u32 = point.as_canonical_u32();
 
-            let mut bc_assignment = ThreadBCAssignment::new();
+            let mut bc_assignment = DefaultBCAssignment::new();
             let scripts = new_challenge_commit(&mut bc_assignment, point);
             let exec_script = script! {
                 {scripts.locking_script}
@@ -490,7 +490,7 @@ mod test {
 
     #[test]
     fn test_mock_fs_subtree() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
         let mut fs_subtree: FiatShamirSubTree<BabyBear> = Default::default();
         fs_subtree.state_leafs_num = 1;
 
@@ -537,7 +537,7 @@ mod test {
 
     #[test]
     fn test_fs_subtree_from_challenger() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<BabyBear, [u8; 4], Blake3Permutation, 16> =
@@ -572,7 +572,7 @@ mod test {
 
     #[test]
     fn test_fs_subtree_from_challenger_with_grind() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<BabyBear, [u8; 4], Blake3Permutation, 16> =
@@ -607,7 +607,7 @@ mod test {
 
     #[test]
     fn test_fs_subtree_from_challenger_with_grind8() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<BabyBear, [u8; 4], Blake3Permutation, 16> =
@@ -642,7 +642,7 @@ mod test {
 
     #[test]
     fn test_fs_subtree_from_challenger_with_grind10() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<BabyBear, [u8; 4], Blake3Permutation, 16> =
@@ -678,7 +678,7 @@ mod test {
     #[test]
     fn test_fs_subtree_from_challenger_with_grind_random() {
         for grind_i in 2..15 {
-            let mut bc_assignment = ThreadBCAssignment::new();
+            let mut bc_assignment = DefaultBCAssignment::new();
 
             let permutation = Blake3Permutation {};
             let mut challenger: BfChallenger<BabyBear, [u8; 4], Blake3Permutation, 16> =
@@ -710,7 +710,7 @@ mod test {
 
     #[test]
     fn test_fs_subtree_from_challenger_with_grind_random_and_sample() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<BabyBear, [u8; 4], Blake3Permutation, 16> =
@@ -750,7 +750,7 @@ mod test {
 
     #[test]
     fn test_fs_subtree_from_challenger_with_grind_random_and_sample2() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<BabyBear, [u8; 4], Blake3Permutation, 16> =
@@ -789,7 +789,7 @@ mod test {
 
     #[test]
     fn test_babybear4() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<
@@ -823,7 +823,7 @@ mod test {
 
     #[test]
     fn test_babybear4_more() {
-        let mut bc_assignment = ThreadBCAssignment::new();
+        let mut bc_assignment = DefaultBCAssignment::new();
 
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<

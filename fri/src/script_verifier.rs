@@ -11,7 +11,7 @@ use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
-use script_manager::bc_assignment::{BCAssignment, ThreadBCAssignment};
+use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
 use scripts::execute_script_with_inputs;
 use segment::SegmentLeaf;
 
@@ -23,7 +23,7 @@ use crate::verifier::*;
 use crate::{BfQueryProof, FriConfig, FriProof};
 
 pub fn bf_verify_challenges<F, M, Witness>(
-    assign: &mut ThreadBCAssignment,
+    assign: &mut DefaultBCAssignment,
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness>,
     challenges: &FriChallenges<F>,
@@ -59,7 +59,7 @@ where
 }
 
 fn bf_verify_query<F, M>(
-    assign: &mut ThreadBCAssignment,
+    assign: &mut DefaultBCAssignment,
     config: &FriConfig<M>,
     commit_phase_commits: &[M::Commitment],
     mut index: usize,
