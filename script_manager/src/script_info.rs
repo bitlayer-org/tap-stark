@@ -10,11 +10,12 @@ use scripts::{pushable, unroll, AsU32Vec};
 use crate::bc_assignment::{BCAssignment, DefaultBCAssignment};
 
 // Implement basic script, and can be commpiled by planner
+#[derive(Default, Clone)]
 pub struct ScriptInfo {
     name: String,
-    intput_values: Vec<Arc<Box<dyn AsU32Vec>>>,
-    output_values: Vec<Arc<Box<dyn AsU32Vec>>>,
-    script: ScriptBuf,
+    pub intput_values: Vec<Arc<Box<dyn AsU32Vec>>>,
+    pub output_values: Vec<Arc<Box<dyn AsU32Vec>>>,
+    pub script: ScriptBuf,
 
     final_script: Option<(ScriptBuf, Vec<Vec<u8>>)>,
 }
@@ -131,7 +132,11 @@ impl ScriptInfo {
         self
     }
 
+    // FIXME: for neq mode, it should be success when just some equalverify fail
     pub fn ext_equalverify(size: u32, eq: bool) -> ScriptBuf {
+        if size == 0 {
+            return script!();
+        }
         script! {
             { unroll(size - 1, |i| {
                 let gap = size - i;
@@ -143,7 +148,7 @@ impl ScriptInfo {
         }
     }
 
-    fn get_output_total_size(&self) -> u32 {
+    pub fn get_output_total_size(&self) -> u32 {
         self.output_values
             .iter()
             .fold(0, |sum, x| sum + x.bc_as_u32_vec().len()) as u32
@@ -195,6 +200,7 @@ impl ScriptInfo {
 // }};
 // }
 
+#[macro_export]
 macro_rules! script_info {
     ($name:expr, $script:expr, [$($inputs:expr),*], [$($outputs:expr),*]) => {{
         let mut temp_script_info = ScriptInfo::new($name, $script);

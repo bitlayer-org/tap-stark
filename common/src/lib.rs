@@ -27,3 +27,9 @@ impl AsU32Vec for BabyBear {
         vec![self.as_canonical_u32()]
     }
 }
+
+impl AsU32Vec for Vec<u32> {
+    fn bc_as_u32_vec(&self) -> Vec<u32> {
+        self.clone()
+    }
+}
