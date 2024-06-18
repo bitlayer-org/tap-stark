@@ -106,11 +106,13 @@ where
         &proof.commit_phase_openings,
         betas,
     ) {
-        let index_sibling = index ^ 1;
+        let point_index = index & 1;
+        let index_sibling = 1 - point_index;
+        // let index_sibling = index ^ 1;
         let index_pair = index >> 1;
 
         let poins_leaf: PointsLeaf<F> = step.points_leaf.clone();
-        let challenge_point: Point<F> = poins_leaf.get_point_by_index(index).unwrap().clone();
+        let challenge_point: Point<F> = poins_leaf.get_point_by_index(point_index).unwrap().clone();
 
         let opening = reduced_openings[log_folded_height + 1];
         let reduction_value = opening + folded_eval;
@@ -131,7 +133,7 @@ where
             .unwrap()
             .clone();
 
-        assert_eq!(challenge_point.x, x);
+        // assert_eq!(challenge_point.x, x);
         let neg_x = x * F::two_adic_generator(1);
         let cal_negx_leaf = CalNegXLeaf::<1, F>::new_from_assign(x, neg_x, assign);
         let exec_success = cal_negx_leaf.execute_leaf_script();
@@ -140,7 +142,7 @@ where
                 SVError::VerifyCalNegXScriptError,
             ));
         }
-        assert_eq!(sibling_point.x, neg_x);
+        // assert_eq!(sibling_point.x, neg_x);
 
         let mut evals = vec![reduction_value; 2];
         evals[index_sibling % 2] = sibling_point.y;

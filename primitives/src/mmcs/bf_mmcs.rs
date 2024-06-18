@@ -1,6 +1,7 @@
 // use alloc::vec;
 // use alloc::vec::Vec;
 use core::fmt::Debug;
+use std::borrow::Borrow;
 
 use p3_matrix::dense::RowMajorMatrix;
 // use serde::de::DeserializeOwned;
@@ -41,4 +42,22 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
         proof: &Self::Proof,
         root: &Self::Commitment,
     ) -> Result<(), Self::Error>;
+
+    /// Get the matrices that were committed to.
+    fn get_matrices(&self, prover_data: &Self::ProverData) -> Vec<RowMajorMatrix<T>>;
+
+    fn get_matrix_heights(&self, prover_data: &Self::ProverData) -> Vec<usize> {
+        self.get_matrices(prover_data)
+            .iter()
+            .map(|matrix| matrix.values.len() / matrix.width)
+            .collect()
+    }
+
+    /// Get the largest height of any committed matrix.
+    fn get_max_height(&self, prover_data: &Self::ProverData) -> usize {
+        self.get_matrix_heights(prover_data)
+            .into_iter()
+            .max()
+            .unwrap_or_else(|| panic!("No committed matrices?"))
+    }
 }
