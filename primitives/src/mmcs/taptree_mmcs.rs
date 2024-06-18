@@ -103,9 +103,11 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
 
 #[cfg(test)]
 mod test{
+    use bitcoin::taproot::TapLeaf;
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
+    use scripts::execute_script_with_inputs;
 
     use crate::mmcs::bf_mmcs::BFMmcs;
 
@@ -167,7 +169,48 @@ mod test{
         let index = 2;
         let proof = mmcs.open_taptree(index, &prover_data);
 
+        let wrong_index = 3;
+        let wrong_proof = mmcs.open_taptree(wrong_index, &prover_data);
+
         // let _ = proof.points_leaf.print_point_evals();
+        {
+            let points_leaf = proof.points_leaf.clone();
+            let input = points_leaf.witness();
+            if let TapLeaf::Script(script, _ver) = proof.leaf_node.clone().leaf().clone() {
+                assert_eq!(script, points_leaf.recover_points_euqal_to_commited_point());
+                let res = execute_script_with_inputs(
+                    points_leaf.recover_points_euqal_to_commited_point(),
+                    input,
+                );
+                if !res.success {
+                    println!("execute_script_with_inputs error");
+                }
+                assert_eq!(res.success, true);
+            } else {
+                panic!("Invalid script")
+            }
+        }
+
+        {
+            let points_leaf = proof.points_leaf.clone();
+            let wrong_points_leaf = wrong_proof.points_leaf.clone();
+            let wrong_input = wrong_points_leaf.witness();
+            if let TapLeaf::Script(script, _ver) = proof.leaf_node.clone().leaf().clone() {
+                assert_eq!(script, points_leaf.recover_points_euqal_to_commited_point());
+                let res = execute_script_with_inputs(
+                points_leaf.recover_points_euqal_to_commited_point(),
+                wrong_input,
+                );
+                if !res.success {
+                    println!("execute_script_with_inputs error as expected");
+                }
+                assert_eq!(res.success, false);
+
+            } else {
+                panic!("Invalid script")
+            }
+        }
+        
 
         let success = mmcs.verify_taptree(&proof, &commit);
 
