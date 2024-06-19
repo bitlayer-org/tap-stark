@@ -3,18 +3,17 @@ use std::sync::Arc;
 
 use bitcoin::{Script, ScriptBuf};
 use bitcoin_script::{define_pushable, script};
-use scripts::bit_comm::bit_comm::BitCommitment;
-use scripts::secret_generator::ThreadSecretGen;
 use scripts::{pushable, unroll, AsU32Vec};
 
-use crate::bc_assignment::{BCAssignment, DefaultBCAssignment};
+use crate::bc_assignment::DefaultBCAssignment;
 
 // Implement basic script, and can be commpiled by planner
+#[derive(Default, Clone)]
 pub struct ScriptInfo {
     name: String,
-    intput_values: Vec<Arc<Box<dyn AsU32Vec>>>,
-    output_values: Vec<Arc<Box<dyn AsU32Vec>>>,
-    script: ScriptBuf,
+    pub intput_values: Vec<Arc<Box<dyn AsU32Vec>>>,
+    pub output_values: Vec<Arc<Box<dyn AsU32Vec>>>,
+    pub script: ScriptBuf,
 
     final_script: Option<(ScriptBuf, Vec<Vec<u8>>)>,
 }
@@ -23,7 +22,7 @@ impl ScriptInfo {
     pub fn new(name: &str, script: ScriptBuf) -> Self {
         assert!(Self::is_valid_name(name));
         Self {
-            name: name.clone().into(),
+            name: name.into(),
             intput_values: vec![],
             output_values: vec![],
             script,
@@ -40,9 +39,13 @@ impl ScriptInfo {
         self
     }
 
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
     /// After executing this script, the stacks will be like this.
     /// stack: [..., input1, input0], altstack: [..., output1, ouput0]
-    fn check_witness(&mut self) -> ScriptBuf {
+    fn check_witness(&self) -> ScriptBuf {
         match self.final_script.clone() {
             Some((script, _)) => script,
             None => {
@@ -53,7 +56,7 @@ impl ScriptInfo {
 
     // witness: [..., output1, output0, ..., input1, input0]
     // success with eq_script, and fail in neq_script
-    pub fn witness(&mut self) -> Vec<Vec<u8>> {
+    pub fn witness(&self) -> Vec<Vec<u8>> {
         match self.final_script.clone() {
             Some((_, witness)) => witness,
             None => {
@@ -62,7 +65,7 @@ impl ScriptInfo {
         }
     }
 
-    pub fn gen(&mut self, bc_assigner: &mut DefaultBCAssignment) -> &mut Self {
+    pub fn gen(&mut self, bc_assigner: &mut DefaultBCAssignment) -> &Self {
         if !self.final_script.is_none() {
             return self;
         }
@@ -127,7 +130,11 @@ impl ScriptInfo {
         self
     }
 
+    // FIXME: for neq mode, it should be success when just some equalverify fail
     pub fn ext_equalverify(size: u32, eq: bool) -> ScriptBuf {
+        if size == 0 {
+            return script!();
+        }
         script! {
             { unroll(size - 1, |i| {
                 let gap = size - i;
@@ -139,14 +146,14 @@ impl ScriptInfo {
         }
     }
 
-    fn get_output_total_size(&self) -> u32 {
+    pub fn get_output_total_size(&self) -> u32 {
         self.output_values
             .iter()
             .fold(0, |sum, x| sum + x.bc_as_u32_vec().len()) as u32
     }
 
     // for debug and unit test
-    pub fn get_eq_script(&mut self) -> ScriptBuf {
+    pub fn get_eq_script(&self) -> ScriptBuf {
         script! {
             {self.check_witness()}
             {self.script.clone()}
@@ -157,7 +164,7 @@ impl ScriptInfo {
     }
 
     // for release
-    pub fn get_neq_script(&mut self) -> ScriptBuf {
+    pub fn get_neq_script(&self) -> ScriptBuf {
         script! {
             {self.check_witness()}
             {self.script.clone()}
@@ -171,11 +178,11 @@ impl ScriptInfo {
         true
     }
 
-    pub fn script_size(&mut self) -> usize {
+    pub fn script_size(&self) -> usize {
         self.get_neq_script().len()
     }
 
-    pub fn witness_size(&mut self) -> usize {
+    pub fn witness_size(&self) -> usize {
         let mut res = 0;
         self.witness().iter().for_each(|x| res += x.len());
         res
@@ -191,6 +198,7 @@ impl ScriptInfo {
 // }};
 // }
 
+#[macro_export]
 macro_rules! script_info {
     ($name:expr, $script:expr, [$($inputs:expr),*], [$($outputs:expr),*]) => {{
         let mut temp_script_info = ScriptInfo::new($name, $script);
@@ -334,5 +342,29 @@ mod test {
         assert!(res.success);
         let res = execute_script_with_inputs(x.get_neq_script(), x.witness());
         assert!(!res.success);
+    }
+
+    #[test]
+    fn test_basic_script_info6() {
+        let mut bc_assigner = DefaultBCAssignment::new();
+        let input = (0..40).map(|x| x * 10).collect::<Vec<u32>>();
+        let mut x = script_info!(
+            "add",
+            script! {
+                for _ in 0..40 {
+                    OP_DROP
+                }
+            },
+            [input],
+            []
+        );
+        x.gen(&mut bc_assigner);
+        println!("witness_stack: {}", x.witness().len());
+
+        let res = execute_script_with_inputs(x.get_eq_script(), x.witness());
+        println!("res stack: {:?}", res);
+        assert!(res.success);
+        let res = execute_script_with_inputs(x.get_neq_script(), x.witness());
+        assert!(res.success);
     }
 }
