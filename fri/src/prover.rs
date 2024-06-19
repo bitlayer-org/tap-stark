@@ -34,10 +34,9 @@ where
 
     let pow_witness = challenger.grind(config.proof_of_work_bits);
 
-    let query_indices: Vec<usize> = (0..config.num_queries)
+    let mut query_indices: Vec<usize> = (0..config.num_queries)
         .map(|_| challenger.sample_bits(log_max_height))
         .collect();
-
     let query_proofs = info_span!("query phase").in_scope(|| {
         query_indices
             .iter()
@@ -65,13 +64,14 @@ where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
 {
+    println!("query index:{}", index);
     let commit_phase_openings = commit_phase_commits
         .iter()
         .enumerate()
         .map(|(i, commit)| {
-            let index_i = index >> i;
+            let index_i_pair = index >> i >> 1;
 
-            let proof = config.mmcs.open_taptree(index_i, commit);
+            let proof = config.mmcs.open_taptree(index_i_pair, commit);
             proof
         })
         .collect();

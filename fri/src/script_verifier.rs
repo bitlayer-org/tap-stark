@@ -176,7 +176,7 @@ where
         let folding_leaf = VerifyFoldingLeaf::<1, F>::new_from_assign(
             challenge_point.y,
             sibling_point.y,
-            challenge_point.x,
+            x,
             beta,
             folded_eval,
             assign,
