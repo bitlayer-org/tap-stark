@@ -124,7 +124,7 @@ where
         let index_sibling = point_index ^ 1;
         let index_pair = index >> 1;
 
-        //println!("ch point index:{}, sib point index:{}, index_pair:{}", point_index, index_sibling, index_pair);
+        println!("ch point index:{}, sib point index:{}, index_pair:{}", point_index, index_sibling, index_pair);
         let open_leaf: PointsLeaf<F> = step.points_leaf.clone();
         let challenge_point: Point<F> = open_leaf.get_point_by_index(point_index).unwrap().clone();
 
@@ -132,13 +132,13 @@ where
         folded_eval = opening + folded_eval;
 
         let sibling_point: Point<F> = open_leaf.get_point_by_index(index_sibling).unwrap().clone();
-
-        //println!("challenge_point.y:{}", challenge_point.y);
-        //println!("sibling_point.y:{}", sibling_point.y);
+        
+        println!("challenge_point.y:{}", challenge_point.y);
+        println!("sibling_point.y:{}", sibling_point.y);
         if log_folded_height < log_max_height - 1 {
             assert_eq!(folded_eval, challenge_point.y);
         }
-
+        
         // assert_eq!(challenge_point.x, x);
         let neg_x = x * F::two_adic_generator(1);
         // assert_eq!(sibling_point.x, neg_x);

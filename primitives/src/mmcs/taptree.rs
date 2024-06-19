@@ -160,7 +160,7 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
 
         for index in 0..max_height {
             if leaf_ys[index].len() != 0 {
-                println!("index:{:?}, ys:{:?}", index, leaf_ys[index]);
+                //println!("index:{:?}, ys:{:?}", index, leaf_ys[index]);
                 let leaf = PointsLeaf::new(
          index,
                     &leaf_xs[index],
