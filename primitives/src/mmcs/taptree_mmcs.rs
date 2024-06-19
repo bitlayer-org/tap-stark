@@ -195,6 +195,11 @@ mod test {
         let inputs = vec![mat_1, mat_2, mat_3];
         let mmcs = TapTreeMmcs::new();
         let (commit, prover_data) = mmcs.commit(inputs);
+
+        //test get_max_height
+        let max_height = mmcs.get_max_height(&prover_data);
+        assert_eq!(max_height, 8);
+
         let index = 2;
         let proof = mmcs.open_taptree(index, &prover_data);
 
