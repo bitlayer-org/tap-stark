@@ -6,9 +6,9 @@ use bitcoin::taproot::LeafVersion::TapScript;
 use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
 use bitcoin::{ScriptBuf, TapNodeHash};
 use itertools::{Chunk, Itertools};
-use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
-use p3_util::{log2_strict_usize, reverse_slice_index_bits, log2_ceil_usize};
+use p3_matrix::Matrix;
+use p3_util::{log2_ceil_usize, log2_strict_usize, reverse_slice_index_bits};
 use scripts::secret_generator::ThreadSecretGen;
 
 use super::error::BfError;
@@ -128,7 +128,7 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
             .peekable();
         let max_height = leaves_largest_first.peek().unwrap().height();
         let log_max_height = log2_ceil_usize(max_height);
-        
+
         //println!("max height:{:?}", max_height);
         let mut tree_builder = TreeBuilder::<NUM_POLY>::new();
 
@@ -148,7 +148,7 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
                         let curr_index = index << (log_max_height - log_height);
                         let next_index = (index + 1) << (log_max_height - log_height);
                         for i in 0..width {
-                            for leaf_index in curr_index..next_index{
+                            for leaf_index in curr_index..next_index {
                                 //default x to F::one(), may be we will delete x in struct point soon
                                 leaf_xs[leaf_index].push(F::one());
                                 leaf_ys[leaf_index].push(matrix.values[index * matrix.width() + i]);
@@ -162,11 +162,7 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
         for index in 0..max_height {
             if leaf_ys[index].len() != 0 {
                 //println!("index:{:?}, ys:{:?}", index, leaf_ys[index]);
-                let leaf = PointsLeaf::new(
-         index,
-                    &leaf_xs[index],
-                    &leaf_ys[index],
-                );
+                let leaf = PointsLeaf::new(index, &leaf_xs[index], &leaf_ys[index]);
                 self.add_leaf(&mut tree_builder, &leaf);
             }
         }
@@ -253,7 +249,6 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
             let mut todo: Vec<NodeInfo> = Vec::new();
             let mut a_start_idx = 0usize; // will be updated after finishing combining two nodes.
 
-            
             for (a, b) in node_tuples {
                 let a_leaf_size = a.leaf_nodes().len();
                 let a_end_idx = a_start_idx + a_leaf_size;
@@ -282,7 +277,7 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
                 a_start_idx += a_leaf_size + b_leaf_size;
             }
             working_nodes = todo;
-            
+
             todo = Vec::new();
         }
         BasicTree {

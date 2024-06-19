@@ -12,46 +12,42 @@ define_pushable!();
 #[derive(Debug, Clone)]
 pub struct PointsLeaf<F: BfField> {
     leaf_index: usize,
-    points: Points<F>,
+    leaf_evals: Points<F>,
 }
 
 impl<F: BfField> PointsLeaf<F> {
-    pub fn new(
-        leaf_index: usize,
-        xs: &[F],
-        ys: &[F],
-    ) -> PointsLeaf<F> {
-        let points = Points::<F>::new(xs, ys);
+    pub fn new(leaf_index: usize, xs: &[F], ys: &[F]) -> PointsLeaf<F> {
+        let leaf_evals = Points::<F>::new(xs, ys);
         Self {
             leaf_index,
-            points,
+            leaf_evals,
         }
     }
 
     pub fn recover_points_euqal_to_commited_point(&self) -> Script {
         let scripts = script! {
-            {self.points.recover_points_euqal_to_commited_points()}
+            {self.leaf_evals.recover_points_euqal_to_commited_points()}
             OP_1
         };
         scripts
     }
 
     pub fn witness(&self) -> Vec<Vec<u8>> {
-        self.points.witness()
+        self.leaf_evals.witness()
     }
 
     pub fn get_point_by_index(&self, index: usize) -> Option<&Point<F>> {
-        if self.points.points.len() > index {
-            Some(&self.points.points[index])
+        if self.leaf_evals.points.len() > index {
+            Some(&self.leaf_evals.points[index])
         } else {
             None
         }
     }
-    pub fn print_point_evals(&self) -> Result<(), ()>{
-        if self.points.points.is_empty() {
+    pub fn print_point_evals(&self) -> Result<(), ()> {
+        if self.leaf_evals.points.is_empty() {
             println!("No points to evaluate");
         }
-        for i in self.points.points.iter() {
+        for i in self.leaf_evals.points.iter() {
             println!("point_eval: {:?}", i.y);
         }
         Ok(())
@@ -66,11 +62,11 @@ pub struct Points<F: BfField> {
 impl<F: BfField> Points<F> {
     pub fn new(xs: &[F], ys: &[F]) -> Points<F> {
         let mut points = vec![];
-        for (x,y) in xs.iter().zip(ys.iter()){
+        for (x, y) in xs.iter().zip(ys.iter()) {
             //we should use refer here?
             points.push(Point::<F>::new(*x, *y));
         }
-        Self {points}
+        Self { points }
     }
 
     pub fn recover_points_euqal_to_commited_points(&self) -> Script {
@@ -81,7 +77,7 @@ impl<F: BfField> Points<F> {
         let scripts = script! {
             for p in self.points.iter() {
                 { p.recover_point_euqal_to_commited_point() }
-            }     
+            }
         };
         scripts
     }
@@ -220,8 +216,8 @@ mod test {
     fn test_points_Babybear() {
         use p3_baby_bear::BabyBear;
         let p = Points::<BabyBear>::new(
-            &vec![BabyBear::from_u32(1),BabyBear::from_u32(3)],
-            &vec![BabyBear::from_u32(2), BabyBear::from_u32(4)]
+            &vec![BabyBear::from_u32(1), BabyBear::from_u32(3)],
+            &vec![BabyBear::from_u32(2), BabyBear::from_u32(4)],
         );
 
         let script = script! {
@@ -244,8 +240,8 @@ mod test {
         let e = rng.gen::<EF>();
         let f = rng.gen::<EF>();
 
-        let xs = vec![a,c,e];
-        let ys = vec![b,d,f];
+        let xs = vec![a, c, e];
+        let ys = vec![b, d, f];
         let p = Points::new(&xs, &ys);
 
         let script = script! {

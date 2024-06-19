@@ -91,25 +91,21 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
 
         (u256_to_u32(root), tree)
     }
-    fn get_matrices (
-        &self,
-        prover_data: &Self::ProverData,
-    ) -> Vec<RowMajorMatrix<F>> {
+    fn get_matrices(&self, prover_data: &Self::ProverData) -> Vec<RowMajorMatrix<F>> {
         prover_data.leaves.clone()
     }
 }
 
 #[cfg(test)]
-mod test{
+mod test {
     use bitcoin::taproot::TapLeaf;
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
     use scripts::execute_script_with_inputs;
 
-    use crate::mmcs::bf_mmcs::BFMmcs;
-
     use super::TapTreeMmcs;
+    use crate::mmcs::bf_mmcs::BFMmcs;
     type F = BabyBear;
 
     #[test]
@@ -121,7 +117,16 @@ mod test{
         //   1 0
         // ]
         let mat_1 = RowMajorMatrix::new(
-            vec![F::zero(), F::one(), F::two(), F::one(), F::two(), F::two(), F::one(), F::zero()],
+            vec![
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+            ],
             2,
         );
 
@@ -132,7 +137,24 @@ mod test{
         //   2 2 1 0
         // ]
         let mat_2 = RowMajorMatrix::new(
-            vec![F::zero(), F::one(), F::two(), F::one(), F::two(), F::two(), F::one(), F::zero(), F::zero(), F::one(), F::two(), F::one(), F::two(), F::two(), F::one(), F::zero()],
+            vec![
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+            ],
             4,
         );
 
@@ -147,10 +169,19 @@ mod test{
         //   0
         // ]
         let mat_3 = RowMajorMatrix::new(
-            vec![F::zero(), F::one(), F::two(), F::one(), F::two(), F::two(), F::one(), F::zero()],
+            vec![
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+            ],
             1,
         );
-        
+
         // we get pointleafs like:
         // index:0, ys:[0, 0, 1, 0, 1, 2, 1]
         // index:1, ys:[1, 0, 1, 0, 1, 2, 1]
@@ -196,21 +227,18 @@ mod test{
             if let TapLeaf::Script(script, _ver) = proof.leaf_node.clone().leaf().clone() {
                 assert_eq!(script, points_leaf.recover_points_euqal_to_commited_point());
                 let res = execute_script_with_inputs(
-                points_leaf.recover_points_euqal_to_commited_point(),
-                wrong_input,
+                    points_leaf.recover_points_euqal_to_commited_point(),
+                    wrong_input,
                 );
                 if !res.success {
                     println!("execute_script_with_inputs error as expected");
                 }
                 assert_eq!(res.success, false);
-
             } else {
                 panic!("Invalid script")
             }
         }
-        
 
         let success = mmcs.verify_taptree(&proof, &commit);
-
     }
 }

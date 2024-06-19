@@ -107,7 +107,7 @@ where
         betas,
     ) {
         let point_index = index & 1;
-        let index_sibling = 1 - point_index;
+        let index_sibling = point_index ^ 1;
         // let index_sibling = index ^ 1;
         let index_pair = index >> 1;
 

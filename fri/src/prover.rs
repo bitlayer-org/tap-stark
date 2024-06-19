@@ -64,7 +64,7 @@ where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
 {
-    println!("query index:{}", index);
+    //println!("query index:{}", index);
     let commit_phase_openings = commit_phase_commits
         .iter()
         .enumerate()
