@@ -343,4 +343,28 @@ mod test {
         let res = execute_script_with_inputs(x.get_neq_script(), x.witness());
         assert!(!res.success);
     }
+
+    #[test]
+    fn test_basic_script_info6() {
+        let mut bc_assigner = DefaultBCAssignment::new();
+        let input = (0..40).map(|x| x * 10).collect::<Vec<u32>>();
+        let mut x = script_info!(
+            "add",
+            script! {
+                for _ in 0..40 {
+                    OP_DROP
+                }
+            },
+            [input],
+            []
+        );
+        x.gen(&mut bc_assigner);
+        println!("witness_stack: {}", x.witness().len());
+
+        let res = execute_script_with_inputs(x.get_eq_script(), x.witness());
+        println!("res stack: {:?}", res);
+        assert!(res.success);
+        let res = execute_script_with_inputs(x.get_neq_script(), x.witness());
+        assert!(res.success);
+    }
 }
