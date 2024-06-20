@@ -51,6 +51,12 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     }
 }
 
+// #[derive(Clone)]
+// pub struct BatchOpening<Val: Field, InputMmcs: BFMmcs<Val>> {
+//     pub opened_values: Vec<Vec<Val>>,
+//     pub opening_proof: <InputMmcs as BFMmcs<Val>>::Proof,
+// }
+
 #[derive(Clone)]
 pub struct BatchOpening<Val: BfField, InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>> {
     pub opened_values: Vec<Vec<Val>>,
