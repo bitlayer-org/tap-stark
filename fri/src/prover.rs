@@ -1,10 +1,13 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use core::cmp::Reverse;
+use core::iter;
 
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample};
 use p3_field::TwoAdicField;
 use p3_matrix::dense::RowMajorMatrix;
+use p3_util::log2_strict_usize;
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
@@ -14,109 +17,121 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::fold_even_odd::fold_even_odd;
-use crate::{BfQueryProof, FriConfig, FriProof};
+use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriProof};
 
 #[instrument(name = "FRI prover", skip_all)]
-pub fn bf_prove<F, M, Challenger>(
+pub fn bf_prove<G, F, M, Challenger>(
+    g: &G,
     config: &FriConfig<M>,
-    input: &[Option<Vec<F>>; 32],
+    inputs: Vec<Vec<F>>,
     challenger: &mut Challenger,
-) -> (FriProof<F, M, Challenger::Witness>, Vec<usize>)
+    open_input: impl Fn(usize) -> G::InputProof,
+) -> FriProof<F, M, Challenger::Witness, G::InputProof>
 where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
     Challenger: BfGrindingChallenger + CanObserve<M::Commitment> + CanSample<F>,
+    G: FriGenericConfig<F>,
 {
-    // 1. rposition start iterator from the end and calculate the valid leagth of the polynomial want commit
-    let log_max_height = input.iter().rposition(Option::is_some).unwrap();
+    // check sorted descending
+    assert!(inputs
+        .iter()
+        .tuple_windows()
+        .all(|(l, r)| l.len() >= r.len()));
 
-    let commit_phase_result = bf_commit_phase(config, input, log_max_height, challenger);
+    // inputs input
+    let log_max_height = log2_strict_usize(inputs[0].len());
+
+    let commit_phase_result = bf_commit_phase(g, config, inputs, challenger);
 
     let pow_witness = challenger.grind(config.proof_of_work_bits);
 
-    let mut query_indices: Vec<usize> = (0..config.num_queries)
-        .map(|_| challenger.sample_bits(log_max_height))
-        .collect();
     let query_proofs = info_span!("query phase").in_scope(|| {
-        query_indices
-            .iter()
-            .map(|&index| bf_answer_query(config, &commit_phase_result.data, index))
+        iter::repeat_with(|| challenger.sample_bits(log_max_height + g.extra_query_index_bits()))
+            .take(config.num_queries)
+            .map(|index| BfQueryProof {
+                input_proof: open_input(index),
+                commit_phase_openings: bf_answer_query(
+                    config,
+                    &commit_phase_result.data,
+                    index >> g.extra_query_index_bits(),
+                ),
+            })
             .collect()
     });
 
-    (
-        FriProof {
-            commit_phase_commits: commit_phase_result.commits,
-            query_proofs,
-            final_poly: commit_phase_result.final_poly,
-            pow_witness,
-        },
-        query_indices,
-    )
+    FriProof {
+        commit_phase_commits: commit_phase_result.commits,
+        query_proofs,
+        final_poly: commit_phase_result.final_poly,
+        pow_witness,
+    }
 }
 
 fn bf_answer_query<F, M>(
     config: &FriConfig<M>,
     commit_phase_commits: &[M::ProverData],
     index: usize,
-) -> BfQueryProof<F>
+) -> Vec<CommitProof<F>>
 where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
 {
-    println!("query index:{}", index);
     let commit_phase_openings = commit_phase_commits
         .iter()
         .enumerate()
         .map(|(i, commit)| {
-            let index_i_pair = index >> i >> 1;
+            let index_i = index >> i >> 1;
 
-            let proof = config.mmcs.open_taptree(index_i_pair, commit);
+            let proof = config.mmcs.open_taptree(index_i, commit);
             proof
         })
         .collect();
 
-    BfQueryProof {
-        commit_phase_openings,
-    }
+    commit_phase_openings
 }
 
 #[instrument(name = "commit phase", skip_all)]
-fn bf_commit_phase<F, M, Challenger>(
+fn bf_commit_phase<G, F, M, Challenger>(
+    g: &G,
     config: &FriConfig<M>,
-    input: &[Option<Vec<F>>; 32],
-    log_max_height: usize,
+    inputs: Vec<Vec<F>>,
     challenger: &mut Challenger,
 ) -> CommitPhaseResult<F, M>
 where
     F: TwoAdicField,
     M: BFMmcs<F>,
     Challenger: CanObserve<M::Commitment> + CanSample<F>,
+    G: FriGenericConfig<F>,
 {
-    let mut current = input[log_max_height].as_ref().unwrap().clone();
+    let mut inputs_iter = inputs.into_iter().peekable();
+    let mut folded = inputs_iter.next().unwrap();
 
     let mut commits = vec![];
     let mut data = vec![];
 
-    for log_folded_height in (config.log_blowup..log_max_height).rev() {
-        let leaves = RowMajorMatrix::new(current.clone(), DEFAULT_MATRIX_WIDTH);
+    while folded.len() > config.blowup() {
+        let leaves = RowMajorMatrix::new(folded.clone(), 2);
         let (commit, prover_data) = config.mmcs.commit_matrix(leaves);
         challenger.observe(commit.clone());
+
+        let beta: F = challenger.sample();
+        // We passed ownership of `current` to the MMCS, so get a reference to it
+        let leaves = config.mmcs.get_matrices(&prover_data).pop().unwrap();
+        folded = g.fold_matrix(beta, leaves.as_view());
+
         commits.push(commit);
         data.push(prover_data);
 
-        let beta: F = challenger.sample();
-        current = fold_even_odd(current, beta);
-
-        if let Some(v) = &input[log_folded_height] {
-            current.iter_mut().zip_eq(v).for_each(|(c, v)| *c += *v);
+        if let Some(v) = inputs_iter.next_if(|v| v.len() == folded.len()) {
+            izip!(&mut folded, v).for_each(|(c, x)| *c += x);
         }
     }
 
     // We should be left with `blowup` evaluations of a constant polynomial.
-    assert_eq!(current.len(), config.blowup());
-    let final_poly = current[0];
-    for x in current {
+    assert_eq!(folded.len(), config.blowup());
+    let final_poly = folded[0];
+    for x in folded {
         assert_eq!(x, final_poly);
     }
 
@@ -135,6 +150,8 @@ struct CommitPhaseResult<F: Send + Sync, M: BFMmcs<F>> {
 
 #[cfg(test)]
 mod tests {
+
+    use std::marker::PhantomData;
 
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
@@ -156,6 +173,7 @@ mod tests {
 
     use super::*;
     use crate::script_verifier::bf_verify_challenges;
+    use crate::two_adic_pcs::TwoAdicFriGenericConfig;
     use crate::verifier;
 
     type PF = U32;
@@ -230,39 +248,46 @@ mod tests {
             }
         });
 
-        let (proof, idxs) = bf_prove(&fri_config, &input, &mut challenger);
+        let input: Vec<Vec<Val>> = input.into_iter().rev().flatten().collect();
+        let log_max_height = log2_strict_usize(input[0].len());
+
+        let proof = bf_prove(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            input.clone(),
+            &mut challenger,
+            |idx| {
+                // As our "input opening proof", just pass through the literal reduced openings.
+                let mut ro = vec![];
+                for v in &input {
+                    let log_height = log2_strict_usize(v.len());
+                    ro.push((log_height, v[idx >> (log_max_height - log_height)]));
+                }
+                ro.sort_by_key(|(lh, _)| Reverse(*lh));
+                ro
+            },
+        );
         let p_sample = challenger.sample_bits(8);
 
-        let log_max_height = input.iter().rposition(Option::is_some).unwrap();
-        let reduced_openings: Vec<[BabyBear; 32]> = idxs
-            .into_iter()
-            .map(|idx| {
-                input
-                    .iter()
-                    .enumerate()
-                    .map(|(log_height, v)| {
-                        if let Some(v) = v {
-                            v[idx >> (log_max_height - log_height)]
-                        } else {
-                            BabyBear::zero()
-                        }
-                    })
-                    .collect_vec()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect();
-
-        // let _alpha: Challenge = challenger.sample_ext_element();
         let v_permutation = TestPermutation {};
         let mut v_challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(v_permutation).unwrap();
-        let fri_challenges =
-            verifier::verify_shape_and_sample_challenges(&fri_config, &proof, &mut v_challenger)
-                .expect("failed verify shape and sample");
+        let fri_challenges = verifier::verify_shape_and_sample_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &mut v_challenger,
+        )
+        .expect("failed verify shape and sample");
 
-        verifier::verify_challenges(&fri_config, &proof, &fri_challenges, &reduced_openings)
-            .expect("failed verify challenges");
+        verifier::verify_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &fri_challenges,
+            |_index, proof| Ok(proof.clone()),
+        )
+        .expect("failed verify challenges");
 
         assert_eq!(
             p_sample,
@@ -322,46 +347,57 @@ mod tests {
             }
         });
 
-        let (proof, idxs) = bf_prove(&fri_config, &input, &mut challenger);
+        let input: Vec<Vec<Val>> = input.into_iter().rev().flatten().collect();
+        let log_max_height = log2_strict_usize(input[0].len());
+
+        let proof = bf_prove(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            input.clone(),
+            &mut challenger,
+            |idx| {
+                // As our "input opening proof", just pass through the literal reduced openings.
+                let mut ro = vec![];
+                for v in &input {
+                    let log_height = log2_strict_usize(v.len());
+                    ro.push((log_height, v[idx >> (log_max_height - log_height)]));
+                }
+                ro.sort_by_key(|(lh, _)| Reverse(*lh));
+                ro
+            },
+        );
+
         let p_sample = challenger.sample_bits(8);
 
-        let log_max_height = input.iter().rposition(Option::is_some).unwrap();
-        let reduced_openings: Vec<[BabyBear; 32]> = idxs
-            .into_iter()
-            .map(|idx| {
-                input
-                    .iter()
-                    .enumerate()
-                    .map(|(log_height, v)| {
-                        if let Some(v) = v {
-                            v[idx >> (log_max_height - log_height)]
-                        } else {
-                            BabyBear::zero()
-                        }
-                    })
-                    .collect_vec()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect();
-
-        // let _alpha: Challenge = challenger.sample_ext_element();
         let v_permutation = TestPermutation {};
         let mut v_challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(v_permutation).unwrap();
-        let fri_challenges =
-            verifier::verify_shape_and_sample_challenges(&fri_config, &proof, &mut v_challenger)
-                .expect("failed verify shape and sample");
+        let fri_challenges = verifier::verify_shape_and_sample_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &mut v_challenger,
+        )
+        .expect("failed verify shape and sample");
+
+        verifier::verify_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &fri_challenges,
+            |_index, proof| Ok(proof.clone()),
+        )
+        .expect("failed verify challenges");
 
         bf_verify_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
             &mut assign,
             &fri_config,
             &proof,
             &fri_challenges,
-            &reduced_openings,
+            |_index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
-
         assert_eq!(
             p_sample,
             v_challenger.sample_bits(8),
@@ -420,43 +456,55 @@ mod tests {
             }
         });
 
-        let (proof, idxs) = bf_prove(&fri_config, &input, &mut challenger);
+        let input: Vec<Vec<Val>> = input.into_iter().rev().flatten().collect();
+        let log_max_height = log2_strict_usize(input[0].len());
 
-        let log_max_height = input.iter().rposition(Option::is_some).unwrap();
-        let reduced_openings: Vec<[BabyBear; 32]> = idxs
-            .into_iter()
-            .map(|idx| {
-                input
-                    .iter()
-                    .enumerate()
-                    .map(|(log_height, v)| {
-                        if let Some(v) = v {
-                            v[idx >> (log_max_height - log_height)]
-                        } else {
-                            BabyBear::zero()
-                        }
-                    })
-                    .collect_vec()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect();
+        let proof = bf_prove(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            input.clone(),
+            &mut challenger,
+            |idx| {
+                // As our "input opening proof", just pass through the literal reduced openings.
+                let mut ro = vec![];
+                for v in &input {
+                    let log_height = log2_strict_usize(v.len());
+                    ro.push((log_height, v[idx >> (log_max_height - log_height)]));
+                }
+                ro.sort_by_key(|(lh, _)| Reverse(*lh));
+                ro
+            },
+        );
 
-        // let _alpha: Challenge = challenger.sample_ext_element();
         let permutation = Blake3Permutation {};
-        let mut v_challenger =
+        let mut v_challenger: BfChallenger<F, [u8; 4], Blake3Permutation, 16> =
             BfChallenger::<F, PF, Blake3Permutation, WIDTH>::new(permutation).unwrap();
-        let fri_challenges =
-            verifier::verify_shape_and_sample_challenges(&fri_config, &proof, &mut v_challenger)
-                .expect("failed verify shape and sample");
+        let fri_challenges = verifier::verify_shape_and_sample_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &mut v_challenger,
+        )
+        .expect("failed verify shape and sample");
 
-        verifier::verify_challenges(&fri_config, &proof, &fri_challenges, &reduced_openings)
-            .expect("failed verify challenges");
+        verifier::verify_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &fri_challenges,
+            |_index, proof| Ok(proof.clone()),
+        )
+        .expect("failed verify challenges");
+
+        // verifier::verify_challenges(&fri_config, &proof, &fri_challenges, &reduced_openings)
+        //     .expect("failed verify challenges");
     }
 }
 
 #[cfg(test)]
 mod tests2 {
+
+    use std::marker::PhantomData;
 
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
@@ -477,6 +525,7 @@ mod tests2 {
     use tracing_subscriber::fmt;
 
     use super::*;
+    use crate::two_adic_pcs::TwoAdicFriGenericConfig;
     use crate::{bf_verify_challenges, verifier};
 
     type PF = U32;
@@ -551,39 +600,47 @@ mod tests2 {
             }
         });
 
-        let (proof, idxs) = bf_prove(&fri_config, &input, &mut challenger);
+        // let (proof, idxs) = bf_prove(&fri_config, &input, &mut challenger);
+        let input: Vec<Vec<Val>> = input.into_iter().rev().flatten().collect();
+        let log_max_height = log2_strict_usize(input[0].len());
+
+        let proof = bf_prove(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            input.clone(),
+            &mut challenger,
+            |idx| {
+                // As our "input opening proof", just pass through the literal reduced openings.
+                let mut ro = vec![];
+                for v in &input {
+                    let log_height = log2_strict_usize(v.len());
+                    ro.push((log_height, v[idx >> (log_max_height - log_height)]));
+                }
+                ro.sort_by_key(|(lh, _)| Reverse(*lh));
+                ro
+            },
+        );
         let p_sample = challenger.sample_bits(8);
 
-        let log_max_height = input.iter().rposition(Option::is_some).unwrap();
-        let reduced_openings: Vec<[F; 32]> = idxs
-            .into_iter()
-            .map(|idx| {
-                input
-                    .iter()
-                    .enumerate()
-                    .map(|(log_height, v)| {
-                        if let Some(v) = v {
-                            v[idx >> (log_max_height - log_height)]
-                        } else {
-                            F::zero()
-                        }
-                    })
-                    .collect_vec()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect();
-
-        // let _alpha: Challenge = challenger.sample_ext_element();
         let v_permutation = TestPermutation {};
         let mut v_challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(v_permutation).unwrap();
-        let fri_challenges =
-            verifier::verify_shape_and_sample_challenges(&fri_config, &proof, &mut v_challenger)
-                .expect("failed verify shape and sample");
+        let fri_challenges = verifier::verify_shape_and_sample_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &mut v_challenger,
+        )
+        .expect("failed verify shape and sample");
 
-        verifier::verify_challenges(&fri_config, &proof, &fri_challenges, &reduced_openings)
-            .expect("failed verify challenges");
+        verifier::verify_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &fri_challenges,
+            |_index, proof| Ok(proof.clone()),
+        )
+        .expect("failed verify challenges");
 
         assert_eq!(
             p_sample,
@@ -643,46 +700,58 @@ mod tests2 {
             }
         });
 
-        let (proof, idxs) = bf_prove(&fri_config, &input, &mut challenger);
-        let p_sample = challenger.sample_bits(8);
+        let input: Vec<Vec<Val>> = input.into_iter().rev().flatten().collect();
+        let log_max_height = log2_strict_usize(input[0].len());
 
-        let log_max_height = input.iter().rposition(Option::is_some).unwrap();
-        let reduced_openings: Vec<[F; 32]> = idxs
-            .into_iter()
-            .map(|idx| {
-                input
-                    .iter()
-                    .enumerate()
-                    .map(|(log_height, v)| {
-                        if let Some(v) = v {
-                            v[idx >> (log_max_height - log_height)]
-                        } else {
-                            F::zero()
-                        }
-                    })
-                    .collect_vec()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect();
+        let proof = bf_prove(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            input.clone(),
+            &mut challenger,
+            |idx| {
+                // As our "input opening proof", just pass through the literal reduced openings.
+                let mut ro = vec![];
+                for v in &input {
+                    let log_height = log2_strict_usize(v.len());
+                    ro.push((log_height, v[idx >> (log_max_height - log_height)]));
+                }
+                ro.sort_by_key(|(lh, _)| Reverse(*lh));
+                ro
+            },
+        );
+
+        let p_sample = challenger.sample_bits(8);
 
         // let _alpha: Challenge = challenger.sample_ext_element();
         let v_permutation = TestPermutation {};
         let mut v_challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(v_permutation).unwrap();
-        let fri_challenges =
-            verifier::verify_shape_and_sample_challenges(&fri_config, &proof, &mut v_challenger)
-                .expect("failed verify shape and sample");
+        let fri_challenges = verifier::verify_shape_and_sample_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &mut v_challenger,
+        )
+        .expect("failed verify shape and sample");
+
+        verifier::verify_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+            &fri_config,
+            &proof,
+            &fri_challenges,
+            |_index, proof| Ok(proof.clone()),
+        )
+        .expect("failed verify challenges");
 
         bf_verify_challenges(
+            &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
             &mut assign,
             &fri_config,
             &proof,
             &fri_challenges,
-            &reduced_openings,
+            |_index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
-
         assert_eq!(
             p_sample,
             v_challenger.sample_bits(8),

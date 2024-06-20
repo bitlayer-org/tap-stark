@@ -11,9 +11,10 @@ use primitives::mmcs::taptree_mmcs::CommitProof;
 //     serialize = "Witness: Serialize",
 //     deserialize = "Witness: Deserialize<'de>"
 // ))]
-pub struct FriProof<F: BfField, M: BFMmcs<F>, Witness> {
+#[derive(Clone)]
+pub struct FriProof<F: BfField, M: BFMmcs<F>, Witness, InputProof> {
     pub(crate) commit_phase_commits: Vec<M::Commitment>,
-    pub(crate) query_proofs: Vec<BfQueryProof<F>>,
+    pub(crate) query_proofs: Vec<BfQueryProof<F, InputProof>>,
     // This could become Vec<FC::Challenge> if this library was generalized to support non-constant
     // final polynomials.
     pub(crate) final_poly: F,
@@ -22,7 +23,9 @@ pub struct FriProof<F: BfField, M: BFMmcs<F>, Witness> {
 
 // #[derive(Serialize, Deserialize)]
 // #[serde(bound = "")]
-pub struct BfQueryProof<F: BfField> {
+#[derive(Clone)]
+pub struct BfQueryProof<F: BfField, InputProof> {
+    pub input_proof: InputProof,
     /// For each commit phase commitment, this contains openings of a commit phase codeword at the
     /// queried location, along with an opening proof.
     pub(crate) commit_phase_openings: Vec<CommitProof<F>>,

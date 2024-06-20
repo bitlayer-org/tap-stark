@@ -12,14 +12,15 @@ pub enum SVError {
     InvalidWitness,
 }
 
-impl<M> From<BfError> for FriError<M> {
+impl<M, I> From<BfError> for FriError<M, I> {
     fn from(error: BfError) -> Self {
-        FriError::<M>::BFError(error)
+        FriError::<M, I>::BFError(error)
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum FriError<CommitMmcsErr> {
+pub enum FriError<CommitMmcsErr, InputErr> {
+    InputError(InputErr),
     InvalidProofShape,
     CommitPhaseMmcsError(CommitMmcsErr),
     ScriptVerifierError(SVError),

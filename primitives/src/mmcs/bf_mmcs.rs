@@ -44,7 +44,7 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
     ) -> Result<(), Self::Error>;
 
     /// Get the matrices that were committed to.
-    fn get_matrices(&self, prover_data: &Self::ProverData) -> Vec<RowMajorMatrix<T>>;
+    fn get_matrices<'a>(&self, prover_data: &'a Self::ProverData) -> Vec<&'a RowMajorMatrix<T>>;
 
     fn get_matrix_heights(&self, prover_data: &Self::ProverData) -> Vec<usize> {
         self.get_matrices(prover_data)

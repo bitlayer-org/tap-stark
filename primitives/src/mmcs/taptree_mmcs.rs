@@ -91,8 +91,8 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
 
         (u256_to_u32(root), tree)
     }
-    fn get_matrices(&self, prover_data: &Self::ProverData) -> Vec<RowMajorMatrix<F>> {
-        prover_data.leaves.clone()
+    fn get_matrices<'a>(&self, prover_data: &'a Self::ProverData) -> Vec<&'a RowMajorMatrix<F>> {
+        prover_data.leaves.iter().collect()
     }
 }
 
