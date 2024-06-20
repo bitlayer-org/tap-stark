@@ -153,6 +153,9 @@ where
             assert_eq!(folded_eval, challenge_point.y);
         }
 
+        // assert_eq!(challenge_point.x, x);
+        // let neg_x = x * F::two_adic_generator(1);
+        // assert_eq!(sibling_point.x, neg_x);
         let mut evals = vec![folded_eval; 2];
         evals[index_sibling % 2] = sibling_point.y;
 
