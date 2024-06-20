@@ -193,6 +193,10 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
     pub fn get_points_leaf(&self, index: usize) -> &PointsLeaf<F> {
         &self.points_leafs[index]
     }
+
+    pub fn get_matrix_widths(&self) -> Vec<usize> {
+        self.leaves.iter().map(|m| m.width()).collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]

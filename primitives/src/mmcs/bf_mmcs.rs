@@ -37,6 +37,21 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
     }
 
     fn open_taptree(&self, index: usize, prover_data: &Self::ProverData) -> Self::Proof;
+    fn open_batch(
+        &self,
+        index: usize,
+        prover_data: &Self::ProverData,
+    ) -> (Vec<Vec<T>>, Self::Proof) {
+        unimplemented!()
+    }
+
+    fn verify_batch(
+        &self,
+        opened_values: &Vec<Vec<T>>,
+        proof: &Self::Proof,
+        root: &Self::Commitment,
+    ) -> Result<(), Self::Error>;
+
     fn verify_taptree(
         &self,
         proof: &Self::Proof,

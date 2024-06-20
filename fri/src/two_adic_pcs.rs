@@ -23,11 +23,12 @@ use primitives::bf_pcs::Pcs;
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
+use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
 use serde::{Deserialize, Serialize};
 use tracing::{info_span, instrument};
 
 use crate::error::{self, FriError};
-use crate::{prover, FriConfig, FriGenericConfig, FriProof};
+use crate::{prover, verifier, FriConfig, FriGenericConfig, FriProof};
 
 #[derive(Debug)]
 pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
@@ -48,8 +49,14 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     }
 }
 
+// #[derive(Clone)]
+// pub struct BatchOpening<Val: Field, InputMmcs: BFMmcs<Val>> {
+//     pub opened_values: Vec<Vec<Val>>,
+//     pub opening_proof: <InputMmcs as BFMmcs<Val>>::Proof,
+// }
+
 #[derive(Clone)]
-pub struct BatchOpening<Val: Field, InputMmcs: BFMmcs<Val>> {
+pub struct BatchOpening<Val: BfField, InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>> {
     pub opened_values: Vec<Vec<Val>>,
     pub opening_proof: <InputMmcs as BFMmcs<Val>>::Proof,
 }
@@ -132,448 +139,454 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
     }
 }
 
-// impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger> Pcs<Challenge, Challenger>
-//     for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
-// where
-//     Val: TwoAdicField,
-//     Dft: TwoAdicSubgroupDft<Val>,
-//     InputMmcs: BFMmcs<Val>,
-//     FriMmcs: BFMmcs<Challenge>,
-//     Challenge: BfField + ExtensionField<Val>,
-//     Challenger:
-//         CanObserve<FriMmcs::Commitment> + CanSample<Challenge> + BfGrindingChallenger,
-// {
-//     type Domain = TwoAdicMultiplicativeCoset<Val>;
-//     type Commitment = InputMmcs::Commitment;
-//     type ProverData = InputMmcs::ProverData;
-//     type Proof = FriProof<Challenge, FriMmcs, Challenger::Witness>;
-//     type Error = FriError<InputMmcs::Error>;
+impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger> Pcs<Challenge, Challenger>
+    for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
+where
+    Val: BfField,
+    Dft: TwoAdicSubgroupDft<Val>,
+    InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>,
+    FriMmcs: BFMmcs<Challenge, Proof = CommitProof<Challenge>>,
+    Challenge: BfField + ExtensionField<Val>,
+    Challenger: CanObserve<FriMmcs::Commitment> + CanSample<Challenge> + BfGrindingChallenger,
+{
+    type Domain = TwoAdicMultiplicativeCoset<Val>;
+    type Commitment = InputMmcs::Commitment;
+    type ProverData = InputMmcs::ProverData;
+    type Proof =
+        FriProof<Challenge, FriMmcs, Challenger::Witness, Vec<BatchOpening<Val, InputMmcs>>>;
+    type Error = FriError<FriMmcs::Error, InputMmcs::Error>;
 
-//     fn natural_domain_for_degree(&self, degree: usize) -> Self::Domain {
-//         let log_n = log2_strict_usize(degree);
-//         TwoAdicMultiplicativeCoset {
-//             log_n,
-//             shift: Val::one(),
-//         }
-//     }
+    fn natural_domain_for_degree(&self, degree: usize) -> Self::Domain {
+        let log_n = log2_strict_usize(degree);
+        TwoAdicMultiplicativeCoset {
+            log_n,
+            shift: Val::one(),
+        }
+    }
 
-// // for the pcs verifier:
-// // script conponents:
-// // a matrix for multi-point open
-// // reduce the same height matrix open.
-// // the input of this function:
-// //
-// // p_1(X), p_2(X)
-// // zeta
-// // p_1(zeta) , p_2(zeta)
-// // q_1(X) = (p_1(X) - p_1(zeta))/(X-zeta)
-// // q_1(c_0) = (p_1(c_0) - p_1(zeta))/(c_0-zeta
-// // assume the case:
-// // commit phase
-// // 1. we have some polynomials like p_1(X), p_2(X) with the same degree
-// // 2. p_1(X), p_2(X) will resprent as P_1_m(X) and P_2_m(X) is the matrix form of p_1(X) and p_2(X)
-// // 3. p_1(z_1) and p_1(z_2) is the evaluation of p_1(z_1) and p_1(z_2) at z_1 and z_2 which is the sample points produced by the Fiat-Shamir heuristic
-// // 4. p_2(z_1) is the evaluation of p_2(z_1) at z_1 which is the sample points produced by the Fiat-Shamir heuristic.
-// // 5. p_1_m(z_1) ,p_1_m(z_2) is the row of p_1_m(X) matrix
-// // 6. p_2_m(z_1) is the row of p_2_m(X) matrix
-// // 7. compute q_1(X) = p_1(X) - p_1(z_1)/(X-z_1) and q_1'(X) = p_1(X) - p_1(z_2) / (X-z_2)
-// // 8. compute q_2(X) = p_2(X) - p_2(z_1)/(X-z_1)
-// //
-// // we place the matrixs of q_1(X), q_1'(X), q_2(X) follow the below sequence:
-// // { q_1_m(X) , q_1'_m(X) , q_2_m(X) }
-// // 9. reduce_q_1(X) = alpha^0 * q_1_m(x)_0 ... + alpha^w_1 * q_1_m(x)_w_1   {w_1 is the width of the matrix p_1_m(X)}
-// // 10. reduce_q_1'(X) = alpha^w_1 * q_1'_m(x)_0 ... + alpha^(w_1+w_1) * q_1'_m(x)_w_1   {w_1 is the width of the matrix p_1_m(X)}
-// // 11. reduce_q_2(X) = alpha^w(w_1) * q_2_m(x)_0 ... + alpha^(2w_1+w_2) * q_2_m(x)_w_2   {w_2 is the width of the matrix p_2_m(X)}
-// // 12. finally, compute the unique reduce_q(X) = reduce_q_1(X) + reduce_q_1'(X) + reduce_q_2(X)
-// // 13. low degree test for reduce_q(X),  output the corseponding fri_input proof{  p_1(c_0),p_2(c_0) and the MTPs} and fri-proof
-// // 14. output the p_1_m(z_1) ,p_1_m(z_2) and p_2_m(z_1)
+    // for the pcs verifier:
+    // script conponents:
+    // a matrix for multi-point open
+    // reduce the same height matrix open.
+    // the input of this function:
+    //
+    // p_1(X), p_2(X)
+    // zeta
+    // p_1(zeta) , p_2(zeta)
+    // q_1(X) = (p_1(X) - p_1(zeta))/(X-zeta)
+    // q_1(c_0) = (p_1(c_0) - p_1(zeta))/(c_0-zeta
+    // assume the case:
+    // commit phase
+    // 1. we have some polynomials like p_1(X), p_2(X) with the same degree
+    // 2. p_1(X), p_2(X) will resprent as P_1_m(X) and P_2_m(X) is the matrix form of p_1(X) and p_2(X)
+    // 3. p_1(z_1) and p_1(z_2) is the evaluation of p_1(z_1) and p_1(z_2) at z_1 and z_2 which is the sample points produced by the Fiat-Shamir heuristic
+    // 4. p_2(z_1) is the evaluation of p_2(z_1) at z_1 which is the sample points produced by the Fiat-Shamir heuristic.
+    // 5. p_1_m(z_1) ,p_1_m(z_2) is the row of p_1_m(X) matrix
+    // 6. p_2_m(z_1) is the row of p_2_m(X) matrix
+    // 7. compute q_1(X) = p_1(X) - p_1(z_1)/(X-z_1) and q_1'(X) = p_1(X) - p_1(z_2) / (X-z_2)
+    // 8. compute q_2(X) = p_2(X) - p_2(z_1)/(X-z_1)
+    //
+    // we place the matrixs of q_1(X), q_1'(X), q_2(X) follow the below sequence:
+    // { q_1_m(X) , q_1'_m(X) , q_2_m(X) }
+    // 9. reduce_q_1(X) = alpha^0 * q_1_m(x)_0 ... + alpha^w_1 * q_1_m(x)_w_1   {w_1 is the width of the matrix p_1_m(X)}
+    // 10. reduce_q_1'(X) = alpha^w_1 * q_1'_m(x)_0 ... + alpha^(w_1+w_1) * q_1'_m(x)_w_1   {w_1 is the width of the matrix p_1_m(X)}
+    // 11. reduce_q_2(X) = alpha^w(w_1) * q_2_m(x)_0 ... + alpha^(2w_1+w_2) * q_2_m(x)_w_2   {w_2 is the width of the matrix p_2_m(X)}
+    // 12. finally, compute the unique reduce_q(X) = reduce_q_1(X) + reduce_q_1'(X) + reduce_q_2(X)
+    // 13. low degree test for reduce_q(X),  output the corseponding fri_input proof{  p_1(c_0),p_2(c_0) and the MTPs} and fri-proof
+    // 14. output the p_1_m(z_1) ,p_1_m(z_2) and p_2_m(z_1)
 
-// // query phase:
-// // 0. verify the MTPs for p_1(c_0),p_2(c_0)
-// // 1. compute q_1(c_0) = p_1(c_0) - p_1(z_1)/(c_0-z_1) ; q_1'(c_0) = p_1(c_0) - p_1(z_2)/(c_0-z_2) ; q_2(c_0) = p_2(c_0) - p_2(z_1)/(c_0-z_1)
-// // 2. compute reduce_q_1(c_0), reduce_q_1'(c_0), reduce_q_2(c_0) using alpha
-// // 3. compute reduce_q(c_0) = reduce_q_1(c_0) + reduce_q_1'(c_0) + reduce_q_2(c_0)
-// // 4. verify reduce_q(c_0)  and the giving reduce_q(c_0)
+    // query phase:
+    // 0. verify the MTPs for p_1(c_0),p_2(c_0)
+    // 1. compute q_1(c_0) = p_1(c_0) - p_1(z_1)/(c_0-z_1) ; q_1'(c_0) = p_1(c_0) - p_1(z_2)/(c_0-z_2) ; q_2(c_0) = p_2(c_0) - p_2(z_1)/(c_0-z_1)
+    // 2. compute reduce_q_1(c_0), reduce_q_1'(c_0), reduce_q_2(c_0) using alpha
+    // 3. compute reduce_q(c_0) = reduce_q_1(c_0) + reduce_q_1'(c_0) + reduce_q_2(c_0)
+    // 4. verify reduce_q(c_0)  and the giving reduce_q(c_0)
 
-// // so the input of this function is:
-// // the sample index index_to_c_0 , p_1(c_0), p_2(c_0) and the MTPs,and commitment
-// // p_1_m(z_1) ,p_1_m(z_2) and p_2_m(z_1) , z_1 and z_2
-// // reduce_q(c_0)
+    // so the input of this function is:
+    // the sample index index_to_c_0 , p_1(c_0), p_2(c_0) and the MTPs,and commitment
+    // p_1_m(z_1) ,p_1_m(z_2) and p_2_m(z_1) , z_1 and z_2
+    // reduce_q(c_0)
 
-//     fn commit(
-//         &self,
-//         evaluations: Vec<(Self::Domain, RowMajorMatrix<Val>)>,
-//     ) -> (Self::Commitment, Self::ProverData) {
-//         let ldes: Vec<_> = evaluations
-//             .into_iter()
-//             .map(|(domain, evals)| {
-//                 assert_eq!(domain.size(), evals.height());
-//                 let shift = Val::generator() / domain.shift;
-//                 // Commit to the bit-reversed LDE.
-//                 self.dft
-//                     .coset_lde_batch(evals, self.fri.log_blowup, shift)
-//                     .bit_reverse_rows()
-//                     .to_row_major_matrix()
-//             })
-//             .collect();
+    fn commit(
+        &self,
+        evaluations: Vec<(Self::Domain, RowMajorMatrix<Val>)>,
+    ) -> (Self::Commitment, Self::ProverData) {
+        let ldes: Vec<_> = evaluations
+            .into_iter()
+            .map(|(domain, evals)| {
+                assert_eq!(domain.size(), evals.height());
+                let shift = Val::generator() / domain.shift;
+                // Commit to the bit-reversed LDE.
+                self.dft
+                    .coset_lde_batch(evals, self.fri.log_blowup, shift)
+                    .bit_reverse_rows()
+                    .to_row_major_matrix()
+            })
+            .collect();
 
-//         self.mmcs.commit(ldes)
-//     }
+        self.mmcs.commit(ldes)
+    }
 
-//     fn get_evaluations_on_domain<'a>(
-//         &self,
-//         prover_data: &'a Self::ProverData,
-//         idx: usize,
-//         domain: Self::Domain,
-//     ) -> impl Matrix<Val> + 'a {
-//         // todo: handle extrapolation for LDEs we don't have
-//         assert_eq!(domain.shift, Val::generator());
-//         let lde = self.mmcs.get_matrices(prover_data)[idx];
-//         assert!(lde.height() >= domain.size());
-//         lde.split_rows(domain.size()).0.bit_reverse_rows()
-//     }
+    fn get_evaluations_on_domain<'a>(
+        &self,
+        prover_data: &'a Self::ProverData,
+        idx: usize,
+        domain: Self::Domain,
+    ) -> impl Matrix<Val> + 'a {
+        // todo: handle extrapolation for LDEs we don't have
+        assert_eq!(domain.shift, Val::generator());
+        let lde = self.mmcs.get_matrices(prover_data)[idx];
+        assert!(lde.height() >= domain.size());
+        lde.split_rows(domain.size()).0.bit_reverse_rows()
+    }
 
-//     fn open(
-//         &self,
-//         // For each round,
-//         // each round means a polynomial with multi open-points
-//         rounds: Vec<(
-//             &Self::ProverData,
-//             // for each matrix,
-//             Vec<
-//                 // points to open
-//                 Vec<Challenge>,
-//             >,
-//         )>,
-//         challenger: &mut Challenger,
-//     ) -> (OpenedValues<Challenge>, Self::Proof) {
-//         /*
-//         q_1(x) = p(x) - p(z_1) / (x - z_1)
-//         q_2(x) = p(x) - p(z_1) / (x - z_1)
+    fn open(
+        &self,
+        // For each round,
+        // each round means a polynomial with multi open-points
+        rounds: Vec<(
+            &Self::ProverData,
+            // for each matrix,
+            Vec<
+                // points to open
+                Vec<Challenge>,
+            >,
+        )>,
+        challenger: &mut Challenger,
+    ) -> (OpenedValues<Challenge>, Self::Proof) {
+        /*
+        q_1(x) = p(x) - p(z_1) / (x - z_1)
+        q_2(x) = p(x) - p(z_1) / (x - z_1)
 
-//         A quick rundown of the optimizations in this function:
-//         We are trying to compute sum_i alpha^i * (p(X) - y)/(X - z),
-//         for each z an opening point, y = p(z).
-//         Each p(X) is given as evaluations in bit-reversed order
-//         in the columns of the matrices.
-//         y is computed by barycentric interpolation.
-//         X and p(X) are in the base field; alpha, y and z are in the extension.
-//         The primary goal is to minimize extension multiplications.
+        A quick rundown of the optimizations in this function:
+        We are trying to compute sum_i alpha^i * (p(X) - y)/(X - z),
+        for each z an opening point, y = p(z).
+        Each p(X) is given as evaluations in bit-reversed order
+        in the columns of the matrices.
+        y is computed by barycentric interpolation.
+        X and p(X) are in the base field; alpha, y and z are in the extension.
+        The primary goal is to minimize extension multiplications.
 
-//         - Instead of computing all alpha^i, we just compute alpha^i for i up to the largest width
-//         of a matrix, then multiply by an "alpha offset" when accumulating.
-//               a^0 x0 + a^1 x1 + a^2 x2 + a^3 x3 + ...
-//             = a^0 ( a^0 x0 + a^1 x1 ) + a^2 ( a^0 x2 + a^1 x3 ) + ...
-//             (see `alpha_pows`, `alpha_pow_offset`, `num_reduced`)
+        - Instead of computing all alpha^i, we just compute alpha^i for i up to the largest width
+        of a matrix, then multiply by an "alpha offset" when accumulating.
+              a^0 x0 + a^1 x1 + a^2 x2 + a^3 x3 + ...
+            = a^0 ( a^0 x0 + a^1 x1 ) + a^2 ( a^0 x2 + a^1 x3 ) + ...
+            (see `alpha_pows`, `alpha_pow_offset`, `num_reduced`)
 
-//         - For each unique point z, we precompute 1/(X-z) for the largest subgroup opened at this point.
-//         Since we compute it in bit-reversed order, smaller subgroups can simply truncate the vector.
-//             (see `inv_denoms`)
+        - For each unique point z, we precompute 1/(X-z) for the largest subgroup opened at this point.
+        Since we compute it in bit-reversed order, smaller subgroups can simply truncate the vector.
+            (see `inv_denoms`)
 
-//         - Then, for each matrix (with columns p_i) and opening point z, we want:
-//             for each row (corresponding to subgroup element X):
-//                 reduced[X] += alpha_offset * sum_i [ alpha^i * inv_denom[X] * (p_i[X] - y[i]) ]
+        - Then, for each matrix (with columns p_i) and opening point z, we want:
+            for each row (corresponding to subgroup element X):
+                reduced[X] += alpha_offset * sum_i [ alpha^i * inv_denom[X] * (p_i[X] - y[i]) ]
 
-//             We can factor out inv_denom, and expand what's left:
-//                 reduced[X] += alpha_offset * inv_denom[X] * sum_i [ alpha^i * p_i[X] - alpha^i * y[i] ]
+            We can factor out inv_denom, and expand what's left:
+                reduced[X] += alpha_offset * inv_denom[X] * sum_i [ alpha^i * p_i[X] - alpha^i * y[i] ]
 
-//             And separate the sum:
-//                 reduced[X] += alpha_offset * inv_denom[X] * [ sum_i [ alpha^i * p_i[X] ] - sum_i [ alpha^i * y[i] ] ]
+            And separate the sum:
+                reduced[X] += alpha_offset * inv_denom[X] * [ sum_i [ alpha^i * p_i[X] ] - sum_i [ alpha^i * y[i] ] ]
 
-//             And now the last sum doesn't depend on X, so we can precompute that for the matrix, too.
-//             So the hot loop (that depends on both X and i) is just:
-//                 sum_i [ alpha^i * p_i[X] ]
+            And now the last sum doesn't depend on X, so we can precompute that for the matrix, too.
+            So the hot loop (that depends on both X and i) is just:
+                sum_i [ alpha^i * p_i[X] ]
 
-//             with alpha^i an extension, p_i[X] a base
+            with alpha^i an extension, p_i[X] a base
 
-//         */
-//         // Batch combination challenge
-//         let alpha: Challenge = challenger.sample();
+        */
+        // Batch combination challenge
+        let alpha: Challenge = challenger.sample();
 
-//         let mats_and_points = rounds
-//             .iter()
-//             .map(|(data, points)| {
-//                 // data在这里代表一个多项式，points在这里代表要对一个多项式打开哪些点
-//                 (
-//                     self.mmcs
-//                         .get_matrices(data)
-//                         .into_iter()
-//                         .map(|m| m.as_view())
-//                         .collect_vec(),
-//                     points,
-//                 )
-//             })
-//             .collect_vec();
-//         let mats = mats_and_points
-//             .iter()
-//             .flat_map(|(mats, _)| mats)
-//             .collect_vec();
+        let mats_and_points = rounds
+            .iter()
+            .map(|(data, points)| {
+                // data在这里代表一个多项式，points在这里代表要对一个多项式打开哪些点
+                (
+                    self.mmcs
+                        .get_matrices(data)
+                        .into_iter()
+                        .map(|m| m.as_view())
+                        .collect_vec(),
+                    points,
+                )
+            })
+            .collect_vec();
+        let mats = mats_and_points
+            .iter()
+            .flat_map(|(mats, _)| mats)
+            .collect_vec();
 
-//         let global_max_height = mats.iter().map(|m| m.height()).max().unwrap();
-//         let log_global_max_height = log2_strict_usize(global_max_height);
+        let global_max_height = mats.iter().map(|m| m.height()).max().unwrap();
+        let log_global_max_height = log2_strict_usize(global_max_height);
 
-//         // For each unique opening point z, we will find the largest degree bound
-//         // for that point, and precompute 1/(X - z) for the largest subgroup (in bitrev order).
-//         let inv_denoms = compute_inverse_denominators(&mats_and_points, Val::generator());
+        // For each unique opening point z, we will find the largest degree bound
+        // for that point, and precompute 1/(X - z) for the largest subgroup (in bitrev order).
+        let inv_denoms = compute_inverse_denominators(&mats_and_points, Val::generator());
 
-//         let mut all_opened_values: OpenedValues<Challenge> = vec![];
+        let mut all_opened_values: OpenedValues<Challenge> = vec![];
 
-//         // 同一高度的Matrix会reduce到同一个reduce_opening
-//         let mut reduced_openings: [_; 32] = core::array::from_fn(|_| None);
-//         let mut num_reduced = [0; 32];
+        // 同一高度的Matrix会reduce到同一个reduce_opening
+        let mut reduced_openings: [_; 32] = core::array::from_fn(|_| None);
+        let mut num_reduced = [0; 32];
 
-//         for (mats, points) in mats_and_points {
-//             let opened_values_for_round = all_opened_values.pushed_mut(vec![]);
-//             for (mat, points_for_mat) in izip!(mats, points) {
-//                 let log_height = log2_strict_usize(mat.height());
-//                 // 如果其他同高度的matrix已经reduce结束，复用他们的结果
-//                 let reduced_opening_for_log_height = reduced_openings[log_height]
-//                     .get_or_insert_with(|| vec![Challenge::zero(); mat.height()]);
-//                 debug_assert_eq!(reduced_opening_for_log_height.len(), mat.height());
+        for (mats, points) in mats_and_points {
+            let opened_values_for_round = all_opened_values.pushed_mut(vec![]);
+            for (mat, points_for_mat) in izip!(mats, points) {
+                let log_height = log2_strict_usize(mat.height());
+                // 如果其他同高度的matrix已经reduce结束，复用他们的结果
+                let reduced_opening_for_log_height = reduced_openings[log_height]
+                    .get_or_insert_with(|| vec![Challenge::zero(); mat.height()]);
+                debug_assert_eq!(reduced_opening_for_log_height.len(), mat.height());
 
-//                 let opened_values_for_mat = opened_values_for_round.pushed_mut(vec![]);
-//                 for &point in points_for_mat { //对一个matrix打开第一个点
-//                     let _guard =
-//                         info_span!("reduce matrix quotient", dims = %mat.dimensions()).entered();
+                let opened_values_for_mat = opened_values_for_round.pushed_mut(vec![]);
+                for &point in points_for_mat {
+                    //对一个matrix打开第一个点
+                    let _guard =
+                        info_span!("reduce matrix quotient", dims = %mat.dimensions()).entered();
 
-//                     // Use Barycentric interpolation to evaluate the matrix at the given point.
-//                     let ys: Vec<Challenge> = info_span!("compute opened values with Lagrange interpolation")
-//                         .in_scope(|| {
-//                             let (low_coset, _) =
-//                                 mat.split_rows(mat.height() >> self.fri.log_blowup); // 得到原来的多项式
-//                                 // 每一列evaluate为一个值
-//                             interpolate_coset(
-//                                 &BitReversalPerm::new_view(low_coset),
-//                                 Val::generator(),
-//                                 point,
-//                             )
-//                         });
+                    // Use Barycentric interpolation to evaluate the matrix at the given point.
+                    let ys: Vec<Challenge> = info_span!(
+                        "compute opened values with Lagrange interpolation"
+                    )
+                    .in_scope(|| {
+                        let (low_coset, _) = mat.split_rows(mat.height() >> self.fri.log_blowup); // 得到原来的多项式
+                                                                                                  // 每一列evaluate为一个值
+                        interpolate_coset(
+                            &BitReversalPerm::new_view(low_coset),
+                            Val::generator(),
+                            point,
+                        )
+                    });
 
-//                     let alpha_pow_offset = alpha.exp_u64(num_reduced[log_height] as u64);
-//                     // sum_i [ alpha^i * y[i] ]
-//                     let reduced_ys: Challenge = dot_product(alpha.powers(), ys.iter().copied());
+                    let alpha_pow_offset = alpha.exp_u64(num_reduced[log_height] as u64);
+                    // sum_i [ alpha^i * y[i] ]
+                    let reduced_ys: Challenge = dot_product(alpha.powers(), ys.iter().copied());
 
-//                     info_span!("reduce rows").in_scope(|| {
-//                         // sum_i [ alpha^i * p_i[X]  with alpha^i an extension, p_i[X] a base
-//                         mat.dot_ext_powers(alpha) // 会把多列的matrix变成1列
-//                             .zip(reduced_opening_for_log_height.par_iter_mut())
-//                             // This might be longer, but zip will truncate to smaller subgroup
-//                             // (which is ok because it's bitrev)
-//                             .zip(inv_denoms.get(&point).unwrap().par_iter())
-//                             .for_each(|((reduced_row, ro), &inv_denom)| {
-//                                 //  reduced[X] += alpha_offset * inv_denom[X] * [ sum_i [ alpha^i * p_i[X] ] - sum_i [ alpha^i * y[i] ] ]
-//                                 //计算reduce得到的q(x) 这里意味着会将相同matrix的不同打开点对应的q(x)的【相同行】 通过alpha的线性组合reduce到一起： 最后得到一个一列的matrix，高度跟原来一样
-//                                 *ro += alpha_pow_offset * (reduced_row - reduced_ys) * inv_denom
-//                             })
-//                     });
+                    info_span!("reduce rows").in_scope(|| {
+                        // sum_i [ alpha^i * p_i[X]  with alpha^i an extension, p_i[X] a base
+                        mat.dot_ext_powers(alpha) // 会把多列的matrix变成1列
+                            .zip(reduced_opening_for_log_height.par_iter_mut())
+                            // This might be longer, but zip will truncate to smaller subgroup
+                            // (which is ok because it's bitrev)
+                            .zip(inv_denoms.get(&point).unwrap().par_iter())
+                            .for_each(|((reduced_row, ro), &inv_denom)| {
+                                //  reduced[X] += alpha_offset * inv_denom[X] * [ sum_i [ alpha^i * p_i[X] ] - sum_i [ alpha^i * y[i] ] ]
+                                //计算reduce得到的q(x) 这里意味着会将相同matrix的不同打开点对应的q(x)的【相同行】 通过alpha的线性组合reduce到一起： 最后得到一个一列的matrix，高度跟原来一样
+                                *ro += alpha_pow_offset * (reduced_row - reduced_ys) * inv_denom
+                            })
+                    });
 
-//                     num_reduced[log_height] += mat.width();
-//                     opened_values_for_mat.push(ys);
-//                 }
-//             }
-//         }
+                    num_reduced[log_height] += mat.width();
+                    opened_values_for_mat.push(ys);
+                }
+            }
+        }
 
-//         // q_1(x) = p_1(x) - p_1(z_1) / (x - z_1)
-//         // q_2(x) = p_1(x) - p_1(z_2) / (x - z_2)
-//         // q_3(x) = p_2(x) - p_2(z_3) / (x - z_3)
-//         // fri_input = Q(X) = q_1(X) + q_2(X) + q_3(X)
-//         let fri_input = reduced_openings.into_iter().rev().flatten().collect_vec();
+        // q_1(x) = p_1(x) - p_1(z_1) / (x - z_1)
+        // q_2(x) = p_1(x) - p_1(z_2) / (x - z_2)
+        // q_3(x) = p_2(x) - p_2(z_3) / (x - z_3)
+        // fri_input = Q(X) = q_1(X) + q_2(X) + q_3(X)
+        let fri_input = reduced_openings.into_iter().rev().flatten().collect_vec();
 
-//         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
-//             TwoAdicFriGenericConfig(PhantomData);
+        let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
+            TwoAdicFriGenericConfig(PhantomData);
 
-//         let fri_proof = prover::prove(&g, &self.fri, fri_input, challenger, |index| {
-//             rounds
-//                 .iter()
-//                 .map(|(data, _)| {
-//                     let log_max_height = log2_strict_usize(self.mmcs.get_max_height(data));
-//                     let bits_reduced = log_global_max_height - log_max_height;
-//                     let reduced_index = index >> bits_reduced;
-//                     // return the p_1(challenger), p_3(challenger) as Opening opening values
-//                     let (opened_values, opening_proof) = self.mmcs.open_batch(reduced_index, data);
-//                     BatchOpening {
-//                         opened_values,
-//                         opening_proof,
-//                     }
-//                 })
-//                 .collect()
-//         });
+        let fri_proof = prover::bf_prove(&g, &self.fri, fri_input, challenger, |index| {
+            rounds
+                .iter()
+                .map(|(data, _)| {
+                    let log_max_height = log2_strict_usize(self.mmcs.get_max_height(data));
+                    let bits_reduced = log_global_max_height - log_max_height;
+                    let reduced_index = index >> bits_reduced;
+                    // return the p_1(challenger), p_3(challenger) as Opening opening values
+                    let (opened_values, opening_proof) = self.mmcs.open_batch(reduced_index, data);
+                    BatchOpening {
+                        opened_values: opened_values,
+                        opening_proof: opening_proof,
+                    }
+                })
+                .collect()
+        });
 
-//         // all_opened_values places  ys-vec for vec![p_1(z_1),p_1(z_2),p_2(z_3)]
-//         // fri_proof places p_1(challenger), p_3(challenger) and their merkle proof which can be verified by
-//         // reduce_ys_1 = alpha_i * p_1(z_1)_i [i is the width of p_1(x)-matrix]
-//         // reduce_ys_2 = alpha_i * p_1(z_2)_i [i is the width of p_1(x)-matrix]
-//         // reduce_ys_3 = alpha_i * p_2(z_3)_i [i is the width of p_2(x)-matrix]
-//         // A challenger index is k
-//         // reduce_p_1(k) = alpha_i * p_1(k)_i [i is the width of p_1(x)-matrix]
-//         // reduce_p_2(k) = alpha_i * p_2(k)_i [i is the width of p_2(x)-matrix]
-//         // calculate quotient polynomial:
-//         // q_1(k) = reduce_p_1(k) - reduce_ys_1 / (k - z_1)
-//         // q_2(k) = reduce_p_1(k) - reduce_ys_2 / (k - z_2)
-//         // q_3(k) = reduce_p_2(k) - reduce_ys_3 / (k - z_3)
-//         // Verify:
-//         // Q(k) = q_1(k) + q_2(k) + q_3(k)
-//         //
-//         // Fri Proof Component:
-//         // BatchOpening {
-//         //     opened_values, // p_1(k)  p_2(k)
-//         //     opening_proof, // path     path
-//         // }
-//         //
-//         // all_opened_values Component:
-//         //  vec![p_1(z_1),p_1(z_2),p_2(z_3)]
-//         (all_opened_values, fri_proof)
-//     }
+        // all_opened_values places  ys-vec for vec![p_1(z_1),p_1(z_2),p_2(z_3)]
+        // fri_proof places p_1(challenger), p_3(challenger) and their merkle proof which can be verified by
+        // reduce_ys_1 = alpha_i * p_1(z_1)_i [i is the width of p_1(x)-matrix]
+        // reduce_ys_2 = alpha_i * p_1(z_2)_i [i is the width of p_1(x)-matrix]
+        // reduce_ys_3 = alpha_i * p_2(z_3)_i [i is the width of p_2(x)-matrix]
+        // A challenger index is k
+        // reduce_p_1(k) = alpha_i * p_1(k)_i [i is the width of p_1(x)-matrix]
+        // reduce_p_2(k) = alpha_i * p_2(k)_i [i is the width of p_2(x)-matrix]
+        // calculate quotient polynomial:
+        // q_1(k) = reduce_p_1(k) - reduce_ys_1 / (k - z_1)
+        // q_2(k) = reduce_p_1(k) - reduce_ys_2 / (k - z_2)
+        // q_3(k) = reduce_p_2(k) - reduce_ys_3 / (k - z_3)
+        // Verify:
+        // Q(k) = q_1(k) + q_2(k) + q_3(k)
+        //
+        // Fri Proof Component:
+        // BatchOpening {
+        //     opened_values, // p_1(k)  p_2(k)
+        //     opening_proof, // path     path
+        // }
+        //
+        // all_opened_values Component:
+        //  vec![p_1(z_1),p_1(z_2),p_2(z_3)]
+        (all_opened_values, fri_proof)
+    }
 
-//     fn verify(
-//         &self,
-//         // For each round:
-//         rounds: Vec<(
-//             Self::Commitment,
-//             // for each matrix:
-//             Vec<(
-//                 // its domain,
-//                 Self::Domain,
-//                 // for each point:
-//                 Vec<(
-//                     // the point,
-//                     Challenge,
-//                     // values at the point
-//                     Vec<Challenge>, // ys
-//                 )>,
-//             )>,
-//         )>,
-//         proof: &Self::Proof,
-//         challenger: &mut Challenger,
-//     ) -> Result<(), Self::Error> {
-//         // Batch combination challenge
-//         let alpha: Challenge = challenger.sample();
+    fn verify(
+        &self,
+        // For each round:
+        rounds: Vec<(
+            Self::Commitment,
+            // for each matrix:
+            Vec<(
+                // its domain,
+                Self::Domain,
+                // for each point:
+                Vec<(
+                    // the point,
+                    Challenge,
+                    // values at the point
+                    Vec<Challenge>, // ys
+                )>,
+            )>,
+        )>,
+        proof: &Self::Proof,
+        challenger: &mut Challenger,
+    ) -> Result<(), Self::Error> {
+        // Batch combination challenge
+        let alpha: Challenge = challenger.sample();
 
-//         let log_global_max_height = proof.commit_phase_commits.len() + self.fri.log_blowup;
+        let log_global_max_height = proof.commit_phase_commits.len() + self.fri.log_blowup;
 
-//         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
-//             TwoAdicFriGenericConfig(PhantomData);
+        let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
+            TwoAdicFriGenericConfig(PhantomData);
 
-//         verifier::verify(&g, &self.fri, proof, challenger, |index, input_proof| {
-//             // TODO: separate this out into functions
+        let fri_challenges =
+            verifier::verify_shape_and_sample_challenges(&g, &self.fri, proof, challenger)
+                .expect("failed verify shape and sample");
 
-//             // log_height -> (alpha_pow, reduced_opening)
-//             let mut reduced_openings = BTreeMap::<usize, (Challenge, Challenge)>::new();
+        verifier::verify_challenges(
+            &g,
+            &self.fri,
+            proof,
+            &fri_challenges,
+            |index, input_proof| {
+                // TODO: separate this out into functions
 
-//             for (batch_opening, (batch_commit, mats)) in izip!(input_proof, &rounds) {
-//                 let batch_heights = mats
-//                     .iter()
-//                     .map(|(domain, _)| domain.size() << self.fri.log_blowup)
-//                     .collect_vec();
-//                 let batch_dims = batch_heights
-//                     .iter()
-//                     // TODO: MMCS doesn't really need width; we put 0 for now.
-//                     .map(|&height| Dimensions { width: 0, height })
-//                     .collect_vec();
+                // log_height -> (alpha_pow, reduced_opening)
+                let mut reduced_openings = BTreeMap::<usize, (Challenge, Challenge)>::new();
 
-//                 let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
-//                 let log_batch_max_height = log2_strict_usize(*batch_max_height);
-//                 let bits_reduced = log_global_max_height - log_batch_max_height;
-//                 let reduced_index = index >> bits_reduced;
+                for (batch_opening, (batch_commit, mats)) in izip!(input_proof, &rounds) {
+                    let batch_heights = mats
+                        .iter()
+                        .map(|(domain, _)| domain.size() << self.fri.log_blowup)
+                        .collect_vec();
 
-//                 // verify opening
-//                 // BatchOpening {
-//                 //     opened_values, // p_1(k)  p_2(k) reduce_index is k
-//                 //     opening_proof, // path     path
-//                 // }
-//                 self.mmcs.verify_batch(
-//                     batch_commit,
-//                     &batch_dims,
-//                     reduced_index,
-//                     &batch_opening.opened_values,
-//                     &batch_opening.opening_proof,
-//                 )?;
+                    let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
+                    let log_batch_max_height = log2_strict_usize(*batch_max_height);
+                    let bits_reduced = log_global_max_height - log_batch_max_height;
+                    let reduced_index = index >> bits_reduced;
 
-//                 // mat_opening  places vec![p_1(k),p_2(k)]
-//                 // mat_points_and_values places vec![  vec![(z_1,p_1(z_1)),(z_2,p_1(z_2))],  vec![(z_3,p_2(z_3))]]
-//                 for (mat_opening, (mat_domain, mat_points_and_values)) in
-//                     izip!(&batch_opening.opened_values, mats)
-//                 {
-//                     let log_height = log2_strict_usize(mat_domain.size()) + self.fri.log_blowup;
+                    // verify opening
+                    // BatchOpening {
+                    //     opened_values, // p_1(k)  p_2(k) reduce_index is k
+                    //     opening_proof, // path     path
+                    // }
+                    self.mmcs.verify_batch(
+                        &batch_opening.opened_values,
+                        &batch_opening.opening_proof,
+                        batch_commit,
+                    )?;
 
-//                     let bits_reduced = log_global_max_height - log_height;
-//                     let rev_reduced_index = reverse_bits_len(index >> bits_reduced, log_height);
+                    // mat_opening  places vec![p_1(k),p_2(k)]
+                    // mat_points_and_values places vec![  vec![(z_1,p_1(z_1)),(z_2,p_1(z_2))],  vec![(z_3,p_2(z_3))]]
+                    for (mat_opening, (mat_domain, mat_points_and_values)) in
+                        izip!(&batch_opening.opened_values, mats)
+                    {
+                        let log_height = log2_strict_usize(mat_domain.size()) + self.fri.log_blowup;
 
-//                     // todo: this can be nicer with domain methods?
+                        let bits_reduced = log_global_max_height - log_height;
+                        let rev_reduced_index = reverse_bits_len(index >> bits_reduced, log_height);
 
-//                     let x = Val::generator()
-//                         * Val::two_adic_generator(log_height).exp_u64(rev_reduced_index as u64);// calculate k
+                        // todo: this can be nicer with domain methods?
 
-//                     // 这个主要是为了处理有多个matrix具有相同的高度的情况
-//                     let (alpha_pow, ro) = reduced_openings
-//                         .entry(log_height)
-//                         .or_insert((Challenge::one(), Challenge::zero()));
+                        let x = Val::generator()
+                            * Val::two_adic_generator(log_height).exp_u64(rev_reduced_index as u64); // calculate k
 
-//                     // 这里处理的是 一个matrix有多个打开点的情况
-//                     for (z, ps_at_z) in mat_points_and_values {
-//                         for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) { // 根据每一列处理
-//                             let quotient = (-p_at_z + p_at_x) / (-*z + x); // p_at_x is p_1(k) p_2(k) and x is k ; p_at_z is p_1(z_1) p_1(z_2) p_2(z_3)
-//                             *ro += *alpha_pow * quotient;
-//                             *alpha_pow *= alpha;
-//                         }
-//                     }
-//                 }
-//             }
+                        // 这个主要是为了处理有多个matrix具有相同的高度的情况
+                        let (alpha_pow, ro) = reduced_openings
+                            .entry(log_height)
+                            .or_insert((Challenge::one(), Challenge::zero()));
 
-//             // Return reduced openings descending by log_height.
-//             Ok(reduced_openings
-//                 .into_iter()
-//                 .rev()
-//                 .map(|(log_height, (_alpha_pow, ro))| (log_height, ro))
-//                 .collect())
-//         })
-//         .expect("fri err");
+                        // 这里处理的是 一个matrix有多个打开点的情况
+                        for (z, ps_at_z) in mat_points_and_values {
+                            for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
+                                // 根据每一列处理
+                                let quotient = (-p_at_z + p_at_x) / (-*z + x); // p_at_x is p_1(k) p_2(k) and x is k ; p_at_z is p_1(z_1) p_1(z_2) p_2(z_3)
+                                *ro += *alpha_pow * quotient;
+                                *alpha_pow *= alpha;
+                            }
+                        }
+                    }
+                }
 
-//         Ok(())
-//     }
-// }
+                // Return reduced openings descending by log_height.
+                Ok(reduced_openings
+                    .into_iter()
+                    .rev()
+                    .map(|(log_height, (_alpha_pow, ro))| (log_height, ro))
+                    .collect())
+            },
+        )
+        .expect("fri err");
 
-// #[instrument(skip_all)]
-// fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matrix<F>>(
-//     mats_and_points: &[(Vec<M>, &Vec<Vec<EF>>)],
-//     coset_shift: F,
-// ) -> LinearMap<EF, Vec<EF>> {
-//     let mut max_log_height_for_point: LinearMap<EF, usize> = LinearMap::new();
-//     for (mats, points) in mats_and_points {
-//         for (mat, points_for_mat) in izip!(mats, *points) {
-//             let log_height = log2_strict_usize(mat.height());
-//             for &z in points_for_mat {
-//                 if let Some(lh) = max_log_height_for_point.get_mut(&z) {
-//                     *lh = core::cmp::max(*lh, log_height);
-//                 } else {
-//                     max_log_height_for_point.insert(z, log_height);
-//                 }
-//             }
-//         }
-//     }
+        Ok(())
+    }
+}
 
-//     // Compute the largest subgroup we will use, in bitrev order.
-//     let max_log_height = *max_log_height_for_point.values().max().unwrap();
-//     let mut subgroup = cyclic_subgroup_coset_known_order(
-//         F::two_adic_generator(max_log_height),
-//         coset_shift,
-//         1 << max_log_height,
-//     )
-//     .collect_vec();
-//     reverse_slice_index_bits(&mut subgroup);
+#[instrument(skip_all)]
+fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matrix<F>>(
+    mats_and_points: &[(Vec<M>, &Vec<Vec<EF>>)],
+    coset_shift: F,
+) -> LinearMap<EF, Vec<EF>> {
+    let mut max_log_height_for_point: LinearMap<EF, usize> = LinearMap::new();
+    for (mats, points) in mats_and_points {
+        for (mat, points_for_mat) in izip!(mats, *points) {
+            let log_height = log2_strict_usize(mat.height());
+            for &z in points_for_mat {
+                if let Some(lh) = max_log_height_for_point.get_mut(&z) {
+                    *lh = core::cmp::max(*lh, log_height);
+                } else {
+                    max_log_height_for_point.insert(z, log_height);
+                }
+            }
+        }
+    }
 
-//     max_log_height_for_point
-//         .into_iter()
-//         .map(|(z, log_height)| {
-//             (
-//                 z,
-//                 batch_multiplicative_inverse(
-//                     &subgroup[..(1 << log_height)]
-//                         .iter()
-//                         .map(|&x| EF::from_base(x) - z)
-//                         .collect_vec(),
-//                 ),
-//             )
-//         })
-//         .collect()
-// }
+    // Compute the largest subgroup we will use, in bitrev order.
+    let max_log_height = *max_log_height_for_point.values().max().unwrap();
+    let mut subgroup = cyclic_subgroup_coset_known_order(
+        F::two_adic_generator(max_log_height),
+        coset_shift,
+        1 << max_log_height,
+    )
+    .collect_vec();
+    reverse_slice_index_bits(&mut subgroup);
+
+    max_log_height_for_point
+        .into_iter()
+        .map(|(z, log_height)| {
+            (
+                z,
+                batch_multiplicative_inverse(
+                    &subgroup[..(1 << log_height)]
+                        .iter()
+                        .map(|&x| EF::from_base(x) - z)
+                        .collect_vec(),
+                ),
+            )
+        })
+        .collect()
+}

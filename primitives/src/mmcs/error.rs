@@ -8,6 +8,7 @@ pub enum BfError {
     EvaluationLeafError,
     ExecuteScriptError,
     InvalidMerkleProof,
+    InvalidOpenedValue,
     IndexWithEmptyLeaf(u32, u32),
 }
 
