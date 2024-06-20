@@ -120,23 +120,28 @@ where
         &proof.commit_phase_openings,
         betas,
     ) {
-        let index_sibling = index ^ 1;
+        let point_index = index & 1;
+        let index_sibling = point_index ^ 1;
         let index_pair = index >> 1;
 
+        //println!("ch point index:{}, sib point index:{}, index_pair:{}", point_index, index_sibling, index_pair);
         let open_leaf: PointsLeaf<F> = step.points_leaf.clone();
-        let challenge_point: Point<F> = open_leaf.get_point_by_index(index).unwrap().clone();
+        let challenge_point: Point<F> = open_leaf.get_point_by_index(point_index).unwrap().clone();
 
         let opening = reduced_openings[log_folded_height + 1];
         folded_eval = opening + folded_eval;
 
+        let sibling_point: Point<F> = open_leaf.get_point_by_index(index_sibling).unwrap().clone();
+
+        //println!("challenge_point.y:{}", challenge_point.y);
+        //println!("sibling_point.y:{}", sibling_point.y);
         if log_folded_height < log_max_height - 1 {
             assert_eq!(folded_eval, challenge_point.y);
         }
-        let sibling_point: Point<F> = open_leaf.get_point_by_index(index_sibling).unwrap().clone();
 
-        assert_eq!(challenge_point.x, x);
+        // assert_eq!(challenge_point.x, x);
         let neg_x = x * F::two_adic_generator(1);
-        assert_eq!(sibling_point.x, neg_x);
+        // assert_eq!(sibling_point.x, neg_x);
 
         let mut evals = vec![folded_eval; 2];
         evals[index_sibling % 2] = sibling_point.y;

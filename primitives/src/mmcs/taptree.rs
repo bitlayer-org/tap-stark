@@ -1,11 +1,14 @@
 use core::ops::{Deref, DerefMut};
 use core::{mem, usize};
+use std::cmp::Reverse;
 
 use bitcoin::taproot::LeafVersion::TapScript;
 use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
 use bitcoin::{ScriptBuf, TapNodeHash};
 use itertools::{Chunk, Itertools};
-use p3_util::{log2_strict_usize, reverse_slice_index_bits};
+use p3_matrix::dense::RowMajorMatrix;
+use p3_matrix::Matrix;
+use p3_util::{log2_ceil_usize, log2_strict_usize, reverse_slice_index_bits};
 use scripts::secret_generator::ThreadSecretGen;
 
 use super::error::BfError;
@@ -104,53 +107,65 @@ pub struct GlobalTree {}
 pub struct PolyCommitTree<F: BfField, const NUM_POLY: usize> {
     pub tree: BasicTree<NUM_POLY>,
     pub points_leafs: Vec<PointsLeaf<F>>,
+    pub leaves: Vec<RowMajorMatrix<F>>,
 }
 
 impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
-    pub fn new(log_poly_points: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            tree: BasicTree::<NUM_POLY>::new(log_poly_points),
+            tree: BasicTree::<NUM_POLY>::new(),
             points_leafs: Vec::new(),
+            leaves: Vec::new(),
         }
     }
 
-    pub fn commit_points(&mut self, evaluations: Vec<F>) {
-        let poly_points = evaluations.len();
-        let evas = Polynomials::new_eva_poly(
-            evaluations,
-            F::sub_group(log2_strict_usize(poly_points)),
-            PolynomialType::Eva,
-        );
-        let mut builder = TreeBuilder::<NUM_POLY>::new();
-        for i in 0..evas.values.len() {
-            let leaf_script = construct_evaluation_leaf_script::<1, F>(
-                i,
-                evas.points[i],
-                vec![evas.values[i].clone()],
-            )
-            .unwrap();
-        }
-        self.tree = builder.build_tree();
-    }
+    pub fn commit_points(&mut self, leaves: Vec<RowMajorMatrix<F>>) {
+        self.leaves = leaves.clone();
+        //evaluations sorted by height
+        let mut leaves_largest_first = leaves
+            .iter()
+            .sorted_by_key(|l| Reverse(l.height()))
+            .peekable();
+        let max_height = leaves_largest_first.peek().unwrap().height();
+        let log_max_height = log2_ceil_usize(max_height);
 
-    pub fn commit_rev_points(&mut self, evaluations: Vec<F>, width: usize) {
-        let poly_points = evaluations.len();
-        let mut subgroup = F::sub_group(log2_strict_usize(poly_points));
-        let leaf_indexs: Vec<usize> = (0..poly_points).into_iter().collect();
-        reverse_slice_index_bits(&mut subgroup);
+        //println!("max height:{:?}", max_height);
         let mut tree_builder = TreeBuilder::<NUM_POLY>::new();
-        for i in (0..poly_points).into_iter().step_by(width) {
-            let leaf = PointsLeaf::new(
-                leaf_indexs[i],
-                leaf_indexs[i + 1],
-                subgroup[i],
-                evaluations[i],
-                subgroup[i + 1],
-                evaluations[i + 1],
-            );
-            self.add_leaf(&mut tree_builder, &leaf)
+
+        let mut leaf_xs = vec![vec![]; max_height];
+        let mut leaf_ys = vec![vec![]; max_height];
+
+        for log_height in (0..log_max_height + 1).rev() {
+            let matrices = leaves_largest_first
+                .peeking_take_while(|m| log2_ceil_usize(m.height()) == log_height)
+                .collect_vec();
+            if matrices.len() != 0 {
+                let curr_height = matrices[0].height();
+                for matrix in matrices.iter() {
+                    let width = matrix.width();
+                    for index in 0..curr_height {
+                        //find which leaf to store
+                        let curr_index = index << (log_max_height - log_height);
+                        let next_index = (index + 1) << (log_max_height - log_height);
+                        for i in 0..width {
+                            for leaf_index in curr_index..next_index {
+                                //default x to F::one(), may be we will delete x in struct point soon
+                                leaf_xs[leaf_index].push(F::one());
+                                leaf_ys[leaf_index].push(matrix.values[index * matrix.width() + i]);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
+        for index in 0..max_height {
+            if leaf_ys[index].len() != 0 {
+                //println!("index:{:?}, ys:{:?}", index, leaf_ys[index]);
+                let leaf = PointsLeaf::new(index, &leaf_xs[index], &leaf_ys[index]);
+                self.add_leaf(&mut tree_builder, &leaf);
+            }
+        }
         self.tree = tree_builder.build_tree();
     }
 
@@ -161,8 +176,6 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
     pub fn get_tapleaf(&self, index: usize) -> Option<&LeafNode> {
         self.tree.get_tapleaf(index)
     }
-
-    // pub fn combine_tree()
 
     pub fn verify_inclusion_by_index(&self, index: usize) -> bool {
         self.tree.verify_inclusion_by_index(index)
@@ -224,6 +237,7 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
         let mut t_idx_to_m_idx = self.leaf_indices.clone();
 
         while working_nodes.len() > 1 {
+            println!("working_nodes len:{:?}", working_nodes.len());
             //the tuple() method in itertool will drop the elements in Iter if the size is not enough to
             //generate a tuple, so we have to save the last node if the size of working node is odd.
             let mut reminder_node: Option<NodeInfo> = None;
@@ -245,6 +259,7 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
 
                 todo.push(ret_node);
 
+                //swap index when !left_first
                 if !left_first {
                     let mut temp_a_leaf_indices = vec![0usize; a_leaf_size];
                     temp_a_leaf_indices
@@ -262,6 +277,7 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
                 a_start_idx += a_leaf_size + b_leaf_size;
             }
             working_nodes = todo;
+
             todo = Vec::new();
         }
         BasicTree {
@@ -281,7 +297,7 @@ fn reverse_idx_dict(idx_dict: &Vec<usize>) -> Vec<usize> {
 }
 
 impl<const NUM_POLY: usize> BasicTree<NUM_POLY> {
-    pub fn new(log_poly_points: usize) -> Self {
+    pub fn new() -> Self {
         Self {
             root_node: None,
             leaf_count: 0,
@@ -562,39 +578,39 @@ mod tests {
         // assert!(root_node.leaf_nodes().len()==8);
     }
 
-    fn commit_with_poly_tree<F: BfField>(degree: usize) -> PolyCommitTree<F, 1>
-    where
-        Standard: Distribution<F>,
-    {
-        let mut rng = thread_rng();
-        let coeffs = (0..degree).map(|_| rng.gen::<F>()).collect::<Vec<_>>();
+    // fn commit_with_poly_tree<F: BfField>(degree: usize) -> PolyCommitTree<F, 1>
+    // where
+    //     Standard: Distribution<F>,
+    // {
+    //     let mut rng = thread_rng();
+    //     let coeffs = (0..degree).map(|_| rng.gen::<F>()).collect::<Vec<_>>();
 
-        let poly = Polynomials::new(coeffs, PolynomialType::Coeff);
-        let eva_poly = poly.convert_to_evals_at_subgroup();
-        let evas = eva_poly.values();
-        let mut poly_taptree = PolyCommitTree::<F, 1>::new(2);
-        poly_taptree.commit_rev_points(evas.clone(), 2);
-        poly_taptree
-    }
+    //     let poly = Polynomials::new(coeffs, PolynomialType::Coeff);
+    //     let eva_poly = poly.convert_to_evals_at_subgroup();
+    //     let evas = eva_poly.values();
+    //     let mut poly_taptree = PolyCommitTree::<F, 1>::new(2);
+    //     poly_taptree.commit_rev_points(evas.clone(), 2);
+    //     poly_taptree
+    // }
 
-    #[test]
-    fn test_poly_commit_tree() {
-        // x^2 + 2 x + 3
-        type F = BabyBear;
-        let poly_taptree = commit_with_poly_tree::<F>(8);
+    // #[test]
+    // fn test_poly_commit_tree() {
+    //     // x^2 + 2 x + 3
+    //     type F = BabyBear;
+    //     let poly_taptree = commit_with_poly_tree::<F>(8);
 
-        (0..4).into_iter().for_each(|index| {
-            let leaf = poly_taptree.get_tapleaf(index).unwrap();
-            let script = leaf.leaf().as_script().unwrap();
-            let points_leaf = poly_taptree.get_points_leaf(index);
-            assert_eq!(
-                points_leaf.recover_points_euqal_to_commited_point(),
-                *script.0
-            );
-            let success = verify_inclusion(poly_taptree.root().node_hash(), leaf);
-            assert_eq!(success, true);
-        });
-    }
+    //     (0..4).into_iter().for_each(|index| {
+    //         let leaf = poly_taptree.get_tapleaf(index).unwrap();
+    //         let script = leaf.leaf().as_script().unwrap();
+    //         let points_leaf = poly_taptree.get_points_leaf(index);
+    //         assert_eq!(
+    //             points_leaf.recover_points_euqal_to_commited_point(),
+    //             *script.0
+    //         );
+    //         let success = verify_inclusion(poly_taptree.root().node_hash(), leaf);
+    //         assert_eq!(success, true);
+    //     });
+    // }
 
     #[test]
     fn test_swap_slice() {

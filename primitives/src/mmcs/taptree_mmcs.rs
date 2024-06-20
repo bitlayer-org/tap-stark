@@ -47,8 +47,7 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
     type Error = BfError;
 
     fn open_taptree(&self, index: usize, prover_data: &PolyCommitTree<F, 1>) -> Self::Proof {
-        // The matrix with width-2 lead to the index need to right shift 1-bit
-        let leaf_index = index >> LOG_DEFAULT_MATRIX_WIDTH;
+        let leaf_index = index;
         let leaf = prover_data.get_tapleaf(leaf_index);
         let opening_leaf = match leaf {
             Some(v) => v,
@@ -61,6 +60,7 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
                 panic!("invalid leaf index")
             }
         };
+        println!("leaf_index:{:?}", leaf_index);
         let open_leaf = prover_data.get_points_leaf(leaf_index).clone();
         CommitProof {
             points_leaf: open_leaf,
@@ -83,12 +83,167 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
     }
 
     fn commit(&self, inputs: Vec<RowMajorMatrix<F>>) -> (Self::Commitment, Self::ProverData) {
-        let log_leaves = log2_strict_usize(inputs[0].height());
-        let mut tree = PolyCommitTree::<F, 1>::new(log_leaves);
+        // let log_leaves = log2_strict_usize(inputs[0].height());
+        let mut tree = PolyCommitTree::<F, 1>::new();
 
-        tree.commit_rev_points(inputs[0].values.clone(), inputs[0].width);
+        tree.commit_points(inputs);
         let root: U256 = tree.root().node_hash().as_byte_array().clone();
 
         (u256_to_u32(root), tree)
+    }
+    fn get_matrices(&self, prover_data: &Self::ProverData) -> Vec<RowMajorMatrix<F>> {
+        prover_data.leaves.clone()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bitcoin::taproot::TapLeaf;
+    use p3_baby_bear::BabyBear;
+    use p3_field::AbstractField;
+    use p3_matrix::dense::RowMajorMatrix;
+    use scripts::execute_script_with_inputs;
+
+    use super::TapTreeMmcs;
+    use crate::mmcs::bf_mmcs::BFMmcs;
+    type F = BabyBear;
+
+    #[test]
+    fn test_taptree_mmcs() {
+        // mat_1 = [
+        //   0 1
+        //   2 1
+        //   2 2
+        //   1 0
+        // ]
+        let mat_1 = RowMajorMatrix::new(
+            vec![
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+            ],
+            2,
+        );
+
+        // mat_2 = [
+        //   0 1 2 1
+        //   2 2 1 0
+        //   0 1 2 1
+        //   2 2 1 0
+        // ]
+        let mat_2 = RowMajorMatrix::new(
+            vec![
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+            ],
+            4,
+        );
+
+        // mat_3 = [
+        //   0
+        //   1
+        //   2
+        //   1
+        //   2
+        //   2
+        //   1
+        //   0
+        // ]
+        let mat_3 = RowMajorMatrix::new(
+            vec![
+                F::zero(),
+                F::one(),
+                F::two(),
+                F::one(),
+                F::two(),
+                F::two(),
+                F::one(),
+                F::zero(),
+            ],
+            1,
+        );
+
+        // we get pointleafs like:
+        // index:0, ys:[0, 0, 1, 0, 1, 2, 1]
+        // index:1, ys:[1, 0, 1, 0, 1, 2, 1]
+        // index:2, ys:[2, 2, 1, 2, 2, 1, 0]
+        // index:3, ys:[1, 2, 1, 2, 2, 1, 0]
+        // index:4, ys:[2, 2, 2, 0, 1, 2, 1]
+        // index:5, ys:[2, 2, 2, 0, 1, 2, 1]
+        // index:6, ys:[1, 1, 0, 2, 2, 1, 0]
+        // index:7, ys:[0, 1, 0, 2, 2, 1, 0]
+
+        let inputs = vec![mat_1, mat_2, mat_3];
+        let mmcs = TapTreeMmcs::new();
+        let (commit, prover_data) = mmcs.commit(inputs);
+
+        //test get_max_height
+        let max_height = mmcs.get_max_height(&prover_data);
+        assert_eq!(max_height, 8);
+
+        let index = 2;
+        let proof = mmcs.open_taptree(index, &prover_data);
+
+        let wrong_index = 3;
+        let wrong_proof = mmcs.open_taptree(wrong_index, &prover_data);
+
+        // let _ = proof.points_leaf.print_point_evals();
+        {
+            let points_leaf = proof.points_leaf.clone();
+            let input = points_leaf.witness();
+            if let TapLeaf::Script(script, _ver) = proof.leaf_node.clone().leaf().clone() {
+                assert_eq!(script, points_leaf.recover_points_euqal_to_commited_point());
+                let res = execute_script_with_inputs(
+                    points_leaf.recover_points_euqal_to_commited_point(),
+                    input,
+                );
+                if !res.success {
+                    println!("execute_script_with_inputs error");
+                }
+                assert_eq!(res.success, true);
+            } else {
+                panic!("Invalid script")
+            }
+        }
+
+        {
+            let points_leaf = proof.points_leaf.clone();
+            let wrong_points_leaf = wrong_proof.points_leaf.clone();
+            let wrong_input = wrong_points_leaf.witness();
+            if let TapLeaf::Script(script, _ver) = proof.leaf_node.clone().leaf().clone() {
+                assert_eq!(script, points_leaf.recover_points_euqal_to_commited_point());
+                let res = execute_script_with_inputs(
+                    points_leaf.recover_points_euqal_to_commited_point(),
+                    wrong_input,
+                );
+                if !res.success {
+                    println!("execute_script_with_inputs error as expected");
+                }
+                assert_eq!(res.success, false);
+            } else {
+                panic!("Invalid script")
+            }
+        }
+
+        let success = mmcs.verify_taptree(&proof, &commit);
     }
 }
