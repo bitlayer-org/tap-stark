@@ -87,7 +87,7 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
                 panic!("invalid leaf index")
             }
         };
-        println!("leaf_index:{:?}", leaf_index);
+        //println!("leaf_index:{:?}", leaf_index);
         let open_leaf = prover_data.get_points_leaf(leaf_index).clone();
         CommitProof {
             points_leaf: open_leaf,

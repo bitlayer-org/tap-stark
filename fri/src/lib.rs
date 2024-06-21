@@ -16,3 +16,4 @@ pub use fold_even_odd::*;
 pub use proof::*;
 pub use script_verifier::*;
 pub mod fri_scripts;
+pub use two_adic_pcs::*;
