@@ -38,7 +38,6 @@ pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     dft: Dft,
     mmcs: InputMmcs,
     fri: FriConfig<FriMmcs>,
-    scripts: Vec<ScriptInfo>,
     _phantom: PhantomData<Val>,
 }
 
@@ -48,17 +47,10 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
             dft,
             mmcs,
             fri,
-            scripts: Vec::new(),
             _phantom: PhantomData,
         }
     }
 }
-
-// #[derive(Clone)]
-// pub struct BatchOpening<Val: Field, InputMmcs: BFMmcs<Val>> {
-//     pub opened_values: Vec<Vec<Val>>,
-//     pub opening_proof: <InputMmcs as BFMmcs<Val>>::Proof,
-// }
 
 #[derive(Clone)]
 pub struct BatchOpening<Val: BfField, InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>> {
@@ -168,7 +160,6 @@ where
             shift: Val::one(),
         }
     }
-
     fn commit(
         &self,
         evaluations: Vec<(Self::Domain, RowMajorMatrix<Val>)>,

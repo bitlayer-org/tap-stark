@@ -1,5 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use bitcoin::Script;
+use script_manager::script_info::ScriptInfo;
 use core::panic;
 
 use bitcoin::taproot::TapLeaf;
