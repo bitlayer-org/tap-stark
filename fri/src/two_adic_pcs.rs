@@ -1,7 +1,6 @@
 use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
-use script_manager::script_info::ScriptInfo;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 
@@ -449,7 +448,6 @@ where
                             let prev_ro = *ro;
                             let final_ro = prev_ro + acc / (-*z + x);
                             *ro = final_ro;
-
                             let compute_acc = accmulator_script(
                                 alpha,
                                 prev_alpha_pow,
