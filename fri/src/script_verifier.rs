@@ -1,5 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use bitcoin::Script;
+use script_manager::script_info::ScriptInfo;
 use core::panic;
 
 use bitcoin::taproot::TapLeaf;
@@ -28,7 +30,8 @@ pub fn bf_verify_challenges<G, F, M, Witness>(
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
-    open_input: impl Fn(usize, &G::InputProof) -> Result<Vec<(usize, F)>, G::InputError>,
+    script_manager: &mut Vec<ScriptInfo>,
+    open_input: impl Fn(usize, &G::InputProof,&mut Vec<ScriptInfo>) -> Result<Vec<(usize, F)>, G::InputError>,
 ) -> Result<(), FriError<M::Error, G::InputError>>
 where
     F: BfField,
@@ -38,7 +41,7 @@ where
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
         let ro =
-            open_input(index, &query_proof.input_proof).map_err(|e| FriError::InputError(e))?;
+            open_input(index, &query_proof.input_proof,script_manager).map_err(|e| FriError::InputError(e))?;
 
         let folded_eval = bf_verify_query(
             g,

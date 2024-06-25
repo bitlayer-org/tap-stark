@@ -153,6 +153,7 @@ mod tests {
 
     use std::marker::PhantomData;
 
+    use bitcoin::script;
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
     use p3_challenger::CanSampleBits;
@@ -169,6 +170,7 @@ mod tests {
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
     use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+    use script_manager::script_info::ScriptInfo;
     use tracing_subscriber::fmt;
 
     use super::*;
@@ -201,6 +203,7 @@ mod tests {
 
     #[test]
     fn test_compelte_fri_process() {
+        let mut script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
@@ -285,7 +288,8 @@ mod tests {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            &mut script_manager,
+            |_index, proof,sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -298,6 +302,7 @@ mod tests {
 
     #[test]
     fn test_script_verifier() {
+        let mut script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
@@ -385,7 +390,8 @@ mod tests {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            &mut script_manager,
+            |_index, proof,sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -395,7 +401,8 @@ mod tests {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            &mut script_manager,
+            |_index, proof,sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
         assert_eq!(
@@ -409,6 +416,7 @@ mod tests {
     fn test_bf_prove_with_blake3_permutation() {
         // tracing_subscriber::registry().with(fmt::layer()).init(); // open some log information
 
+        let mut script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<F, [u8; 4], Blake3Permutation, 16> =
             BfChallenger::<F, PF, Blake3Permutation, WIDTH>::new(permutation).unwrap();
@@ -492,7 +500,8 @@ mod tests {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            &mut script_manager,
+            |_index, proof,sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -522,6 +531,7 @@ mod tests2 {
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
     use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+    use script_manager::script_info::ScriptInfo;
     use tracing_subscriber::fmt;
 
     use super::*;
@@ -553,6 +563,7 @@ mod tests2 {
 
     #[test]
     fn test_compelte_fri_process_with_ext_babybear() {
+        let mut script_manager :Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
@@ -638,7 +649,8 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            &mut script_manager,
+            |_index, proof,sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -651,6 +663,7 @@ mod tests2 {
 
     #[test]
     fn test_script_verifier() {
+        let mut script_manager :Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
@@ -739,7 +752,8 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            &mut script_manager,
+            |_index, proof, sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -749,7 +763,8 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            &mut script_manager,
+            |_index, proof,sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
         assert_eq!(

@@ -83,7 +83,7 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-        script_manager: &mut Vec<ScriptInfo>
+        script_managers: &mut Vec<ScriptInfo>,
     ) -> Result<(), Self::Error>;
 }
 

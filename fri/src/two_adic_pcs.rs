@@ -37,7 +37,6 @@ pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     dft: Dft,
     mmcs: InputMmcs,
     fri: FriConfig<FriMmcs>,
-    scripts: Vec<ScriptInfo>,
     _phantom: PhantomData<Val>,
 }
 
@@ -47,17 +46,10 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
             dft,
             mmcs,
             fri,
-            scripts: Vec::new(),
             _phantom: PhantomData,
         }
     }
 }
-
-// #[derive(Clone)]
-// pub struct BatchOpening<Val: Field, InputMmcs: BFMmcs<Val>> {
-//     pub opened_values: Vec<Vec<Val>>,
-//     pub opening_proof: <InputMmcs as BFMmcs<Val>>::Proof,
-// }
 
 #[derive(Clone)]
 pub struct BatchOpening<Val: BfField, InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>> {
@@ -167,50 +159,7 @@ where
             shift: Val::one(),
         }
     }
-
-    // for the pcs verifier:
-    // script conponents:
-    // a matrix for multi-point open
-    // reduce the same height matrix open.
-    // the input of this function:
-    //
-    // p_1(X), p_2(X)
-    // zeta
-    // p_1(zeta) , p_2(zeta)
-    // q_1(X) = (p_1(X) - p_1(zeta))/(X-zeta)
-    // q_1(c_0) = (p_1(c_0) - p_1(zeta))/(c_0-zeta
-    // assume the case:
-    // commit phase
-    // 1. we have some polynomials like p_1(X), p_2(X) with the same degree
-    // 2. p_1(X), p_2(X) will resprent as P_1_m(X) and P_2_m(X) is the matrix form of p_1(X) and p_2(X)
-    // 3. p_1(z_1) and p_1(z_2) is the evaluation of p_1(z_1) and p_1(z_2) at z_1 and z_2 which is the sample points produced by the Fiat-Shamir heuristic
-    // 4. p_2(z_1) is the evaluation of p_2(z_1) at z_1 which is the sample points produced by the Fiat-Shamir heuristic.
-    // 5. p_1_m(z_1) ,p_1_m(z_2) is the row of p_1_m(X) matrix
-    // 6. p_2_m(z_1) is the row of p_2_m(X) matrix
-    // 7. compute q_1(X) = p_1(X) - p_1(z_1)/(X-z_1) and q_1'(X) = p_1(X) - p_1(z_2) / (X-z_2)
-    // 8. compute q_2(X) = p_2(X) - p_2(z_1)/(X-z_1)
-    //
-    // we place the matrixs of q_1(X), q_1'(X), q_2(X) follow the below sequence:
-    // { q_1_m(X) , q_1'_m(X) , q_2_m(X) }
-    // 9. reduce_q_1(X) = alpha^0 * q_1_m(x)_0 ... + alpha^w_1 * q_1_m(x)_w_1   {w_1 is the width of the matrix p_1_m(X)}
-    // 10. reduce_q_1'(X) = alpha^w_1 * q_1'_m(x)_0 ... + alpha^(w_1+w_1) * q_1'_m(x)_w_1   {w_1 is the width of the matrix p_1_m(X)}
-    // 11. reduce_q_2(X) = alpha^w(w_1) * q_2_m(x)_0 ... + alpha^(2w_1+w_2) * q_2_m(x)_w_2   {w_2 is the width of the matrix p_2_m(X)}
-    // 12. finally, compute the unique reduce_q(X) = reduce_q_1(X) + reduce_q_1'(X) + reduce_q_2(X)
-    // 13. low degree test for reduce_q(X),  output the corseponding fri_input proof{  p_1(c_0),p_2(c_0) and the MTPs} and fri-proof
-    // 14. output the p_1_m(z_1) ,p_1_m(z_2) and p_2_m(z_1)
-
-    // query phase:
-    // 0. verify the MTPs for p_1(c_0),p_2(c_0)
-    // 1. compute q_1(c_0) = p_1(c_0) - p_1(z_1)/(c_0-z_1) ; q_1'(c_0) = p_1(c_0) - p_1(z_2)/(c_0-z_2) ; q_2(c_0) = p_2(c_0) - p_2(z_1)/(c_0-z_1)
-    // 2. compute reduce_q_1(c_0), reduce_q_1'(c_0), reduce_q_2(c_0) using alpha
-    // 3. compute reduce_q(c_0) = reduce_q_1(c_0) + reduce_q_1'(c_0) + reduce_q_2(c_0)
-    // 4. verify reduce_q(c_0)  and the giving reduce_q(c_0)
-
-    // so the input of this function is:
-    // the sample index index_to_c_0 , p_1(c_0), p_2(c_0) and the MTPs,and commitment
-    // p_1_m(z_1) ,p_1_m(z_2) and p_2_m(z_1) , z_1 and z_2
-    // reduce_q(c_0)
-
+    
     fn commit(
         &self,
         evaluations: Vec<(Self::Domain, RowMajorMatrix<Val>)>,
@@ -259,9 +208,6 @@ where
         challenger: &mut Challenger,
     ) -> (OpenedValues<Challenge>, Self::Proof) {
         /*
-        q_1(x) = p(x) - p(z_1) / (x - z_1)
-        q_2(x) = p(x) - p(z_1) / (x - z_1)
-
         A quick rundown of the optimizations in this function:
         We are trying to compute sum_i alpha^i * (p(X) - y)/(X - z),
         for each z an opening point, y = p(z).
@@ -304,7 +250,6 @@ where
         let mats_and_points = rounds
             .iter()
             .map(|(data, points)| {
-                // data在这里代表一个多项式，points在这里代表要对一个多项式打开哪些点
                 (
                     self.mmcs
                         .get_matrices(data)
@@ -337,14 +282,12 @@ where
             let opened_values_for_round = all_opened_values.pushed_mut(vec![]);
             for (mat, points_for_mat) in izip!(mats, points) {
                 let log_height = log2_strict_usize(mat.height());
-                // 如果其他同高度的matrix已经reduce结束，复用他们的结果
                 let reduced_opening_for_log_height = reduced_openings[log_height]
                     .get_or_insert_with(|| vec![Challenge::zero(); mat.height()]);
                 debug_assert_eq!(reduced_opening_for_log_height.len(), mat.height());
 
                 let opened_values_for_mat = opened_values_for_round.pushed_mut(vec![]);
                 for &point in points_for_mat {
-                    //对一个matrix打开第一个点
                     let _guard =
                         info_span!("reduce matrix quotient", dims = %mat.dimensions()).entered();
 
@@ -353,8 +296,8 @@ where
                         "compute opened values with Lagrange interpolation"
                     )
                     .in_scope(|| {
-                        let (low_coset, _) = mat.split_rows(mat.height() >> self.fri.log_blowup); // 得到原来的多项式
-                                                                                                  // 每一列evaluate为一个值
+                        let (low_coset, _) = mat.split_rows(mat.height() >> self.fri.log_blowup); 
+                                                                                                  
                         interpolate_coset(
                             &BitReversalPerm::new_view(low_coset),
                             Val::generator(),
@@ -363,19 +306,13 @@ where
                     });
 
                     let alpha_pow_offset = alpha.exp_u64(num_reduced[log_height] as u64);
-                    // sum_i [ alpha^i * y[i] ]
                     let reduced_ys: Challenge = dot_product(alpha.powers(), ys.iter().copied());
 
                     info_span!("reduce rows").in_scope(|| {
-                        // sum_i [ alpha^i * p_i[X]  with alpha^i an extension, p_i[X] a base
-                        mat.dot_ext_powers(alpha) // 会把多列的matrix变成1列
+                        mat.dot_ext_powers(alpha) 
                             .zip(reduced_opening_for_log_height.par_iter_mut())
-                            // This might be longer, but zip will truncate to smaller subgroup
-                            // (which is ok because it's bitrev)
                             .zip(inv_denoms.get(&point).unwrap().par_iter())
                             .for_each(|((reduced_row, ro), &inv_denom)| {
-                                //  reduced[X] += alpha_offset * inv_denom[X] * [ sum_i [ alpha^i * p_i[X] ] - sum_i [ alpha^i * y[i] ] ]
-                                //计算reduce得到的q(x) 这里意味着会将相同matrix的不同打开点对应的q(x)的【相同行】 通过alpha的线性组合reduce到一起： 最后得到一个一列的matrix，高度跟原来一样
                                 *ro += alpha_pow_offset * (reduced_row - reduced_ys) * inv_denom
                             })
                     });
@@ -386,10 +323,6 @@ where
             }
         }
 
-        // q_1(x) = p_1(x) - p_1(z_1) / (x - z_1)
-        // q_2(x) = p_1(x) - p_1(z_2) / (x - z_2)
-        // q_3(x) = p_2(x) - p_2(z_3) / (x - z_3)
-        // fri_input = Q(X) = q_1(X) + q_2(X) + q_3(X)
         let fri_input = reduced_openings.into_iter().rev().flatten().collect_vec();
 
         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
@@ -412,29 +345,6 @@ where
                 .collect()
         });
 
-        // all_opened_values places  ys-vec for vec![p_1(z_1),p_1(z_2),p_2(z_3)]
-        // fri_proof places p_1(challenger), p_3(challenger) and their merkle proof which can be verified by
-        // reduce_ys_1 = alpha_i * p_1(z_1)_i [i is the width of p_1(x)-matrix]
-        // reduce_ys_2 = alpha_i * p_1(z_2)_i [i is the width of p_1(x)-matrix]
-        // reduce_ys_3 = alpha_i * p_2(z_3)_i [i is the width of p_2(x)-matrix]
-        // A challenger index is k
-        // reduce_p_1(k) = alpha_i * p_1(k)_i [i is the width of p_1(x)-matrix]
-        // reduce_p_2(k) = alpha_i * p_2(k)_i [i is the width of p_2(x)-matrix]
-        // calculate quotient polynomial:
-        // q_1(k) = reduce_p_1(k) - reduce_ys_1 / (k - z_1)
-        // q_2(k) = reduce_p_1(k) - reduce_ys_2 / (k - z_2)
-        // q_3(k) = reduce_p_2(k) - reduce_ys_3 / (k - z_3)
-        // Verify:
-        // Q(k) = q_1(k) + q_2(k) + q_3(k)
-        //
-        // Fri Proof Component:
-        // BatchOpening {
-        //     opened_values, // p_1(k)  p_2(k)
-        //     opening_proof, // path     path
-        // }
-        //
-        // all_opened_values Component:
-        //  vec![p_1(z_1),p_1(z_2),p_2(z_3)]
         (all_opened_values, fri_proof)
     }
 
@@ -477,7 +387,8 @@ where
             &self.fri,
             proof,
             &fri_challenges,
-            |index, input_proof| {
+            script_manager,
+            |index, input_proof,sm| {
                 // TODO: separate this out into functions
 
                 // log_height -> (alpha_pow, reduced_opening)
@@ -494,11 +405,6 @@ where
                     let bits_reduced = log_global_max_height - log_batch_max_height;
                     let reduced_index = index >> bits_reduced;
 
-                    // verify opening
-                    // BatchOpening {
-                    //     opened_values, // p_1(k)  p_2(k) reduce_index is k
-                    //     opening_proof, // path     path
-                    // }
                     self.mmcs.verify_batch(
                         &batch_opening.opened_values,
                         &batch_opening.opening_proof,
@@ -525,41 +431,19 @@ where
                             .entry(log_height)
                             .or_insert((Challenge::one(), Challenge::zero()));
 
-                        // 这里处理的是 一个matrix有多个打开点的情况
                         for (z, ps_at_z) in mat_points_and_values {
-                            // script input:
-                            // ro_prev               challenge
-                            // ro_final              challenge
-                            // alpha 
-                            // alpha_pow             challenge
-                            // p_at_x row  vec<Val>
-                            // p_at_z row  vec<challenge>
-                            // z            Val
-                            // x            Val we need to calculate the x with log_height
-
-                            // ro_final - ro_prev == accmulator / x - z 
-
-                            // calculate res0 = x-z
-                            // calculate:
-                            //  res1 = alpha_pow * (p_at_x_0 - p_at_z_0) +
-                            //  alpha_pow * alpha * (p_at_x_1 - p_at_z_1) +
-                            //  alpha_pow * alpha *..* alpha (p_at_x_i - p_at_z_i)
-                            //          output: alpha_pow_final , res1
-                            // verify:
-                            // ro_prev + (res1 / res0) == ro_final
-                            // ro_prev*res0 + res1 == ro_final*res0
                             let mut acc = Challenge::zero();
                             let prev_alpha_pow = *alpha_pow;
                             for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
-                                // /**
-                                //  * Compute the value of ro:
-                                //  *
-                                //  * Original formula:
-                                //  *   ro = alpha^0 * (p(x)_{0} - p(z)_{0}) / (x - z) + alpha^1 * (p(x)_{1} -p(z)_{1}) / (x - z) + ... + alpha^i * (p(x)_{i} -p(z)_{i}) / (x - z)
-                                //  *
-                                //  * Optimized formula:
-                                //  *   ro = (alpha^0 * (p(x)_{0} - p(z)_{0}) + alpha^1 * (p(x)_{1} -p(z)_{1}) + ... + alpha^i * (p(x)_{i} -p(z)_{i})) / (x - z)
-                                //  */
+                                // 
+                                // Compute the value of ro:
+                                // 
+                                // Original formula:
+                                //    ro = alpha^0 * (p(x)_{0} - p(z)_{0}) / (x - z) + alpha^1 * (p(x)_{1} -p(z)_{1}) / (x - z) + ... + alpha^i * (p(x)_{i} -p(z)_{i}) / (x - z)
+                                // 
+                                //  Optimized formula:
+                                //    ro = (alpha^0 * (p(x)_{0} - p(z)_{0}) + alpha^1 * (p(x)_{1} -p(z)_{1}) + ... + alpha^i * (p(x)_{i} -p(z)_{i})) / (x - z)
+                                // 
                                 acc += *alpha_pow * (-p_at_z + p_at_x);
                                 *alpha_pow *= alpha;
                             }
@@ -567,8 +451,10 @@ where
                             let prev_ro = *ro;
                             let final_ro = prev_ro + acc / (-*z + x);
                             *ro = final_ro;
-                            // let compute_acc = accmulator_script(alpha, prev_alpha_pow, mat_opening.clone(), ps_at_z.clone(), final_alpha_pow, acc.clone());
-                            // let compute_ro = ro_mul_x_minus_z_script(prev_ro, final_ro, x.clone(), *z, acc);
+                            let compute_acc = accmulator_script(alpha, prev_alpha_pow, mat_opening.clone(), ps_at_z.clone(), final_alpha_pow, acc.clone());
+                            let compute_ro = ro_mul_x_minus_z_script(prev_ro, final_ro, x.clone(), *z, acc);
+                            sm.push(compute_acc);
+                            sm.push(compute_ro);
                         }
                     }
                 }
