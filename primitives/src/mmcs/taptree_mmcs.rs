@@ -52,7 +52,6 @@ impl<F: BfField> CommitProof<F> {
     pub fn verify_points_leaf(&self) -> bool {
         if let TapLeaf::Script(script, _ver) = self.leaf_node.leaf().clone() {
             let res = execute_script_with_inputs(
-                // self.points_leaf.recover_points_euqal_to_commited_point(),
                 script,
                 self.points_leaf.witness(),
             );

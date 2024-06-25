@@ -274,7 +274,6 @@ where
 
         let mut all_opened_values: OpenedValues<Challenge> = vec![];
 
-        // 同一高度的Matrix会reduce到同一个reduce_opening
         let mut reduced_openings: [_; 32] = core::array::from_fn(|_| None);
         let mut num_reduced = [0; 32];
 

@@ -124,9 +124,6 @@ where
     let mut folded_eval = F::zero();
     let mut ro_iter = reduced_openings.into_iter().peekable();
 
-    // let mut x = F::two_adic_generator(log_max_height)
-    //     .exp_u64(reverse_bits_len(index, log_max_height) as u64);
-
     for (log_folded_height, commit, step, &beta) in izip!(
         (0..log_max_height).rev(),
         commit_phase_commits,
@@ -157,14 +154,8 @@ where
             assert_eq!(folded_eval, challenge_point.y);
         }
 
-        // assert_eq!(challenge_point.x, x);
-        // let neg_x = x * F::two_adic_generator(1);
-        // assert_eq!(sibling_point.x, neg_x);
         let mut evals = vec![folded_eval; 2];
         evals[index_sibling % 2] = sibling_point.y;
-
-        // let mut xs = vec![x; 2];
-        // xs[index_sibling % 2] = neg_x;
 
         let input = open_leaf.witness();
 
@@ -185,14 +176,10 @@ where
             .map_err(FriError::CommitPhaseMmcsError)?;
 
         index = index_pair;
-        // folded_eval = evals[0] + (beta - xs[0]) * (evals[1] - evals[0]) / (xs[1] - xs[0]);
         folded_eval = g.fold_row(index, log_folded_height, beta, evals.into_iter());
-
-        // x = x.square();
     }
 
     debug_assert!(index < config.blowup(), "index was {}", index);
-    // debug_assert_eq!(x.exp_power_of_2(config.log_blowup), F::one());
 
     Ok(folded_eval)
 }
