@@ -121,7 +121,7 @@ macro_rules! make_tests_for_pcs {
     ($p:expr) => {
         #[test]
         fn single() {
-            let p = $p;
+            let mut p = $p;
             for i in 3..6 {
                 $crate::do_test_fri_pcs(&p, &[&[i]]);
             }
