@@ -1,6 +1,7 @@
 use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
+use script_manager::script_info::ScriptInfo;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 
@@ -37,6 +38,7 @@ pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     dft: Dft,
     mmcs: InputMmcs,
     fri: FriConfig<FriMmcs>,
+    scripts: Vec<ScriptInfo>,
     _phantom: PhantomData<Val>,
 }
 
@@ -46,6 +48,7 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
             dft,
             mmcs,
             fri,
+            scripts: Vec::new(),
             _phantom: PhantomData,
         }
     }

@@ -278,6 +278,27 @@ pub fn verify_quotient<Val: BfField, Challenge: BfField>(matrix_width: usize) ->
 
         OP_TRUE
     }
+
+    pub fn exec_script(&self) -> Script {
+        script!{
+            {self.z.as_u32_vec()[3]}{self.z.as_u32_vec()[2]}{self.z.as_u32_vec()[1]}{self.z.as_u32_vec()[0]}
+            {self.x.as_u32_vec()[0]}
+            {self.final_ro.as_u32_vec()[3]}{self.final_ro.as_u32_vec()[2]}{self.final_ro.as_u32_vec()[1]}{self.final_ro.as_u32_vec()[0]}
+            {self.prev_ro.as_u32_vec()[3]}{self.prev_ro.as_u32_vec()[2]}{self.prev_ro.as_u32_vec()[1]}{self.prev_ro.as_u32_vec()[0]}
+            
+            {zip::<Challenge,Val>(self.p_at_z.clone(), self.p_at_x.clone())}
+
+            {self.prev_alpha_pow.as_u32_vec()[3]}{self.prev_alpha_pow.as_u32_vec()[2]}{self.prev_alpha_pow.as_u32_vec()[1]}{self.prev_alpha_pow.as_u32_vec()[0]}
+            {self.alpha.as_u32_vec()[3]}{self.alpha.as_u32_vec()[2]}{self.alpha.as_u32_vec()[1]}{self.alpha.as_u32_vec()[0]}
+
+            {self.logic_script()}
+        }
+    }
+
+    // pub fn get_script_info(&self) -> ScriptInfo{
+    //     ScriptInfo::new("verify one matrix opening", self.logic_script()).add_input(input)
+
+    // }
 }
 
 #[cfg(test)]
