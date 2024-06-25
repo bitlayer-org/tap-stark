@@ -8,7 +8,7 @@ use itertools::izip;
 use primitives::field::BfField;
 use script_manager::script_info::{self, ScriptInfo};
 use scripts::pseudo::{
-    OP_4DROP, OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4ROLL, OP_4TOALTSTACK, OP_NDUP
+    OP_4DROP, OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4ROLL, OP_4TOALTSTACK, OP_NDUP,
 };
 use scripts::u31_lib::{
     u31_add, u31_double, u31_mul, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add,
@@ -134,14 +134,26 @@ fn compute_accmulator<Val: BfField, Challenge: BfField>(matrix_width: usize) -> 
     }
 }
 
-pub fn accmulator_script<Val: BfField, Challenge: BfField>(alpha:Challenge,prev_alpha_pow:Challenge,p_at_x_row:Vec<Val>,p_at_z_row:Vec<Challenge>,next_alpha_pow:Challenge,accmulator:Challenge) -> ScriptInfo {
+pub fn accmulator_script<Val: BfField, Challenge: BfField>(
+    alpha: Challenge,
+    prev_alpha_pow: Challenge,
+    p_at_x_row: Vec<Val>,
+    p_at_z_row: Vec<Challenge>,
+    next_alpha_pow: Challenge,
+    accmulator: Challenge,
+) -> ScriptInfo {
     assert_eq!(p_at_x_row.len(), p_at_z_row.len());
-    let mut si = ScriptInfo::new("compute_accmulator", compute_accmulator::<Val,Challenge>(p_at_x_row.len()));
+    let mut si = ScriptInfo::new(
+        "compute_accmulator",
+        compute_accmulator::<Val, Challenge>(p_at_x_row.len()),
+    );
     si.add_input(alpha).add_input(prev_alpha_pow);
-    for (px,pz) in izip!(p_at_x_row.clone(),p_at_z_row.clone()){
+    for (px, pz) in izip!(p_at_x_row.clone(), p_at_z_row.clone()) {
         si.add_input(px).add_input(pz);
     }
-    si.add_output(alpha).add_output(next_alpha_pow).add_output(accmulator);
+    si.add_output(alpha)
+        .add_output(next_alpha_pow)
+        .add_output(accmulator);
     si
 }
 
@@ -160,46 +172,56 @@ fn zip<F1: BfField, F2: BfField>(vec1: Vec<F1>, vec2: Vec<F2>) -> Script {
 }
 
 /**
- * 
+ *
  * compute:
- *  (ro_final - ro_prev) * (x - z) 
- * 
+ *  (ro_final - ro_prev) * (x - z)
+ *
  * input:
  *   stack:  
  *     ro_prev    babybear4
  *     ro_final   babybear4
  *     x          babybear
  *     z          babybear4
- * 
+ *
  * output:
  *   stack:
  *     accmulator = (ro_final - ro_prev) * (x - z)   babybear4
- */ 
-fn ro_mul_x_minus_z() -> Script{
-    script!{
-        {u31ext_sub::<BabyBear4>()} // ro_final-ro_prev 
+ */
+fn ro_mul_x_minus_z() -> Script {
+    script! {
+        {u31ext_sub::<BabyBear4>()} // ro_final-ro_prev
         OP_4TOALTSTACK
-        
+
         {u31_sub_u31ext::<BabyBear4>()}
         OP_4FROMALTSTACK
 
         {u31ext_mul::<BabyBear4>()}
     }
-}   
+}
 
-pub fn ro_mul_x_minus_z_script<Val:BfField,Challenge:BfField>(ro_prev:Challenge, ro_final:Challenge, x:Val, z: Challenge, accmulator:Challenge) -> ScriptInfo {
+pub fn ro_mul_x_minus_z_script<Val: BfField, Challenge: BfField>(
+    ro_prev: Challenge,
+    ro_final: Challenge,
+    x: Val,
+    z: Challenge,
+    accmulator: Challenge,
+) -> ScriptInfo {
     let mut si = ScriptInfo::new("ro_mul_x_minus_z", ro_mul_x_minus_z());
-    si.add_input(ro_prev).add_input(ro_final).add_input(x).add_input(z).add_output(accmulator);
+    si.add_input(ro_prev)
+        .add_input(ro_final)
+        .add_input(x)
+        .add_input(z)
+        .add_output(accmulator);
     si
 }
-    
+
 /**
- * 
+ *
  * compute:
  *  (ro_final - ro_prev) * (x - z) == accmulator
- * 
+ *
  * input:
- *   stack: 
+ *   stack:
  *      --------- accmulator input ---------
  *      alpha  
  *     prev_alpha_pow          // the prev_alpha_pow is 1 when intialization
@@ -222,9 +244,9 @@ pub fn ro_mul_x_minus_z_script<Val:BfField,Challenge:BfField>(ro_prev:Challenge,
  *     accmulator
  *     
  *     (ro_final - ro_prev) * (x - z)   babybear4
- */ 
-pub fn verify_quotient<Val:BfField,Challenge:BfField>(matrix_width:usize) -> Script {
-    script!{
+ */
+pub fn verify_quotient<Val: BfField, Challenge: BfField>(matrix_width: usize) -> Script {
+    script! {
         {compute_accmulator::<Val,Challenge>(matrix_width)}
 
         // * output:
@@ -244,15 +266,15 @@ pub fn verify_quotient<Val:BfField,Challenge:BfField>(matrix_width:usize) -> Scr
 
         {ro_mul_x_minus_z()}
 
-        // verify accmulator 
-        OP_4FROMALTSTACK  // back accmulator to stack 
+        // verify accmulator
+        OP_4FROMALTSTACK  // back accmulator to stack
         {u31ext_equalverify::<BabyBear4>()}
 
-        OP_4FROMALTSTACK  // back next_alpha_pow to stack 
+        OP_4FROMALTSTACK  // back next_alpha_pow to stack
         {u31ext_equalverify::<BabyBear4>()} // verify next_alpha_pow == final_alpha_pow
 
         OP_4FROMALTSTACK
-        OP_4DROP // drop alpha 
+        OP_4DROP // drop alpha
 
         OP_TRUE
     }
@@ -273,8 +295,6 @@ struct VerifyMatrixOpen<Val: BfField, Challenge: BfField> {
 }
 
 impl<Val: BfField, Challenge: BfField> VerifyMatrixOpen<Val, Challenge> {
-
-
     // pub fn compute_x(&self) -> Val {
     //     let x =
     //         Val::generator() * Val::two_adic_generator(self.log_height).exp_u64(self.index as u64);
@@ -289,12 +309,12 @@ impl<Val: BfField, Challenge: BfField> VerifyMatrixOpen<Val, Challenge> {
     }
 
     pub fn exec_script(&self) -> Script {
-        script!{
+        script! {
             {self.z.as_u32_vec()[3]}{self.z.as_u32_vec()[2]}{self.z.as_u32_vec()[1]}{self.z.as_u32_vec()[0]}
             {self.x.as_u32_vec()[0]}
             {self.final_ro.as_u32_vec()[3]}{self.final_ro.as_u32_vec()[2]}{self.final_ro.as_u32_vec()[1]}{self.final_ro.as_u32_vec()[0]}
             {self.prev_ro.as_u32_vec()[3]}{self.prev_ro.as_u32_vec()[2]}{self.prev_ro.as_u32_vec()[1]}{self.prev_ro.as_u32_vec()[0]}
-            
+
             {zip::<Challenge,Val>(self.p_at_z.clone(), self.p_at_x.clone())}
 
             {self.prev_alpha_pow.as_u32_vec()[3]}{self.prev_alpha_pow.as_u32_vec()[2]}{self.prev_alpha_pow.as_u32_vec()[1]}{self.prev_alpha_pow.as_u32_vec()[0]}
@@ -330,7 +350,8 @@ mod tests {
     use scripts::{execute_script, execute_script_with_inputs, BabyBear, BinomialExtensionField};
 
     use crate::fri_scripts::pcs::{
-        accmulator_script, alphapow_mul_px_minus_pz, compute_accmulator, compute_next_alpha_pow, zip
+        accmulator_script, alphapow_mul_px_minus_pz, compute_accmulator, compute_next_alpha_pow,
+        zip,
     };
 
     define_pushable!();
@@ -449,11 +470,24 @@ mod tests {
         }
 
         let mut bc_assigner = DefaultBCAssignment::new();
-        let mut exec_script_info = accmulator_script::<Val,Challenge>(alpha, init_alpha_pow, p_at_x_vector.clone(), p_at_z_vector.clone(), cur_alpha_pow, cur_ro);
+        let mut exec_script_info = accmulator_script::<Val, Challenge>(
+            alpha,
+            init_alpha_pow,
+            p_at_x_vector.clone(),
+            p_at_z_vector.clone(),
+            cur_alpha_pow,
+            cur_ro,
+        );
         exec_script_info.gen(&mut bc_assigner);
-        let res = execute_script_with_inputs(exec_script_info.get_eq_script(), exec_script_info.witness());
+        let res = execute_script_with_inputs(
+            exec_script_info.get_eq_script(),
+            exec_script_info.witness(),
+        );
         assert!(res.success);
-        let res = execute_script_with_inputs(exec_script_info.get_neq_script(), exec_script_info.witness());
+        let res = execute_script_with_inputs(
+            exec_script_info.get_neq_script(),
+            exec_script_info.witness(),
+        );
         assert!(!res.success);
 
         let acc_script = script! {

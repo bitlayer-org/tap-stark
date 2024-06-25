@@ -72,7 +72,11 @@ pub fn verify_challenges<G, F, M, Witness>(
     proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
     script_manager: &mut Vec<ScriptInfo>,
-    open_input: impl Fn(usize, &G::InputProof,&mut Vec<ScriptInfo>) -> Result<Vec<(usize, F)>, G::InputError>,
+    open_input: impl Fn(
+        usize,
+        &G::InputProof,
+        &mut Vec<ScriptInfo>,
+    ) -> Result<Vec<(usize, F)>, G::InputError>,
 ) -> Result<(), FriError<M::Error, G::InputError>>
 where
     F: BfField,
@@ -81,8 +85,8 @@ where
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
-        let ro =
-            open_input(index, &query_proof.input_proof,script_manager).map_err(|e| FriError::InputError(e))?;
+        let ro = open_input(index, &query_proof.input_proof, script_manager)
+            .map_err(|e| FriError::InputError(e))?;
         let folded_eval = verify_query(
             g,
             config,

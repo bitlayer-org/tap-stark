@@ -95,8 +95,13 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
     let script_manager = &mut vec![];
-    pcs.verify(commits_and_claims_by_round, &proof, &mut v_challenger,script_manager)
-        .unwrap()
+    pcs.verify(
+        commits_and_claims_by_round,
+        &proof,
+        &mut v_challenger,
+        script_manager,
+    )
+    .unwrap()
 }
 
 // Set it up so we create tests inside a module for each pcs, so we get nice error reports
@@ -169,8 +174,6 @@ mod babybear_fri_pcs {
     type Dft = Radix2DitParallel;
     type Challenger = BfChallenger<Challenge, PF, Blake3Permutation, WIDTH>;
     type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
-
-
 
     #[derive(Clone)]
     struct TestPermutation {}

@@ -289,7 +289,7 @@ mod tests {
             &proof,
             &fri_challenges,
             &mut script_manager,
-            |_index, proof,sm| Ok(proof.clone()),
+            |_index, proof, sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -391,7 +391,7 @@ mod tests {
             &proof,
             &fri_challenges,
             &mut script_manager,
-            |_index, proof,sm| Ok(proof.clone()),
+            |_index, proof, sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -402,7 +402,7 @@ mod tests {
             &proof,
             &fri_challenges,
             &mut script_manager,
-            |_index, proof,sm| Ok(proof.clone()),
+            |_index, proof, sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
         assert_eq!(
@@ -501,7 +501,7 @@ mod tests {
             &proof,
             &fri_challenges,
             &mut script_manager,
-            |_index, proof,sm| Ok(proof.clone()),
+            |_index, proof, sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -563,7 +563,7 @@ mod tests2 {
 
     #[test]
     fn test_compelte_fri_process_with_ext_babybear() {
-        let mut script_manager :Vec<ScriptInfo> = Vec::new();
+        let mut script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
@@ -650,7 +650,7 @@ mod tests2 {
             &proof,
             &fri_challenges,
             &mut script_manager,
-            |_index, proof,sm| Ok(proof.clone()),
+            |_index, proof, sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -663,7 +663,7 @@ mod tests2 {
 
     #[test]
     fn test_script_verifier() {
-        let mut script_manager :Vec<ScriptInfo> = Vec::new();
+        let mut script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
@@ -764,7 +764,7 @@ mod tests2 {
             &proof,
             &fri_challenges,
             &mut script_manager,
-            |_index, proof,sm| Ok(proof.clone()),
+            |_index, proof, sm| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
         assert_eq!(

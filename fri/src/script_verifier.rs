@@ -1,10 +1,9 @@
 use alloc::vec;
 use alloc::vec::Vec;
-use bitcoin::Script;
-use script_manager::script_info::ScriptInfo;
 use core::panic;
 
 use bitcoin::taproot::TapLeaf;
+use bitcoin::Script;
 use itertools::izip;
 use p3_challenger::{CanObserve, CanSample};
 use p3_util::reverse_bits_len;
@@ -14,6 +13,7 @@ use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
 use segment::SegmentLeaf;
 
@@ -31,7 +31,11 @@ pub fn bf_verify_challenges<G, F, M, Witness>(
     proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
     script_manager: &mut Vec<ScriptInfo>,
-    open_input: impl Fn(usize, &G::InputProof,&mut Vec<ScriptInfo>) -> Result<Vec<(usize, F)>, G::InputError>,
+    open_input: impl Fn(
+        usize,
+        &G::InputProof,
+        &mut Vec<ScriptInfo>,
+    ) -> Result<Vec<(usize, F)>, G::InputError>,
 ) -> Result<(), FriError<M::Error, G::InputError>>
 where
     F: BfField,
@@ -40,8 +44,8 @@ where
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
-        let ro =
-            open_input(index, &query_proof.input_proof,script_manager).map_err(|e| FriError::InputError(e))?;
+        let ro = open_input(index, &query_proof.input_proof, script_manager)
+            .map_err(|e| FriError::InputError(e))?;
 
         let folded_eval = bf_verify_query(
             g,

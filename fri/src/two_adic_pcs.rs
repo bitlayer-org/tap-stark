@@ -1,7 +1,6 @@
 use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
-use script_manager::script_info::ScriptInfo;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 
@@ -25,6 +24,7 @@ use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
+use script_manager::script_info::ScriptInfo;
 use serde::{Deserialize, Serialize};
 use tracing::{info_span, instrument};
 
@@ -159,7 +159,7 @@ where
             shift: Val::one(),
         }
     }
-    
+
     fn commit(
         &self,
         evaluations: Vec<(Self::Domain, RowMajorMatrix<Val>)>,
@@ -296,8 +296,8 @@ where
                         "compute opened values with Lagrange interpolation"
                     )
                     .in_scope(|| {
-                        let (low_coset, _) = mat.split_rows(mat.height() >> self.fri.log_blowup); 
-                                                                                                  
+                        let (low_coset, _) = mat.split_rows(mat.height() >> self.fri.log_blowup);
+
                         interpolate_coset(
                             &BitReversalPerm::new_view(low_coset),
                             Val::generator(),
@@ -309,7 +309,7 @@ where
                     let reduced_ys: Challenge = dot_product(alpha.powers(), ys.iter().copied());
 
                     info_span!("reduce rows").in_scope(|| {
-                        mat.dot_ext_powers(alpha) 
+                        mat.dot_ext_powers(alpha)
                             .zip(reduced_opening_for_log_height.par_iter_mut())
                             .zip(inv_denoms.get(&point).unwrap().par_iter())
                             .for_each(|((reduced_row, ro), &inv_denom)| {
@@ -388,7 +388,7 @@ where
             proof,
             &fri_challenges,
             script_manager,
-            |index, input_proof,sm| {
+            |index, input_proof, sm| {
                 // TODO: separate this out into functions
 
                 // log_height -> (alpha_pow, reduced_opening)
@@ -435,15 +435,15 @@ where
                             let mut acc = Challenge::zero();
                             let prev_alpha_pow = *alpha_pow;
                             for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
-                                // 
+                                //
                                 // Compute the value of ro:
-                                // 
+                                //
                                 // Original formula:
                                 //    ro = alpha^0 * (p(x)_{0} - p(z)_{0}) / (x - z) + alpha^1 * (p(x)_{1} -p(z)_{1}) / (x - z) + ... + alpha^i * (p(x)_{i} -p(z)_{i}) / (x - z)
-                                // 
+                                //
                                 //  Optimized formula:
                                 //    ro = (alpha^0 * (p(x)_{0} - p(z)_{0}) + alpha^1 * (p(x)_{1} -p(z)_{1}) + ... + alpha^i * (p(x)_{i} -p(z)_{i})) / (x - z)
-                                // 
+                                //
                                 acc += *alpha_pow * (-p_at_z + p_at_x);
                                 *alpha_pow *= alpha;
                             }
@@ -451,8 +451,16 @@ where
                             let prev_ro = *ro;
                             let final_ro = prev_ro + acc / (-*z + x);
                             *ro = final_ro;
-                            let compute_acc = accmulator_script(alpha, prev_alpha_pow, mat_opening.clone(), ps_at_z.clone(), final_alpha_pow, acc.clone());
-                            let compute_ro = ro_mul_x_minus_z_script(prev_ro, final_ro, x.clone(), *z, acc);
+                            let compute_acc = accmulator_script(
+                                alpha,
+                                prev_alpha_pow,
+                                mat_opening.clone(),
+                                ps_at_z.clone(),
+                                final_alpha_pow,
+                                acc.clone(),
+                            );
+                            let compute_ro =
+                                ro_mul_x_minus_z_script(prev_ro, final_ro, x.clone(), *z, acc);
                             sm.push(compute_acc);
                             sm.push(compute_ro);
                         }
