@@ -94,7 +94,8 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     .collect_vec();
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
-    pcs.verify(commits_and_claims_by_round, &proof, &mut v_challenger)
+    let script_manager = &mut vec![];
+    pcs.verify(commits_and_claims_by_round, &proof, &mut v_challenger,script_manager)
         .unwrap()
 }
 

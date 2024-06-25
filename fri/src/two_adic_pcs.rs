@@ -1,6 +1,7 @@
 use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
+use script_manager::script_info::ScriptInfo;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 
@@ -28,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info_span, instrument};
 
 use crate::error::{self, FriError};
+use crate::fri_scripts::pcs::{accmulator_script, ro_mul_x_minus_z_script};
 use crate::{prover, verifier, FriConfig, FriGenericConfig, FriProof};
 
 #[derive(Debug)]
@@ -35,6 +37,7 @@ pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     dft: Dft,
     mmcs: InputMmcs,
     fri: FriConfig<FriMmcs>,
+    scripts: Vec<ScriptInfo>,
     _phantom: PhantomData<Val>,
 }
 
@@ -44,6 +47,7 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
             dft,
             mmcs,
             fri,
+            scripts: Vec::new(),
             _phantom: PhantomData,
         }
     }
@@ -454,6 +458,7 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
+        script_manager: &mut Vec<ScriptInfo>,
     ) -> Result<(), Self::Error> {
         // Batch combination challenge
         let alpha: Challenge = challenger.sample();
@@ -522,12 +527,48 @@ where
 
                         // 这里处理的是 一个matrix有多个打开点的情况
                         for (z, ps_at_z) in mat_points_and_values {
+                            // script input:
+                            // ro_prev               challenge
+                            // ro_final              challenge
+                            // alpha 
+                            // alpha_pow             challenge
+                            // p_at_x row  vec<Val>
+                            // p_at_z row  vec<challenge>
+                            // z            Val
+                            // x            Val we need to calculate the x with log_height
+
+                            // ro_final - ro_prev == accmulator / x - z 
+
+                            // calculate res0 = x-z
+                            // calculate:
+                            //  res1 = alpha_pow * (p_at_x_0 - p_at_z_0) +
+                            //  alpha_pow * alpha * (p_at_x_1 - p_at_z_1) +
+                            //  alpha_pow * alpha *..* alpha (p_at_x_i - p_at_z_i)
+                            //          output: alpha_pow_final , res1
+                            // verify:
+                            // ro_prev + (res1 / res0) == ro_final
+                            // ro_prev*res0 + res1 == ro_final*res0
+                            let mut acc = Challenge::zero();
+                            let prev_alpha_pow = *alpha_pow;
                             for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
-                                // 根据每一列处理
-                                let quotient = (-p_at_z + p_at_x) / (-*z + x); // p_at_x is p_1(k) p_2(k) and x is k ; p_at_z is p_1(z_1) p_1(z_2) p_2(z_3)
-                                *ro += *alpha_pow * quotient;
+                                // /**
+                                //  * Compute the value of ro:
+                                //  *
+                                //  * Original formula:
+                                //  *   ro = alpha^0 * (p(x)_{0} - p(z)_{0}) / (x - z) + alpha^1 * (p(x)_{1} -p(z)_{1}) / (x - z) + ... + alpha^i * (p(x)_{i} -p(z)_{i}) / (x - z)
+                                //  *
+                                //  * Optimized formula:
+                                //  *   ro = (alpha^0 * (p(x)_{0} - p(z)_{0}) + alpha^1 * (p(x)_{1} -p(z)_{1}) + ... + alpha^i * (p(x)_{i} -p(z)_{i})) / (x - z)
+                                //  */
+                                acc += *alpha_pow * (-p_at_z + p_at_x);
                                 *alpha_pow *= alpha;
                             }
+                            let final_alpha_pow = *alpha_pow;
+                            let prev_ro = *ro;
+                            let final_ro = prev_ro + acc / (-*z + x);
+                            *ro = final_ro;
+                            // let compute_acc = accmulator_script(alpha, prev_alpha_pow, mat_opening.clone(), ps_at_z.clone(), final_alpha_pow, acc.clone());
+                            // let compute_ro = ro_mul_x_minus_z_script(prev_ro, final_ro, x.clone(), *z, acc);
                         }
                     }
                 }
