@@ -79,11 +79,6 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
         let opening_leaf = match leaf {
             Some(v) => v,
             None => {
-                // println!(
-                //     "leaf index:{:?}, leaf count:{:?}",
-                //     index,
-                //     prover_data.leaf_count()
-                // );
                 panic!("invalid leaf index")
             }
         };
@@ -97,7 +92,7 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
 
     fn open_batch(
         &self,
-        index: usize,
+        index: usize, // This is the index corresponding to the highest matrix
         prover_data: &PolyCommitTree<F, 1>,
     ) -> (Vec<Vec<F>>, Self::Proof) {
         let comm_proof = self.open_taptree(index, prover_data);
