@@ -448,6 +448,7 @@ where
                             let prev_ro = *ro;
                             let final_ro = prev_ro + acc / (-*z + x);
                             *ro = final_ro;
+
                             let compute_acc = accmulator_script(
                                 alpha,
                                 prev_alpha_pow,
