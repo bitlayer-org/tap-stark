@@ -178,14 +178,14 @@ fn zip<F1: BfField, F2: BfField>(vec1: Vec<F1>, vec2: Vec<F2>) -> Script {
  *
  * input:
  *   stack:  
- *     ro_prev    babybear4
- *     ro_final   babybear4
- *     x          babybear
- *     z          babybear4
+ *     ro_prev    // babybear4
+ *     ro_final   // babybear4
+ *     x          // babybear
+ *     z          // babybear4
  *
  * output:
  *   stack:
- *     accmulator = (ro_final - ro_prev) * (x - z)   babybear4
+ *     accmulator = (ro_final - ro_prev) * (x - z)   // babybear4
  */
 fn ro_mul_x_minus_z() -> Script {
     script! {
@@ -216,34 +216,33 @@ pub fn ro_mul_x_minus_z_script<Val: BfField, Challenge: BfField>(
 }
 
 /**
+ * Compute:
+ *   (ro_final - ro_prev) * (x - z) == accumulator
  *
- * compute:
- *  (ro_final - ro_prev) * (x - z) == accmulator
- *
- * input:
- *   stack:
- *      --------- accmulator input ---------
- *      alpha  
- *     prev_alpha_pow          // the prev_alpha_pow is 1 when intialization
+ * Input:
+ *   Stack:
+ *     --------- accumulator input ---------
+ *     alpha
+ *     prev_alpha_pow          // the prev_alpha_pow is 1 during initialization
  *     p_at_x_{0..0}
  *     p_at_z_{0..0}
  *           ...
  *     p_at_x_{0..matrix_width}
  *     p_at_z_{0..matrix_width}
- *      --------- ro_mul_x_minus_z input ---------
- *     ro_prev    babybear4
- *     ro_final   babybear4
- *     x          babybear
- *     z          babybear4
+ *     --------- ro_mul_x_minus_z input ---------
+ *     ro_prev    // babybear4
+ *     ro_final   // babybear4
+ *     x          // babybear
+ *     z          // babybear4
  *    
- *    final_alpha_pow
- * output:
- *   stack:
+ *   final_alpha_pow
+ * Output:
+ *   Stack:
  *     alpha
  *     next_alpha_pow
- *     accmulator
+ *     accumulator
  *     
- *     (ro_final - ro_prev) * (x - z)   babybear4
+ *     (ro_final - ro_prev) * (x - z)   // babybear4
  */
 pub fn verify_quotient<Val: BfField, Challenge: BfField>(matrix_width: usize) -> Script {
     script! {

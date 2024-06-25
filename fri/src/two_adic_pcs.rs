@@ -425,7 +425,6 @@ where
                         let x = Val::generator()
                             * Val::two_adic_generator(log_height).exp_u64(rev_reduced_index as u64); // calculate k
 
-                        // 这个主要是为了处理有多个matrix具有相同的高度的情况
                         let (alpha_pow, ro) = reduced_openings
                             .entry(log_height)
                             .or_insert((Challenge::one(), Challenge::zero()));
