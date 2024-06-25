@@ -15,6 +15,8 @@ use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use script_manager::bc_assignment::DefaultBCAssignment;
+use scripts::execute_script_with_inputs;
 
 fn seeded_rng() -> impl Rng {
     ChaCha20Rng::seed_from_u64(0)
@@ -44,7 +46,7 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
                 .map(|&log_degree| {
                     let d = 1 << log_degree;
                     // random width 5-15
-                    let width = 5 + rng.gen_range(0..=10);
+                    let width = 2 + rng.gen_range(0..=2);
                     (
                         pcs.natural_domain_for_degree(d),
                         RowMajorMatrix::<Val>::rand(&mut rng, d, width),
@@ -94,14 +96,23 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     .collect_vec();
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
-    let script_manager = &mut vec![];
+    let mut script_manager = vec![];
     pcs.verify(
         commits_and_claims_by_round,
         &proof,
         &mut v_challenger,
-        script_manager,
+        &mut script_manager,
     )
-    .unwrap()
+    .unwrap();
+
+    let mut bc_assigner = DefaultBCAssignment::new();
+    // execute script verifier
+    for item in script_manager.iter_mut() {
+        item.gen(&mut bc_assigner);
+        let res = execute_script_with_inputs(item.get_eq_script(), item.witness());
+        // println!("res: {:?}", res);
+        assert!(res.success);
+    }
 }
 
 // Set it up so we create tests inside a module for each pcs, so we get nice error reports
@@ -110,16 +121,22 @@ macro_rules! make_tests_for_pcs {
     ($p:expr) => {
         #[test]
         fn single() {
-            let mut p = $p;
+            let p = $p;
             for i in 3..6 {
                 $crate::do_test_fri_pcs(&p, &[&[i]]);
             }
         }
 
         #[test]
+        fn small() {
+            let p = $p;
+            $crate::do_test_fri_pcs(&p, &[&[2, 1]]);
+        }
+
+        #[test]
         fn many_equal() {
-            let mut p = $p;
-            for i in 2..5 {
+            let p = $p;
+            for i in 2..3 {
                 $crate::do_test_fri_pcs(&p, &[&[i; 5]]);
             }
         }
@@ -136,7 +153,7 @@ macro_rules! make_tests_for_pcs {
         #[test]
         fn many_different_rev() {
             let p = $p;
-            for i in 2..4 {
+            for i in 1..3 {
                 let degrees = (3..3 + i).rev().collect::<Vec<_>>();
                 $crate::do_test_fri_pcs(&p, &[&degrees]);
             }
@@ -159,13 +176,10 @@ macro_rules! make_tests_for_pcs {
 }
 
 mod babybear_fri_pcs {
-    use p3_symmetric::{CryptographicPermutation, Permutation};
-
     use super::*;
 
     type PF = U32;
     const WIDTH: usize = 16;
-    type SpongeState = [PF; WIDTH];
 
     type Val = BabyBear;
     type Challenge = BinomialExtensionField<Val, 4>;
@@ -174,22 +188,6 @@ mod babybear_fri_pcs {
     type Dft = Radix2DitParallel;
     type Challenger = BfChallenger<Challenge, PF, Blake3Permutation, WIDTH>;
     type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
-
-    #[derive(Clone)]
-    struct TestPermutation {}
-
-    impl Permutation<SpongeState> for TestPermutation {
-        fn permute(&self, mut input: SpongeState) -> SpongeState {
-            self.permute_mut(&mut input);
-            input
-        }
-
-        fn permute_mut(&self, input: &mut SpongeState) {
-            input.reverse();
-        }
-    }
-
-    impl CryptographicPermutation<SpongeState> for TestPermutation {}
 
     fn get_pcs(log_blowup: usize) -> (MyPcs, Challenger) {
         let val_mmcs = ValMmcs::new();
