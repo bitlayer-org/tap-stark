@@ -215,35 +215,36 @@ pub fn ro_mul_x_minus_z_script<Val: BfField, Challenge: BfField>(
     si
 }
 
-/**
- * Compute:
- *   (ro_final - ro_prev) * (x - z) == accumulator
- *
- * Input:
- *   Stack:
- *     --------- accumulator input ---------
- *     alpha
- *     prev_alpha_pow          // the prev_alpha_pow is 1 during initialization
- *     p_at_x_{0..0}
- *     p_at_z_{0..0}
- *           ...
- *     p_at_x_{0..matrix_width}
- *     p_at_z_{0..matrix_width}
- *     --------- ro_mul_x_minus_z input ---------
- *     ro_prev    // babybear4
- *     ro_final   // babybear4
- *     x          // babybear
- *     z          // babybear4
- *    
- *   final_alpha_pow
- * Output:
- *   Stack:
- *     alpha
- *     next_alpha_pow
- *     accumulator
- *     
- *     (ro_final - ro_prev) * (x - z)   // babybear4
- */
+//
+// Compute:
+//   (ro_final - ro_prev) * (x - z) == accumulator
+//
+// Input:
+//   Stack:
+//     --------- accumulator input ---------
+//     alpha
+//     prev_alpha_pow          // the prev_alpha_pow is 1 during initialization
+//     p_at_x_{0..0}
+//     p_at_z_{0..0}
+//           ...
+//     p_at_x_{0..matrix_width}
+//     p_at_z_{0..matrix_width}
+//     --------- ro_mul_x_minus_z input ---------
+//     ro_prev    // babybear4
+//     ro_final   // babybear4
+//     x          // babybear
+//     z          // babybear4
+//
+//   final_alpha_pow
+// Output:
+//   Stack:
+//     alpha
+//     next_alpha_pow
+//     accumulator
+//
+//     (ro_final - ro_prev) * (x - z)   // babybear4
+//
+//
 pub fn verify_quotient<Val: BfField, Challenge: BfField>(matrix_width: usize) -> Script {
     script! {
         {compute_accmulator::<Val,Challenge>(matrix_width)}
@@ -277,56 +278,6 @@ pub fn verify_quotient<Val: BfField, Challenge: BfField>(matrix_width: usize) ->
 
         OP_TRUE
     }
-}
-
-// ro_final - ro_prev == accmulator / x - z
-// (ro_final - ro_prev) * (x - z) = accmulator
-struct VerifyMatrixOpen<Val: BfField, Challenge: BfField> {
-    alpha: Challenge,
-    prev_alpha_pow: Challenge,
-    p_at_x: Vec<Val>,
-    p_at_z: Vec<Challenge>,
-    prev_ro: Challenge,
-    final_ro: Challenge,
-    x: Val,
-    z: Challenge,
-    _marker: PhantomData<(Val, Challenge)>,
-}
-
-impl<Val: BfField, Challenge: BfField> VerifyMatrixOpen<Val, Challenge> {
-    // pub fn compute_x(&self) -> Val {
-    //     let x =
-    //         Val::generator() * Val::two_adic_generator(self.log_height).exp_u64(self.index as u64);
-    //     x
-    // }
-
-    fn logic_script(&self) -> Script {
-        assert_eq!(self.p_at_x.len(), self.p_at_z.len());
-        script! {
-            {verify_quotient::<Val,Challenge>(self.p_at_x.len())}
-        }
-    }
-
-    pub fn exec_script(&self) -> Script {
-        script! {
-            {self.z.as_u32_vec()[3]}{self.z.as_u32_vec()[2]}{self.z.as_u32_vec()[1]}{self.z.as_u32_vec()[0]}
-            {self.x.as_u32_vec()[0]}
-            {self.final_ro.as_u32_vec()[3]}{self.final_ro.as_u32_vec()[2]}{self.final_ro.as_u32_vec()[1]}{self.final_ro.as_u32_vec()[0]}
-            {self.prev_ro.as_u32_vec()[3]}{self.prev_ro.as_u32_vec()[2]}{self.prev_ro.as_u32_vec()[1]}{self.prev_ro.as_u32_vec()[0]}
-
-            {zip::<Challenge,Val>(self.p_at_z.clone(), self.p_at_x.clone())}
-
-            {self.prev_alpha_pow.as_u32_vec()[3]}{self.prev_alpha_pow.as_u32_vec()[2]}{self.prev_alpha_pow.as_u32_vec()[1]}{self.prev_alpha_pow.as_u32_vec()[0]}
-            {self.alpha.as_u32_vec()[3]}{self.alpha.as_u32_vec()[2]}{self.alpha.as_u32_vec()[1]}{self.alpha.as_u32_vec()[0]}
-
-            {self.logic_script()}
-        }
-    }
-
-    // pub fn get_script_info(&self) -> ScriptInfo{
-    //     ScriptInfo::new("verify one matrix opening", self.logic_script()).add_input(input)
-
-    // }
 }
 
 #[cfg(test)]
