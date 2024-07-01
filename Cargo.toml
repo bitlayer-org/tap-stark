@@ -6,6 +6,7 @@ members = [
     "scripts",
     "script_manager",
     "segment",
-    "common"
+    "common",
+    "uni-stark"
 ]
 
