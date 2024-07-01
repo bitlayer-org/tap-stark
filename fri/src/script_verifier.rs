@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use core::panic;
 
 use bitcoin::taproot::TapLeaf;
+use bitcoin::Script;
 use itertools::izip;
 use p3_challenger::{CanObserve, CanSample};
 use p3_util::reverse_bits_len;
@@ -12,6 +13,7 @@ use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
 use segment::SegmentLeaf;
 
@@ -20,26 +22,33 @@ use crate::fri_scripts::leaf::{
     CalNegXLeaf, IndexToROULeaf, ReductionLeaf, RevIndexLeaf, SquareFLeaf, VerifyFoldingLeaf,
 };
 use crate::verifier::*;
-use crate::{BfQueryProof, FriConfig, FriProof};
+use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriProof};
 
-pub fn bf_verify_challenges<F, M, Witness>(
+pub fn bf_verify_challenges<G, F, M, Witness>(
+    g: &G,
     assign: &mut DefaultBCAssignment,
     config: &FriConfig<M>,
-    proof: &FriProof<F, M, Witness>,
+    proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
-    reduced_openings: &[[F; 32]],
-) -> Result<(), FriError<M::Error>>
+    script_manager: &mut Vec<ScriptInfo>,
+    open_input: impl Fn(
+        usize,
+        &G::InputProof,
+        &mut Vec<ScriptInfo>,
+    ) -> Result<Vec<(usize, F)>, G::InputError>,
+) -> Result<(), FriError<M::Error, G::InputError>>
 where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
+    G: FriGenericConfig<F>,
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
-    for (&index, query_proof, ro) in izip!(
-        &challenges.query_indices,
-        &proof.query_proofs,
-        reduced_openings
-    ) {
+    for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
+        let ro = open_input(index, &query_proof.input_proof, script_manager)
+            .map_err(|e| FriError::InputError(e))?;
+
         let folded_eval = bf_verify_query(
+            g,
             assign,
             config,
             &proof.commit_phase_commits,
@@ -58,21 +67,24 @@ where
     Ok(())
 }
 
-fn bf_verify_query<F, M>(
+fn bf_verify_query<G, F, M>(
+    g: &G,
     assign: &mut DefaultBCAssignment,
     config: &FriConfig<M>,
     commit_phase_commits: &[M::Commitment],
     mut index: usize,
-    proof: &BfQueryProof<F>,
+    proof: &BfQueryProof<F, G::InputProof>,
     betas: &[F],
-    reduced_openings: &[F; 32],
+    reduced_openings: Vec<(usize, F)>,
     log_max_height: usize,
-) -> Result<F, FriError<M::Error>>
+) -> Result<F, FriError<M::Error, G::InputError>>
 where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
+    G: FriGenericConfig<F>,
 {
     let mut folded_eval = F::zero();
+    let mut ro_iter = reduced_openings.into_iter().peekable();
 
     let rev_index = reverse_bits_len(index, log_max_height);
     let rev_index_leaf = RevIndexLeaf::new_from_assign(
@@ -111,22 +123,25 @@ where
         // let index_sibling = index ^ 1;
         let index_pair = index >> 1;
 
+        if let Some((_, ro)) = ro_iter.next_if(|(lh, _)| *lh == log_folded_height + 1) {
+            let reduction_leaf =
+                ReductionLeaf::<1, F>::new_from_assign(folded_eval, ro, folded_eval + ro, assign);
+            let exec_success = reduction_leaf.execute_leaf_script();
+            if !exec_success {
+                return Err(FriError::ScriptVerifierError(
+                    SVError::VerifyReductionScriptError,
+                ));
+            }
+
+            println!("ro:{}", ro);
+            folded_eval += ro;
+        }
+
         let poins_leaf: PointsLeaf<F> = step.points_leaf.clone();
         let challenge_point: Point<F> = poins_leaf.get_point_by_index(point_index).unwrap().clone();
 
-        let opening = reduced_openings[log_folded_height + 1];
-        let reduction_value = opening + folded_eval;
-        let reduction_leaf =
-            ReductionLeaf::<1, F>::new_from_assign(folded_eval, opening, reduction_value, assign);
-        let exec_success = reduction_leaf.execute_leaf_script();
-        if !exec_success {
-            return Err(FriError::ScriptVerifierError(
-                SVError::VerifyReductionScriptError,
-            ));
-        }
-
         if log_folded_height < log_max_height - 1 {
-            assert_eq!(reduction_value, challenge_point.y);
+            assert_eq!(folded_eval, challenge_point.y);
         }
         let sibling_point: Point<F> = poins_leaf
             .get_point_by_index(index_sibling)
@@ -144,7 +159,7 @@ where
         }
         // assert_eq!(sibling_point.x, neg_x);
 
-        let mut evals = vec![reduction_value; 2];
+        let mut evals = vec![folded_eval; 2];
         evals[index_sibling % 2] = sibling_point.y;
 
         let mut xs = vec![x; 2];
@@ -172,7 +187,8 @@ where
             .verify_taptree(step, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
-        folded_eval = evals[0] + (beta - xs[0]) * (evals[1] - evals[0]) / (xs[1] - xs[0]);
+        index = index_pair;
+        folded_eval = g.fold_row(index, log_folded_height, beta, evals.into_iter());
         let folding_leaf = VerifyFoldingLeaf::<1, F>::new_from_assign(
             challenge_point.y,
             sibling_point.y,
@@ -187,10 +203,9 @@ where
                 SVError::VerifyFoldingScriptError,
             ));
         }
-        index = index_pair;
         x = x.square();
         let square_leaf = SquareFLeaf::<1, F>::new_from_assign(x, x.square(), assign);
-        let exec_success = folding_leaf.execute_leaf_script();
+        let exec_success = square_leaf.execute_leaf_script();
         if !exec_success {
             return Err(FriError::ScriptVerifierError(
                 SVError::VerifySquareFScriptError,

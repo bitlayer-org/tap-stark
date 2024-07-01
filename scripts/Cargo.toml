@@ -7,7 +7,7 @@ edition = "2021"
 bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
 bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
 bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
-rust-bitcoin-u31-or-u30 ={ git = "https://github.com/bitlayer-org/rust-bitcoin-m31-or-babybear.git", branch = "bf-stark" }
+rust-bitcoin-u31-or-u30 ={ git = "https://github.com/bitlayer-org/rust-bitcoin-m31-or-babybear.git", branch = "bf-pcs" }
 lazy_static = "1.4.0"
 
 rand_chacha = "0.3.1"

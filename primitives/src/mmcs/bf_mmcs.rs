@@ -37,6 +37,21 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
     }
 
     fn open_taptree(&self, index: usize, prover_data: &Self::ProverData) -> Self::Proof;
+    fn open_batch(
+        &self,
+        index: usize,
+        prover_data: &Self::ProverData,
+    ) -> (Vec<Vec<T>>, Self::Proof) {
+        unimplemented!()
+    }
+
+    fn verify_batch(
+        &self,
+        opened_values: &Vec<Vec<T>>,
+        proof: &Self::Proof,
+        root: &Self::Commitment,
+    ) -> Result<(), Self::Error>;
+
     fn verify_taptree(
         &self,
         proof: &Self::Proof,
@@ -44,7 +59,7 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
     ) -> Result<(), Self::Error>;
 
     /// Get the matrices that were committed to.
-    fn get_matrices(&self, prover_data: &Self::ProverData) -> Vec<RowMajorMatrix<T>>;
+    fn get_matrices<'a>(&self, prover_data: &'a Self::ProverData) -> Vec<&'a RowMajorMatrix<T>>;
 
     fn get_matrix_heights(&self, prover_data: &Self::ProverData) -> Vec<usize> {
         self.get_matrices(prover_data)

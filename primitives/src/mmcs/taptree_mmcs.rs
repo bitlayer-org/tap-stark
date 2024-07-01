@@ -2,11 +2,12 @@ use core::marker::PhantomData;
 use core::{panic, usize};
 
 use bitcoin::hashes::Hash as Bitcoin_HASH;
-use bitcoin::taproot::LeafNode;
+use bitcoin::taproot::{LeafNode, TapLeaf};
 use bitcoin::TapNodeHash;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::log2_strict_usize;
+use scripts::execute_script_with_inputs;
 
 use super::bf_mmcs::BFMmcs;
 use super::error::BfError;
@@ -40,6 +41,31 @@ pub struct CommitProof<F: BfField> {
     pub leaf_node: LeafNode,
 }
 
+impl<F: BfField> CommitProof<F> {
+    pub fn new(points_leaf: PointsLeaf<F>, leaf_node: LeafNode) -> Self {
+        Self {
+            points_leaf,
+            leaf_node,
+        }
+    }
+
+    pub fn verify_points_leaf(&self) -> bool {
+        if let TapLeaf::Script(script, _ver) = self.leaf_node.leaf().clone() {
+            let res = execute_script_with_inputs(
+                script,
+                self.points_leaf.witness(),
+            );
+            return res.success;
+        } else {
+            panic!("Invalid script")
+        }
+    }
+
+    pub fn get_open_values(&self) -> Vec<F> {
+        self.points_leaf.get_all_points_value()
+    }
+}
+
 impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
     type ProverData = PolyCommitTree<F, 1>;
     type Proof = CommitProof<F>;
@@ -52,20 +78,58 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
         let opening_leaf = match leaf {
             Some(v) => v,
             None => {
-                // println!(
-                //     "leaf index:{:?}, leaf count:{:?}",
-                //     index,
-                //     prover_data.leaf_count()
-                // );
                 panic!("invalid leaf index")
             }
         };
-        println!("leaf_index:{:?}", leaf_index);
+        //println!("leaf_index:{:?}", leaf_index);
         let open_leaf = prover_data.get_points_leaf(leaf_index).clone();
         CommitProof {
             points_leaf: open_leaf,
             leaf_node: opening_leaf.clone(),
         }
+    }
+
+    fn open_batch(
+        &self,
+        index: usize, // This is the index corresponding to the highest matrix
+        prover_data: &PolyCommitTree<F, 1>,
+    ) -> (Vec<Vec<F>>, Self::Proof) {
+        let comm_proof = self.open_taptree(index, prover_data);
+        let open_values = comm_proof.get_open_values();
+        let matrix_widths = prover_data.get_matrix_widths();
+        let mut result = Vec::with_capacity(matrix_widths.len());
+        let mut start = 0;
+
+        for &width in &matrix_widths {
+            let end = start + width;
+            result.push(Vec::from(&open_values[start..end]));
+            start = end;
+        }
+
+        (result, comm_proof)
+    }
+
+    fn verify_batch(
+        &self,
+        opened_values: &Vec<Vec<F>>,
+        proof: &Self::Proof,
+        root: &Self::Commitment,
+    ) -> Result<(), Self::Error> {
+        let total_len: usize = opened_values.iter().map(|v| v.len()).sum();
+        let mut result = Vec::with_capacity(total_len);
+        for vec in opened_values {
+            result.extend(vec);
+        }
+
+        let points = proof.get_open_values();
+        assert_eq!(points.len(), result.len());
+        for (p, r) in points.iter().zip(result.iter()) {
+            if p != r {
+                return Err(BfError::InvalidOpenedValue);
+            }
+        }
+
+        self.verify_taptree(proof, root)
     }
 
     fn verify_taptree(
@@ -91,8 +155,9 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
 
         (u256_to_u32(root), tree)
     }
-    fn get_matrices(&self, prover_data: &Self::ProverData) -> Vec<RowMajorMatrix<F>> {
-        prover_data.leaves.clone()
+
+    fn get_matrices<'a>(&self, prover_data: &'a Self::ProverData) -> Vec<&'a RowMajorMatrix<F>> {
+        prover_data.leaves.iter().collect()
     }
 }
 

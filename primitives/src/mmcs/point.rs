@@ -52,6 +52,14 @@ impl<F: BfField> PointsLeaf<F> {
         }
         Ok(())
     }
+
+    pub fn get_all_points_value(&self) -> Vec<F> {
+        let mut points = vec![];
+        for p in self.leaf_evals.points.iter() {
+            points.push(p.y);
+        }
+        points
+    }
 }
 
 #[derive(Debug, Clone)]

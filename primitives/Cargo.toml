@@ -24,6 +24,7 @@ p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-maybe-rayon ={ git = "https://github.com/Plonky3/Plonky3.git" }
 p3-matrix =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-commit =  { git = "https://github.com/Plonky3/Plonky3.git" }
 
 segment ={ path = "../segment" }
 common = { path = "../common"}

@@ -128,7 +128,6 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
             .peekable();
         let max_height = leaves_largest_first.peek().unwrap().height();
         let log_max_height = log2_ceil_usize(max_height);
-
         //println!("max height:{:?}", max_height);
         let mut tree_builder = TreeBuilder::<NUM_POLY>::new();
 
@@ -193,6 +192,10 @@ impl<const NUM_POLY: usize, F: BfField> PolyCommitTree<F, NUM_POLY> {
 
     pub fn get_points_leaf(&self, index: usize) -> &PointsLeaf<F> {
         &self.points_leafs[index]
+    }
+
+    pub fn get_matrix_widths(&self) -> Vec<usize> {
+        self.leaves.iter().map(|m| m.width()).collect()
     }
 }
 
@@ -277,7 +280,6 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
                 a_start_idx += a_leaf_size + b_leaf_size;
             }
             working_nodes = todo;
-
             todo = Vec::new();
         }
         BasicTree {
