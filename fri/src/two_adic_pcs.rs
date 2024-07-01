@@ -5,7 +5,7 @@ use core::fmt::Debug;
 use core::marker::PhantomData;
 
 use itertools::{izip, Itertools};
-use p3_challenger::{CanObserve, CanSample, GrindingChallenger};
+use p3_challenger::{CanObserve, CanSample};
 use p3_commit::{OpenedValues, PolynomialSpace, TwoAdicMultiplicativeCoset};
 use p3_dft::TwoAdicSubgroupDft;
 use p3_field::{
