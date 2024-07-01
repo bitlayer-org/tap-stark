@@ -75,11 +75,11 @@ fn alphapow_mul_px_minus_pz<Val: BfField, Challenge: BfField>() -> Script {
         OP_4TOALTSTACK
 
         8 OP_4ROLL // places p(x)-p(z) at the top of the stack
-        //
+
         //  expect stack:
-        //  p(x) - p(z)  <--top  exists at babybear4
-        //  alpha_pow            exists at babybear4
-        //  prev_accmulator              exists at babybear4
+        //  p(x) - p(z)  <--top    babybear4
+        //  alpha_pow             babybear4
+        //  prev_accmulator              babybear4
         {u31ext_mul::<BabyBear4>()}
         {u31ext_add::<BabyBear4>()} // accmulate at accmulator
 
@@ -90,10 +90,9 @@ fn alphapow_mul_px_minus_pz<Val: BfField, Challenge: BfField>() -> Script {
 /**
  * compute:
  * alpha_pow_0 * (p_at_x_0 - p_at_z_0) +   
- * alpha_pow_1  (p_at_x_1 - p_at_z_1) +
+ * alpha_pow_1 * (p_at_x_1 - p_at_z_1) +
  *             ...
  * alpha_pow_i (p_at_x_i - p_at_z_i)
- *         output: alpha_pow_i , res1
  *
  *
  * input:
@@ -125,7 +124,7 @@ fn compute_accmulator<Val: BfField, Challenge: BfField>(matrix_width: usize) -> 
         OP_4TOALTSTACK
 
         OP_0 OP_0 OP_0 OP_0  // the accmulator is 0 when intialization
-        for i in 0..matrix_width{
+        for _ in 0..matrix_width{
             {alphapow_mul_px_minus_pz::<Val,Challenge>()}
         }
         OP_4FROMALTSTACK
