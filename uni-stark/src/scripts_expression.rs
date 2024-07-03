@@ -435,11 +435,34 @@ impl<F: BfField> Product<F> for ScriptExpression<F> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
+
     use bitcoin_script_stack::stack::StackTracker;
     use common::{AbstractField, BabyBear};
+    use p3_air::AirBuilder;
+    use p3_matrix::Matrix;
     use primitives::field::BfField;
 
     use super::ScriptExpression;
+    use crate::{prove, verify, StarkConfig, SymbolicAirBuilder, SymbolicExpression};
+
+    #[test]
+    fn test_symbolic_expr_constraints() {
+        let air_width: usize = 2;
+        let mut builder = SymbolicAirBuilder::<BabyBear>::new(0, air_width, 0);
+        let main_values = builder.main();
+        let (local, next) = (main_values.row_slice(0), main_values.row_slice(1));
+        let mut when_transition = builder.when_transition();
+        // a' <- b
+        when_transition.assert_eq(local[0], local[1]);
+
+        // b' <- a + b
+        when_transition.assert_eq(local[0] + local[1], next[1]);
+
+        let cs = builder.constraints();
+        let script_exp: Vec<ScriptExpression<BabyBear>> =
+            cs.iter().map(|cons| ScriptExpression::from(cons)).collect();
+    }
 
     #[test]
     fn test_script_expression_add() {
