@@ -14,7 +14,7 @@ use scripts::treepp::*;
 use scripts::u31_lib::{
     u31_add, u31_double, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add,
     u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
-    u31ext_mul_u31_by_constant, u31ext_sub, u31ext_sub_u31, BabyBear4, BabyBearU31,
+    u31ext_mul_u31_by_constant, u31ext_neg, u31ext_sub, u31ext_sub_u31, BabyBear4, BabyBearU31,
 };
 
 use crate::symbolic_builder::get_symbolic_constraints;
@@ -102,14 +102,6 @@ impl<F: BfField> From<&SymbolicExpression<F>> for ScriptExpression<F> {
 
 impl<F: BfField> ScriptExpression<F> {
     fn express_to_script(&self, stack: &mut StackTracker) -> Script {
-        let unity_num = |f_size| {
-            if f_size == 1 {
-                1
-            } else {
-                4
-            }
-        };
-
         match self {
             ScriptExpression::Variable { sv, value, mut var } => {
                 var = stack.op_true();
@@ -125,10 +117,7 @@ impl<F: BfField> ScriptExpression<F> {
             }
             ScriptExpression::Constant(f) => {
                 let v = f.as_u32_vec();
-                let length = v.len();
-                for i in (0..length).rev() {
-                    stack.number(v[i]);
-                }
+                stack.bignumber(v);
             }
             ScriptExpression::Add {
                 x,
@@ -147,7 +136,7 @@ impl<F: BfField> ScriptExpression<F> {
                                 {u31ext_add::<BabyBear4>()}
                             }
                         },
-                        2 * unity_num(F::U32_SIZE),
+                        2,
                         true,
                         0,
                         "ScriptExpression_ADD",
@@ -171,7 +160,7 @@ impl<F: BfField> ScriptExpression<F> {
                                 {u31ext_sub::<BabyBear4>()}
                             }
                         },
-                        2 * unity_num(F::U32_SIZE),
+                        2,
                         true,
                         0,
                         "ScriptExpression_SUB",
@@ -187,10 +176,10 @@ impl<F: BfField> ScriptExpression<F> {
                             if F::U32_SIZE == 1{
                                 {u31_neg::<BabyBearU31>()}
                             }else{
-                                // {u31ext_neg::<BabyBear4>()}
+                                {u31ext_neg::<BabyBear4>()}
                             }
                         },
-                        1 * unity_num(F::U32_SIZE),
+                        1,
                         true,
                         0,
                         "ScriptExpression_NEG",
@@ -214,7 +203,7 @@ impl<F: BfField> ScriptExpression<F> {
                                 {u31ext_mul::<BabyBear4>()}
                             }
                         },
-                        2 * unity_num(F::U32_SIZE),
+                        2,
                         true,
                         0,
                         "ScriptExpression_MUL",
@@ -438,13 +427,15 @@ mod tests {
     use alloc::vec::Vec;
 
     use bitcoin_script_stack::stack::StackTracker;
-    use common::{AbstractField, BabyBear};
+    use common::{AbstractField, BabyBear, BinomialExtensionField};
     use p3_air::AirBuilder;
     use p3_matrix::Matrix;
     use primitives::field::BfField;
+    use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
 
     use super::ScriptExpression;
     use crate::{prove, verify, StarkConfig, SymbolicAirBuilder, SymbolicExpression};
+    type EF = BinomialExtensionField<BabyBear, 4>;
 
     #[test]
     fn test_symbolic_expr_constraints() {
@@ -484,6 +475,60 @@ mod tests {
     }
 
     #[test]
+    fn test_ext_constant() {
+        let mut stack = StackTracker::new();
+        let a = ScriptExpression::from(EF::one());
+        a.express_to_script(&mut stack);
+        let res = EF::one();
+
+        stack.number(res.as_u32_vec()[3]);
+        stack.number(res.as_u32_vec()[2]);
+        stack.number(res.as_u32_vec()[1]);
+        stack.number(res.as_u32_vec()[0]);
+        stack.custom(
+            u31ext_equalverify::<BabyBear4>(),
+            8,
+            false,
+            0,
+            "u31ext_equalverify",
+        );
+
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
+    fn test_script_expression_extadd() {
+        let mut stack = StackTracker::new();
+        let a = ScriptExpression::from(EF::one());
+        let b = ScriptExpression::from(EF::two());
+        let c = a + b;
+
+        // let d = ScriptExpression::from(EF::two());
+        // let e = ScriptExpression::from(EF::two());
+        // let f = d + e;
+
+        // let g = c + f; // 4 + 3 = 7
+        let script = c.express_to_script(&mut stack);
+        stack.debug();
+        let res = EF::one() + EF::two();
+
+        stack.bignumber(res.as_u32_vec());
+        stack.debug();
+        stack.custom(
+            u31ext_equalverify::<BabyBear4>(),
+            2,
+            false,
+            0,
+            "u31ext_equalverify",
+        );
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
     fn test_script_expression_sub() {
         let mut stack = StackTracker::new();
         let a = ScriptExpression::from(BabyBear::one());
@@ -503,6 +548,32 @@ mod tests {
     }
 
     #[test]
+    fn test_script_expression_extsub() {
+        let mut stack = StackTracker::new();
+        let a = ScriptExpression::from(EF::one());
+        let b = ScriptExpression::from(EF::two());
+        let c = b - a; // 1
+
+        let d = ScriptExpression::from(EF::two());
+        let e = ScriptExpression::from(EF::from_canonical_u32(8));
+        let f = e - d; // 6
+
+        let g = f - c; // 5
+        let script = g.express_to_script(&mut stack);
+        stack.bignumber(EF::from_canonical_u32(5u32).as_u32_vec());
+        stack.custom(
+            u31ext_equalverify::<BabyBear4>(),
+            2,
+            false,
+            0,
+            "u31ext_equalverify",
+        );
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
     fn test_script_expression_mul() {
         let mut stack = StackTracker::new();
         let a = ScriptExpression::from(BabyBear::one());
@@ -512,11 +583,37 @@ mod tests {
         let d = ScriptExpression::from(BabyBear::two());
         let e = ScriptExpression::from(BabyBear::from_canonical_u32(8));
         let f = e * d; // 16
-
+        stack.show_stack();
         let g = f * c; // 32
         let script = g.express_to_script(&mut stack);
         stack.number(BabyBear::from_canonical_u32(32u32).as_u32_vec()[0]);
         stack.op_equal();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
+    fn test_script_expression_extmul() {
+        let mut stack = StackTracker::new();
+        let a = ScriptExpression::from(EF::one());
+        let b = ScriptExpression::from(EF::two());
+        let c = b * a; // 2
+
+        let d = ScriptExpression::from(EF::two());
+        let e = ScriptExpression::from(EF::from_canonical_u32(8));
+        let f = e * d; // 16
+        stack.show_stack();
+        let g = f * c; // 32
+        let script = g.express_to_script(&mut stack);
+        stack.bignumber(EF::from_canonical_u32(32u32).as_u32_vec());
+        stack.custom(
+            u31ext_equalverify::<BabyBear4>(),
+            2,
+            false,
+            0,
+            "u31ext_equalverify",
+        );
+        stack.op_true();
         let res = stack.run();
         assert!(res.success);
     }
@@ -529,6 +626,25 @@ mod tests {
         let script = b.express_to_script(&mut stack);
         stack.number(BabyBear::from_canonical_u32(BabyBear::MOD - 2).as_u32_vec()[0]);
         stack.op_equal();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
+    fn test_script_expression_extneg() {
+        let mut stack = StackTracker::new();
+        let a = ScriptExpression::from(EF::one());
+        let b = -a * EF::two();
+        let script = b.express_to_script(&mut stack);
+        stack.bignumber(EF::from_canonical_u32(EF::MOD - 2).as_u32_vec());
+        stack.custom(
+            u31ext_equalverify::<BabyBear4>(),
+            2,
+            false,
+            0,
+            "u31ext_equalverify",
+        );
+        stack.op_true();
         let res = stack.run();
         assert!(res.success);
     }
