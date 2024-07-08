@@ -147,7 +147,6 @@ where
         let challenge_point: Point<F> = open_leaf.get_point_by_index(point_index).unwrap().clone();
 
         let sibling_point: Point<F> = open_leaf.get_point_by_index(index_sibling).unwrap().clone();
-
         println!("challenge_point.y:{}", challenge_point.y);
         println!("sibling_point.y:{}", sibling_point.y);
         if log_folded_height < log_max_height - 1 {

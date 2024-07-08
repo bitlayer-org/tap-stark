@@ -51,10 +51,7 @@ impl<F: BfField> CommitProof<F> {
 
     pub fn verify_points_leaf(&self) -> bool {
         if let TapLeaf::Script(script, _ver) = self.leaf_node.leaf().clone() {
-            let res = execute_script_with_inputs(
-                script,
-                self.points_leaf.witness(),
-            );
+            let res = execute_script_with_inputs(script, self.points_leaf.witness());
             return res.success;
         } else {
             panic!("Invalid script")
