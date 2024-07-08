@@ -22,7 +22,6 @@ use scripts::u31_lib::{
     u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
     u31ext_mul_u31_by_constant, u31ext_neg, u31ext_sub, u31ext_sub_u31, BabyBear4, BabyBearU31,
 };
-
 use crate::symbolic_variable::SymbolicVariable;
 use crate::Entry;
 use crate::SymbolicExpression::{self, *};
@@ -77,7 +76,7 @@ impl<F: Field> From<&SymbolicVariable<F>> for Variable {
     }
 }
 
-// trait Expression:Debug + Clone{
+
 pub trait Expression {
     fn express_to_script(
         &self,
@@ -98,8 +97,6 @@ impl<F: BfField> Expression for ScriptExpression<F> {
                 debug.set(true);
             }
             ScriptExpression::Constant(f) => {
-                // let v = f.as_u32_vec();
-                // stack.bignumber(v);
             }
             ScriptExpression::Add { debug, .. } => {
                 debug.set(true);
@@ -107,7 +104,6 @@ impl<F: BfField> Expression for ScriptExpression<F> {
             ScriptExpression::Sub { debug, .. } => {
                 debug.set(true);
             }
-
             ScriptExpression::Neg { debug, .. } => {
                 debug.set(true);
             }
@@ -122,8 +118,6 @@ impl<F: BfField> Expression for ScriptExpression<F> {
         stack: &mut StackTracker,
         input_variables: &BTreeMap<&Variable, StackVariable>,
     ) -> Script {
-        // let mut variable_sequence: Vec<&Variable> = Vec::new();
-        // let mut var_map = BTreeMap::<&Variable,StackVariable>::new();
         match self {
             ScriptExpression::InputVariable { sv, debug } => {
                 let var = input_variables.get(sv).unwrap();
@@ -140,8 +134,8 @@ impl<F: BfField> Expression for ScriptExpression<F> {
                 debug,
                 mut var,
             } => {
-                x.express_to_script(stack, input_variables);
-                y.express_to_script(stack, input_variables);
+                x.express_to_script(stack, input_variables);// F
+                y.express_to_script(stack, input_variables);// EF 
                 if debug.get() == true {
                     stack.debug();
                 }
@@ -434,12 +428,6 @@ impl<F: BfField> From<F> for ScriptExpression<F> {
     }
 }
 
-// impl<F:BfField,EF:ExtBfField<F>> From<EF> for ScriptExpression<EF>{
-//     fn from(value: EF) -> Self{
-//         Self::Constant(value)
-//     }
-// }
-
 impl<F: BfField> Debug for ScriptExpression<F> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -564,19 +552,6 @@ impl<F: BfField> AbstractField for ScriptExpression<F> {
     }
 }
 
-// impl<F: BfField> Add for ScriptExpression<F> {
-//     type Output = Self;
-
-//     fn add(self, rhs: Self) -> Self {
-//         Self::Add {
-//             x: Arc::new(Box::new(self)),
-//             y: Arc::new(Box::new(rhs)),
-//             script: Script::default(),
-//             var: StackVariable::null(),
-//         }
-//     }
-// }
-
 impl<F: BfField> Add<F> for ScriptExpression<F> {
     type Output = Self;
 
@@ -601,7 +576,6 @@ impl<F: BfField> Add<Self> for ScriptExpression<F> {
             debug: Cell::new(false),
             var: StackVariable::null(),
         }
-        // self + Self::from(rhs)
     }
 }
 
@@ -617,19 +591,6 @@ impl<F: BfField> Add<&Self> for ScriptExpression<F> {
         }
     }
 }
-
-// impl<F: BfField> Add<impl Expression> for ScriptExpression<F> {
-//     type Output = ScriptExpression<EF>;
-
-//     fn add(self, rhs: ScriptExpression<EF>) -> Self::Output {
-//         ScriptExpression::<EF>::Add {
-//             x: Arc::new(Box::new(self)),
-//             y: Arc::new(Box::new(rhs)),
-//             script: Script::default(),
-//             var: StackVariable::null(),
-//         }
-//     }
-// }
 
 impl<F: BfField> AddAssign for ScriptExpression<F> {
     fn add_assign(&mut self, rhs: Self) {
@@ -791,6 +752,7 @@ mod tests {
         let a = ScriptExpression::from(BabyBear::one());
         let b = ScriptExpression::from(BabyBear::two());
         let c = a + b;
+        c.set_debug();
 
         let d = ScriptExpression::from(BabyBear::two());
         let e = ScriptExpression::from(BabyBear::two());
@@ -810,6 +772,7 @@ mod tests {
         let mut stack = StackTracker::new();
         let a = ScriptExpression::from(BabyBear::one());
         let b = ScriptExpression::from(EF::two());
+        // let c = b +a ;
         let c = ScriptExpression::<EF>::Add {
             x: Arc::new(Box::new(a)),
             y: Arc::new(Box::new(b)),
