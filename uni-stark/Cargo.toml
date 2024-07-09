@@ -5,6 +5,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git"}
+bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
+bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
+bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
 p3-air = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git" }
@@ -21,7 +25,7 @@ primitives = {path = "../primitives"}
 segment ={ path = "../segment"}
 script_manager = {path = "../script_manager"}
 fri = { path = "../fri"}
-
+common = {path = "../common"}
 
 [dev-dependencies]
 p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git" }
