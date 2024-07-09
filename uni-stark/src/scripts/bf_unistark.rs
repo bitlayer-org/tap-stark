@@ -83,18 +83,14 @@ pub fn compute_acc_numerator_all<Val: BfField, Challenge: BfField>(
 pub fn compute_acc_numerator_script<Val: BfField, Challenge: BfField>(
     zeta: Challenge,
     quotient_chunk_nums: usize,
-    trace_degree: usize,
+    degree_bits: usize,
     generator: Val,
     numerators: Vec<Challenge>,
 ) -> ScriptInfo {
     assert_eq!(numerators.len(), quotient_chunk_nums);
     let mut si = ScriptInfo::new(
         "compute_acc_numerator",
-        compute_acc_numerator_all::<Val, Challenge>(
-            log2_strict_usize(trace_degree),
-            generator,
-            quotient_chunk_nums,
-        ),
+        compute_acc_numerator_all::<Val, Challenge>(degree_bits, generator, quotient_chunk_nums),
     );
     si.add_input(Val::generator().try_inverse().unwrap())
         .add_input(zeta);
@@ -201,7 +197,7 @@ pub fn zps_mul_denominator_all<Val: BfField, Challenge: BfField>(
 
 pub fn compute_zps_mul_denominator_script<Val: BfField, Challenge: BfField>(
     quotient_chunk_nums: usize,
-    trace_degree: usize,
+    degree_bits: usize,
     generator: Val,
     zps: Vec<Challenge>,
     numerators: Vec<Challenge>,
@@ -209,16 +205,92 @@ pub fn compute_zps_mul_denominator_script<Val: BfField, Challenge: BfField>(
     assert_eq!(numerators.len(), quotient_chunk_nums);
     let mut si = ScriptInfo::new(
         "compute_zps_mul_denominator",
-        zps_mul_denominator_all::<Val, Challenge>(
-            log2_strict_usize(trace_degree),
-            generator,
-            quotient_chunk_nums,
-        ),
+        zps_mul_denominator_all::<Val, Challenge>(degree_bits, generator, quotient_chunk_nums),
     );
     for i in 0..quotient_chunk_nums {
         si.add_input(zps[i]);
         si.add_output(numerators[i]);
     }
+    si
+}
+
+//  *
+//  * compute:
+//  *  sum(zps[i] * open_value_i)
+//  *
+// * input:
+// *      altstack:
+// *          empty
+// *      stack:
+// *          open_value_i[0]      babybear4
+// *          open_value_i[1]      babybear4
+// *          open_value_i[2]      babybear4
+// *          open_value_i[3]      babybear4
+// *          zps[i]            babybear4
+
+// * output:
+// *      altstack:
+// *          empty
+// *      stack:
+// *          quotient_zeta     babybear4
+pub fn compute_quotient_zeta<Val: BfField, Challenge: BfField>(
+    quotient_chunk_nums: usize,
+) -> Script {
+    script! {
+        OP_0 OP_0 OP_0 OP_0                 //init quotient_zeta to 0
+        for _ in 0..quotient_chunk_nums {
+            OP_4TOALTSTACK
+            {compute_quotient_i::<Val, Challenge>()}
+            OP_4FROMALTSTACK
+            {u31ext_add::<BabyBear4>()}
+        }
+    }
+}
+
+pub fn compute_quotient_i<Val: BfField, Challenge: BfField>() -> Script {
+    script! {
+        OP_0 OP_0 OP_0 OP_1
+        {u31ext_mul::<BabyBear4>()}
+        OP_4TOALTSTACK
+        OP_0 OP_0 OP_1 OP_0
+        {u31ext_mul::<BabyBear4>()}
+        OP_4FROMALTSTACK
+        {u31ext_add::<BabyBear4>()}
+        OP_4TOALTSTACK
+        OP_0 OP_1 OP_0 OP_0
+        {u31ext_mul::<BabyBear4>()}
+        OP_4FROMALTSTACK
+        {u31ext_add::<BabyBear4>()}
+        OP_4TOALTSTACK
+        OP_1 OP_0 OP_0 OP_0
+        {u31ext_mul::<BabyBear4>()}
+        OP_4FROMALTSTACK
+        {u31ext_add::<BabyBear4>()}
+        {u31ext_mul::<BabyBear4>()}
+    }
+}
+
+pub fn compute_quotient_zeta_script<Val: BfField, Challenge: BfField>(
+    quotient_chunk_nums: usize,
+    zps: Vec<Challenge>,
+    open_values: Vec<Vec<Challenge>>,
+    quotient_zeta: Challenge,
+) -> ScriptInfo {
+    assert_eq!(zps.len(), quotient_chunk_nums);
+    assert_eq!(open_values.len(), quotient_chunk_nums);
+    let mut si = ScriptInfo::new(
+        "compute_quotient_zeta",
+        compute_quotient_zeta::<Val, Challenge>(quotient_chunk_nums),
+    );
+    let width = open_values[0].len();
+    assert_eq!(width, 4);
+    for i in 0..quotient_chunk_nums {
+        for j in 0..width {
+            si.add_input(open_values[i][j]);
+        }
+        si.add_input(zps[i]);
+    }
+    si.add_output(quotient_zeta);
     si
 }
 
@@ -297,18 +369,14 @@ pub fn verify_quotient<Val: BfField, Challenge: BfField>(
 pub fn verify_quotient_script<Val: BfField, Challenge: BfField>(
     zeta: Challenge,
     quotient_chunk_nums: usize,
-    trace_degree: usize,
+    degree_bits: usize,
     generator: Val,
     zps: Vec<Challenge>,
 ) -> ScriptInfo {
     assert_eq!(zps.len(), quotient_chunk_nums);
     let mut si = ScriptInfo::new(
         "verify_zps",
-        verify_quotient::<Val, Challenge>(
-            quotient_chunk_nums,
-            generator,
-            log2_strict_usize(trace_degree),
-        ),
+        verify_quotient::<Val, Challenge>(quotient_chunk_nums, generator, degree_bits),
     );
     si.add_input(Val::generator().try_inverse().unwrap())
         .add_input(zeta);
@@ -409,7 +477,7 @@ mod tests {
     use p3_matrix::util::reverse_matrix_index_bits;
     use p3_util::log2_strict_usize;
     use primitives::bf_pcs::Pcs;
-    use primitives::challenger;
+    use primitives::challenger::{self, Blake3Permutation};
     use primitives::field::BfField;
     use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::{Rng, SeedableRng};
@@ -423,6 +491,7 @@ mod tests {
         compute_acc_numerator, compute_acc_numerator_script, compute_zps_mul_denominator_script,
         verify_quotient, verify_quotient_script,
     };
+    use crate::{prove, StarkConfig};
 
     define_pushable!();
 
@@ -493,7 +562,7 @@ mod tests {
         let mut exec_script_info = compute_acc_numerator_script::<Val, Challenge>(
             zeta,
             quotient_chunk_nums,
-            degree,
+            log_degree,
             generator,
             numerators,
         );
@@ -515,9 +584,6 @@ mod tests {
 
     #[test]
     fn test_zps_mul_denominator() {
-        type Challenge = BinomialExtensionField<BabyBear, 4>;
-        type Val = BabyBear;
-
         let degree = 8; //n
         let log_degree = log2_strict_usize(degree);
         let quotient_degree = 4; //s
@@ -576,7 +642,7 @@ mod tests {
         let mut bc_assigner = DefaultBCAssignment::new();
         let mut exec_script_info = compute_zps_mul_denominator_script::<Val, Challenge>(
             quotient_chunk_nums,
-            degree,
+            log_degree,
             generator,
             zps,
             numerators,
