@@ -10,13 +10,10 @@ use bitcoin_scriptexec::{Exec, ExecCtx, ExecutionResult, Options, TxTemplate};
 pub mod bit_comm;
 pub use bit_comm::*;
 
-mod u32;
-pub use u32::*;
-
 pub mod pseudo;
 
-mod hashes;
-pub use hashes::*;
+pub use bitvm::hash::blake3;
+pub use bitvm::u32::*;
 
 define_pushable!();
 

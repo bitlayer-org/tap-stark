@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bitvm = { git = "https://github.com/bitlayer-org/BitVM.git" }
 bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
 bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
 bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
