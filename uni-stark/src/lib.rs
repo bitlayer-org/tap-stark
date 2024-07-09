@@ -8,13 +8,13 @@ mod config;
 mod folder;
 mod proof;
 mod prover;
+mod scripts;
 mod scripts_expression;
 mod symbolic_builder;
 mod symbolic_expression;
 mod symbolic_variable;
 mod verifier;
 mod zerofier_coset;
-mod scripts;
 
 #[cfg(debug_assertions)]
 mod check_constraints;

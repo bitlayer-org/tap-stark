@@ -20,17 +20,16 @@ define_pushable!();
 
 // * input:
 // *      altstack:
-// *          empty 
+// *          empty
 // *      stack:
 // *          zeta/a            babybear4
 // *          (quotient_chunk_nums - 1 - j_i)
-// *          zps[i]
 
 // * output:
 // *      altstack:
 // *          acc_numerator     babybear4
 // *      stack:
-// *          zps[i]            babybear4
+// *          zeta/a            babybear4
 fn compute_acc_numerator<Val: BfField, Challenge: BfField>(
     log_n_conf: usize,
     generator: Val,
@@ -47,16 +46,13 @@ fn compute_acc_numerator<Val: BfField, Challenge: BfField>(
             OP_4FROMALTSTACK                                        //get zeta/babybear_generator at top
             4 OP_ROLL
             {u31ext_mul_u31::<BabyBear4>()}                         //zeta/(babybear_generator * w^j)
-            {value_exp_n_minus_one::<Challenge>(log_n_conf)}        // x^n - 1
+            {value_exp_n_minus_one::<Challenge>(log_n_conf)}        //x^n - 1
             OP_4FROMALTSTACK
             OP_4SWAP
             OP_4FROMALTSTACK                                        //acc
             {u31ext_mul::<BabyBear4>()}                             //new_acc  zeta/babybear_generator -j
         }
-        // OP_4FROMALTSTACK
-        // OP_4SWAP
         OP_4TOALTSTACK
-        OP_4DROP
     }
 }
 
@@ -68,8 +64,6 @@ pub fn compute_acc_numerator_all<Val: BfField, Challenge: BfField>(
     script! {
         {u31ext_mul_u31::<BabyBear4>()}   // stack: zeta/a
         for i in 0..quotient_chunk_nums{
-            OP_4DUP
-            OP_4TOALTSTACK
             OP_4TOALTSTACK
             for j in 0..quotient_chunk_nums {
                 if j != i {
@@ -78,6 +72,10 @@ pub fn compute_acc_numerator_all<Val: BfField, Challenge: BfField>(
             }
             OP_4FROMALTSTACK
             {compute_acc_numerator::<Val, Challenge>(log_n_conf, generator,quotient_chunk_nums)}   //babybear4
+        }
+        OP_4DROP
+        for _ in 0..quotient_chunk_nums {
+            OP_4FROMALTSTACK
         }
     }
 }
@@ -95,12 +93,12 @@ pub fn compute_acc_numerator_script<Val: BfField, Challenge: BfField>(
         compute_acc_numerator_all::<Val, Challenge>(
             log2_strict_usize(trace_degree),
             generator,
-            quotient_chunk_nums
+            quotient_chunk_nums,
         ),
     );
     si.add_input(Val::generator().try_inverse().unwrap())
         .add_input(zeta);
-    for i in (0..quotient_chunk_nums).rev() {
+    for i in 0..quotient_chunk_nums {
         si.add_output(numerators[i]);
     }
     si
@@ -149,17 +147,16 @@ fn compute_acc_denominator<Val: BfField, Challenge: BfField>(
 //  *
 // * input:
 // *      altstack:
-// *          acc_numerator     babybear4
+// *          empty
 // *      stack:
 // *          zps[i]            babybear4
 
 // * output:
 // *      altstack:
 // *          zps[i] * acc_denominator  babybear4
-// *          acc_numerator             babybear4
 // *      stack:
 // *          zps[i+1] or empty         babybear4
-fn zps_i_mul_acc_denominator<Val: BfField, Challenge: BfField>(
+fn zps_i_mul_denominator<Val: BfField, Challenge: BfField>(
     i: usize,
     log_n_conf: usize,
     generator: Val,
@@ -184,6 +181,45 @@ fn zps_i_mul_acc_denominator<Val: BfField, Challenge: BfField>(
             {u31ext_mul_u31::<BabyBear4>()}
             OP_4TOALTSTACK
         }
+}
+
+pub fn zps_mul_denominator_all<Val: BfField, Challenge: BfField>(
+    log_n_conf: usize,
+    generator: Val,
+    quotient_chunk_nums: usize,
+) -> Script {
+    script! {
+        for i in 0..quotient_chunk_nums {
+            {zps_i_mul_denominator::<Val, Challenge>(i, log_n_conf, generator,quotient_chunk_nums)}
+        }
+        for _ in 0..quotient_chunk_nums {
+            OP_4FROMALTSTACK
+        }
+
+    }
+}
+
+pub fn compute_zps_mul_denominator_script<Val: BfField, Challenge: BfField>(
+    quotient_chunk_nums: usize,
+    trace_degree: usize,
+    generator: Val,
+    zps: Vec<Challenge>,
+    numerators: Vec<Challenge>,
+) -> ScriptInfo {
+    assert_eq!(numerators.len(), quotient_chunk_nums);
+    let mut si = ScriptInfo::new(
+        "compute_zps_mul_denominator",
+        zps_mul_denominator_all::<Val, Challenge>(
+            log2_strict_usize(trace_degree),
+            generator,
+            quotient_chunk_nums,
+        ),
+    );
+    for i in 0..quotient_chunk_nums {
+        si.add_input(zps[i]);
+        si.add_output(numerators[i]);
+    }
+    si
 }
 
 // * input:
@@ -219,7 +255,7 @@ pub fn verify_quotient_i<Val: BfField, Challenge: BfField>(
         OP_4FROMALTSTACK
         {compute_acc_numerator::<Val, Challenge>(log_n_conf, generator,quotient_chunk_nums)}   //babybear4
 
-        {zps_i_mul_acc_denominator::<Val, Challenge>(i, log_n_conf, generator,quotient_chunk_nums)}
+        {zps_i_mul_denominator::<Val, Challenge>(i, log_n_conf, generator,quotient_chunk_nums)}
 
         OP_4FROMALTSTACK
         OP_4FROMALTSTACK
@@ -384,7 +420,8 @@ mod tests {
     use scripts::{execute_script, execute_script_with_inputs, BabyBear, BinomialExtensionField};
 
     use crate::scripts::bf_unistark::{
-        compute_acc_numerator, verify_quotient, verify_quotient_script, compute_acc_numerator_script,
+        compute_acc_numerator, compute_acc_numerator_script, compute_zps_mul_denominator_script,
+        verify_quotient, verify_quotient_script,
     };
 
     define_pushable!();
@@ -448,9 +485,7 @@ mod tests {
                     .iter()
                     .enumerate()
                     .filter(|(j, _)| *j != i)
-                    .map(|(_, other_domain)| {
-                        other_domain.zp_at_point(zeta)
-                    })
+                    .map(|(_, other_domain)| other_domain.zp_at_point(zeta))
                     .product::<Challenge>()
             })
             .collect_vec();
@@ -470,9 +505,16 @@ mod tests {
             exec_script_info.witness(),
         );
         assert!(res.success);
+
+        let res = execute_script_with_inputs(
+            exec_script_info.get_neq_script(),
+            exec_script_info.witness(),
+        );
+        assert!(!res.success);
     }
+
     #[test]
-    fn test_zps() {
+    fn test_zps_mul_denominator() {
         type Challenge = BinomialExtensionField<BabyBear, 4>;
         type Val = BabyBear;
 
@@ -518,30 +560,26 @@ mod tests {
             })
             .collect_vec();
 
-        // let test_script = script! {
-        //     for i in (0..zps.len()).rev() {
-        //         {zps[i].as_u32_vec()[3]}{zps[i].as_u32_vec()[2]}{zps[i].as_u32_vec()[1]}{zps[i].as_u32_vec()[0]}
-        //     }
-        //     {zeta.as_u32_vec()[3]}{zeta.as_u32_vec()[2]}{zeta.as_u32_vec()[1]}{zeta.as_u32_vec()[0]}
-        //     {a.as_u32_vec()[0]}
-        //     {verify_quotient::<Val, Challenge>(
-        //         quotient_chunk_nums,
-        //         generator,
-        //         log2_strict_usize(degree))}
-        // };
+        let numerators = quotient_chunks_domains
+            .iter()
+            .enumerate()
+            .map(|(i, domain)| {
+                quotient_chunks_domains
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, other_domain)| other_domain.zp_at_point(zeta))
+                    .product::<Challenge>()
+            })
+            .collect_vec();
 
-        // let res = execute_script(test_script);
-        // if !res.success {
-        //     println!("{:?}", res);
-        // }
-        // assert!(res.success);
         let mut bc_assigner = DefaultBCAssignment::new();
-        let mut exec_script_info = verify_quotient_script::<Val, Challenge>(
-            zeta,
+        let mut exec_script_info = compute_zps_mul_denominator_script::<Val, Challenge>(
             quotient_chunk_nums,
             degree,
             generator,
             zps,
+            numerators,
         );
 
         exec_script_info.gen(&mut bc_assigner);
@@ -551,5 +589,92 @@ mod tests {
             exec_script_info.witness(),
         );
         assert!(res.success);
+
+        let res = execute_script_with_inputs(
+            exec_script_info.get_neq_script(),
+            exec_script_info.witness(),
+        );
+        assert!(!res.success);
     }
+    // #[test]
+    // fn test_zps() {
+    //     type Challenge = BinomialExtensionField<BabyBear, 4>;
+    //     type Val = BabyBear;
+
+    //     let degree = 8; //n
+    //     let log_degree = log2_strict_usize(degree);
+    //     let quotient_degree = 4; //s
+    //     let log_quotient_degree = log2_strict_usize(quotient_degree);
+
+    //     let mut rng = ChaCha20Rng::seed_from_u64(0u64);
+
+    //     let zeta = rng.gen::<Challenge>();
+
+    //     let a = Val::generator().try_inverse().unwrap();
+
+    //     // let trace_domain = pcs.natural_domain_for_degree(degree);
+    //     let trace_domain = TwoAdicMultiplicativeCoset {
+    //         log_n: log_degree,
+    //         shift: Val::one(),
+    //     };
+
+    //     let quotient_domain =
+    //         trace_domain.create_disjoint_domain(1 << (log_degree + log_quotient_degree));
+
+    //     let generator = Val::two_adic_generator(quotient_domain.log_n);
+
+    //     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
+
+    //     let quotient_chunk_nums = quotient_chunks_domains.len();
+
+    //     let zps = quotient_chunks_domains
+    //         .iter()
+    //         .enumerate()
+    //         .map(|(i, domain)| {
+    //             quotient_chunks_domains
+    //                 .iter()
+    //                 .enumerate()
+    //                 .filter(|(j, _)| *j != i)
+    //                 .map(|(_, other_domain)| {
+    //                     other_domain.zp_at_point(zeta)
+    //                         * other_domain.zp_at_point(domain.first_point()).inverse()
+    //                 })
+    //                 .product::<Challenge>()
+    //         })
+    //         .collect_vec();
+
+    //     // let test_script = script! {
+    //     //     for i in (0..zps.len()).rev() {
+    //     //         {zps[i].as_u32_vec()[3]}{zps[i].as_u32_vec()[2]}{zps[i].as_u32_vec()[1]}{zps[i].as_u32_vec()[0]}
+    //     //     }
+    //     //     {zeta.as_u32_vec()[3]}{zeta.as_u32_vec()[2]}{zeta.as_u32_vec()[1]}{zeta.as_u32_vec()[0]}
+    //     //     {a.as_u32_vec()[0]}
+    //     //     {verify_quotient::<Val, Challenge>(
+    //     //         quotient_chunk_nums,
+    //     //         generator,
+    //     //         log2_strict_usize(degree))}
+    //     // };
+
+    //     // let res = execute_script(test_script);
+    //     // if !res.success {
+    //     //     println!("{:?}", res);
+    //     // }
+    //     // assert!(res.success);
+    //     let mut bc_assigner = DefaultBCAssignment::new();
+    //     let mut exec_script_info = verify_quotient_script::<Val, Challenge>(
+    //         zeta,
+    //         quotient_chunk_nums,
+    //         degree,
+    //         generator,
+    //         zps,
+    //     );
+
+    //     exec_script_info.gen(&mut bc_assigner);
+
+    //     let res = execute_script_with_inputs(
+    //         exec_script_info.get_eq_script(),
+    //         exec_script_info.witness(),
+    //     );
+    //     assert!(res.success);
+    // }
 }
