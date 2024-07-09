@@ -1,6 +1,6 @@
 //! A minimal univariate STARK framework.
 
-#![no_std]
+// #![no_std]
 
 extern crate alloc;
 
@@ -14,6 +14,7 @@ mod symbolic_expression;
 mod symbolic_variable;
 mod verifier;
 mod zerofier_coset;
+mod scripts;
 
 #[cfg(debug_assertions)]
 mod check_constraints;
