@@ -1,40 +1,361 @@
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
-use alloc::rc::Rc;
+use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use alloc::{format, vec};
 use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use bitcoin::hashes::cmp;
-use bitcoin::opcodes::OP_ROLL;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-use common::{AbstractField, AsU32Vec};
+use common::AbstractField;
+use itertools::enumerate;
+use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues};
 use p3_field::Field;
+use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
+use p3_matrix::stack::VerticalPair;
+use p3_util::log2_ceil_usize;
 use primitives::field::BfField;
-use script_primitives::*;
 use scripts::treepp::*;
 use scripts::u31_lib::{
-    u31_add, u31_double, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add,
-    u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
-    u31ext_mul_u31_by_constant, u31ext_neg, u31ext_sub, u31ext_sub_u31, BabyBear4, BabyBearU31,
+    u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31ext_add, u31ext_add_u31,
+    u31ext_equalverify, u31ext_mul, u31ext_mul_u31, u31ext_neg, u31ext_sub, u31ext_sub_u31,
+    BabyBear4, BabyBearU31,
 };
+use serde::de::value;
 
+use crate::symbolic_builder::{get_symbolic_constraints, SymbolicAirBuilder};
 use crate::symbolic_variable::SymbolicVariable;
-use crate::Entry;
 use crate::SymbolicExpression::{self, *};
+use crate::{Entry, PackedVal, StarkGenericConfig, Val};
 
-pub mod script_primitives {
-    use bitcoin_script_stack::stack::{StackTracker, StackVariable};
+pub struct ScriptConstraintBuilder<F: BfField> {
+    pub main: RowMajorMatrix<ValueVariable<F>>,
+    pub public_values: Vec<Variable>,
+    pub is_first_row: F,
+    pub is_last_row: F,
+    pub is_transition: F,
+    pub constraints: Vec<ScriptExpression<F>>,
+    pub alpha: F,
+}
+
+impl<F: BfField> ScriptConstraintBuilder<F> {
+    pub fn new(
+        local: Vec<F>,
+        next: Vec<F>,
+        num_public_values: usize,
+        is_first_row: F,
+        is_last_row: F,
+        is_transition: F,
+        alpha: F,
+    ) -> Self {
+        let width = local.len();
+        let main_variables: Vec<ValueVariable<F>> = [local, next]
+            .into_iter()
+            .enumerate()
+            .flat_map(|(row_index, row_values)| {
+                (0..width).map(move |column_index| {
+                    ValueVariable::new(
+                        Variable::new(row_index, column_index),
+                        row_values[column_index],
+                    )
+                })
+            })
+            .collect();
+
+        let public_values = (0..num_public_values)
+            //  set the row_index of Variable as u32::MAX to mark public_values
+            .map(move |index| Variable::new(u32::MAX as usize, index))
+            .collect();
+
+        Self {
+            main: RowMajorMatrix::new(main_variables, width),
+            public_values: public_values,
+            is_first_row: is_first_row,
+            is_last_row: is_last_row,
+            is_transition: is_transition,
+            constraints: Vec::new(),
+            alpha: alpha,
+        }
+    }
+
+    pub fn get_accmulator_expr(&self) -> ScriptExpression<F> {
+        let mut acc = self.constraints[0].clone();
+        for i in 1..self.constraints.len() {
+            acc = acc * self.alpha + self.constraints[i].clone();
+        }
+        acc
+    }
+
+    pub fn set_variable_values<Base: BfField>(
+        &self,
+        public_values: &Vec<Base>,
+        bmap: &mut BTreeMap<Variable, StackVariable>,
+        stack: &mut StackTracker,
+    ) {
+        assert_eq!(self.public_values().len(), public_values.len());
+        for i in 0..self.public_values().len() {
+            let u32_vec = F::from_canonical_u32(public_values[i].as_u32_vec()[0]).as_u32_vec();
+            assert_eq!(u32_vec.len(), 4);
+            bmap.insert(
+                self.public_values()[i],
+                stack.var(
+                    F::U32_SIZE as u32,
+                    script! { {u32_vec[3]} {u32_vec[2]}  {u32_vec[1]} {u32_vec[0]} },
+                    &format!("public_var index={}", i),
+                ),
+            );
+        }
+
+        for i in 0..self.main().values.len() {
+            let u32_vec = self.main().values[i].value.unwrap().as_u32_vec();
+            bmap.insert(
+                self.main().values[i].var,
+                stack.var(
+                    F::U32_SIZE as u32,
+                    script! { {u32_vec[3]} {u32_vec[2]}  {u32_vec[1]} {u32_vec[0]} },
+                    &format!(
+                        "main_trace row index={} column_value={}",
+                        i / self.main().width,
+                        i % self.main().width
+                    ),
+                ),
+            );
+        }
+    }
+
+    pub fn drop_variable_values(
+        &self,
+        bmap: &mut BTreeMap<Variable, StackVariable>,
+        stack: &mut StackTracker,
+    ) {
+        for i in (0..self.main().values.len()).rev() {
+            stack.drop(*bmap.get(&self.main().values[i].var).unwrap());
+        }
+
+        for i in (0..self.public_values().len()).rev() {
+            stack.drop(*bmap.get(&self.public_values()[i]).unwrap());
+        }
+    }
+}
+
+impl<F: BfField> AirBuilder for ScriptConstraintBuilder<F> {
+    type F = F;
+    type Expr = ScriptExpression<F>;
+    type Var = ValueVariable<F>;
+    type M = RowMajorMatrix<Self::Var>;
+
+    fn main(&self) -> Self::M {
+        self.main.clone()
+    }
+
+    fn is_first_row(&self) -> Self::Expr {
+        Self::Expr::from(self.is_first_row)
+    }
+
+    fn is_last_row(&self) -> Self::Expr {
+        Self::Expr::from(self.is_last_row)
+    }
+
+    fn is_transition_window(&self, size: usize) -> Self::Expr {
+        if size == 2 {
+            Self::Expr::from(self.is_transition)
+        } else {
+            panic!("uni-stark only supports a window size of 2")
+        }
+    }
+
+    fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
+        let x = x.into();
+        self.constraints.push(x);
+    }
+}
+
+impl<F: BfField> AirBuilderWithPublicValues for ScriptConstraintBuilder<F> {
+    type PublicVar = Variable;
+
+    fn public_values(&self) -> &[Self::PublicVar] {
+        &self.public_values
+    }
+}
+
+pub fn get_constrains_log_degree<F>(constraints: &Vec<SymbolicExpression<F>>) -> usize
+where
+    F: Field,
+{
+    // We pad to at least degree 2, since a quotient argument doesn't make sense with smaller degrees.
+    let constraint_degree = constraints
+        .iter()
+        .map(|c| c.degree_multiple())
+        .max()
+        .unwrap_or(0)
+        .max(2);
+
+    // The quotient's actual degree is approximately (max_constraint_degree - 1) n,
+    // where subtracting 1 comes from division by the zerofier.
+    // But we pad it to a power of two so that we can efficiently decompose the quotient.
+    log2_ceil_usize(constraint_degree - 1)
+}
+
+pub fn get_symbolic_builder<F, A>(
+    air: &A,
+    preprocessed_width: usize,
+    num_public_values: usize,
+) -> SymbolicAirBuilder<F>
+where
+    F: Field,
+    A: Air<SymbolicAirBuilder<F>>,
+{
+    let mut builder = SymbolicAirBuilder::new(preprocessed_width, air.width(), num_public_values);
+    air.eval(&mut builder);
+    builder
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ValueVariable<F: BfField> {
+    var: Variable,
+    value: Option<F>,
+}
+
+impl<F: BfField> ValueVariable<F> {
+    fn new(var: Variable, value: F) -> Self {
+        Self {
+            var,
+            value: Some(value),
+        }
+    }
+}
+
+impl<F: BfField> From<ValueVariable<F>> for ScriptExpression<F> {
+    fn from(var: ValueVariable<F>) -> Self {
+        Self::ValueVariable {
+            v: var,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
+}
+
+impl<F: BfField> Add for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        ScriptExpression::<F>::from(self) + ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Add<F> for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn add(self, rhs: F) -> Self::Output {
+        ScriptExpression::<F>::from(self) + ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Add<ScriptExpression<F>> for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn add(self, rhs: ScriptExpression<F>) -> Self::Output {
+        ScriptExpression::from(self) + rhs
+    }
+}
+
+impl<F: BfField> Add<ValueVariable<F>> for ScriptExpression<F> {
+    type Output = Self;
+
+    fn add(self, rhs: ValueVariable<F>) -> Self::Output {
+        self + Self::from(rhs)
+    }
+}
+
+impl<F: BfField> Sub for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        ScriptExpression::<F>::from(self) - ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Sub<F> for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn sub(self, rhs: F) -> Self::Output {
+        ScriptExpression::<F>::from(self) - ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Sub<ScriptExpression<F>> for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn sub(self, rhs: ScriptExpression<F>) -> Self::Output {
+        ScriptExpression::<F>::from(self) - rhs
+    }
+}
+
+impl<F: BfField> Sub<ValueVariable<F>> for ScriptExpression<F> {
+    type Output = Self;
+
+    fn sub(self, rhs: ValueVariable<F>) -> Self::Output {
+        self - Self::from(rhs)
+    }
+}
+
+impl<F: BfField> Mul for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        ScriptExpression::<F>::from(self) * ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Mul<F> for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn mul(self, rhs: F) -> Self::Output {
+        ScriptExpression::<F>::from(self) * ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Mul<ScriptExpression<F>> for ValueVariable<F> {
+    type Output = ScriptExpression<F>;
+
+    fn mul(self, rhs: ScriptExpression<F>) -> Self::Output {
+        ScriptExpression::<F>::from(self) * rhs
+    }
+}
+
+impl<F: BfField> Mul<ValueVariable<F>> for ScriptExpression<F> {
+    type Output = Self;
+
+    fn mul(self, rhs: ValueVariable<F>) -> Self::Output {
+        self * Self::from(rhs)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Variable {
     row_index: usize,
     column_index: usize,
+}
+
+impl Variable {
+    fn new(row_index: usize, column_index: usize) -> Self {
+        Variable {
+            row_index,
+            column_index,
+        }
+    }
+}
+
+impl<F: BfField> From<Variable> for ScriptExpression<F> {
+    fn from(var: Variable) -> Self {
+        Self::InputVariable {
+            sv: var,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
 }
 
 impl<F: Field> From<SymbolicVariable<F>> for Variable {
@@ -77,26 +398,109 @@ impl<F: Field> From<&SymbolicVariable<F>> for Variable {
     }
 }
 
+impl<F: BfField> Add<F> for Variable {
+    type Output = ScriptExpression<F>;
+
+    fn add(self, rhs: F) -> Self::Output {
+        ScriptExpression::<F>::from(self) + ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Add<ScriptExpression<F>> for Variable {
+    type Output = ScriptExpression<F>;
+
+    fn add(self, rhs: ScriptExpression<F>) -> Self::Output {
+        ScriptExpression::from(self) + rhs
+    }
+}
+
+impl<F: BfField> Add<Variable> for ScriptExpression<F> {
+    type Output = Self;
+
+    fn add(self, rhs: Variable) -> Self::Output {
+        self + Self::from(rhs)
+    }
+}
+
+impl<F: BfField> Sub<F> for Variable {
+    type Output = ScriptExpression<F>;
+
+    fn sub(self, rhs: F) -> Self::Output {
+        ScriptExpression::<F>::from(self) - ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Sub<ScriptExpression<F>> for Variable {
+    type Output = ScriptExpression<F>;
+
+    fn sub(self, rhs: ScriptExpression<F>) -> Self::Output {
+        ScriptExpression::<F>::from(self) - rhs
+    }
+}
+
+impl<F: BfField> Sub<Variable> for ScriptExpression<F> {
+    type Output = Self;
+
+    fn sub(self, rhs: Variable) -> Self::Output {
+        self - Self::from(rhs)
+    }
+}
+
+impl<F: BfField> Mul<F> for Variable {
+    type Output = ScriptExpression<F>;
+
+    fn mul(self, rhs: F) -> Self::Output {
+        ScriptExpression::<F>::from(self) * ScriptExpression::<F>::from(rhs)
+    }
+}
+
+impl<F: BfField> Mul<ScriptExpression<F>> for Variable {
+    type Output = ScriptExpression<F>;
+
+    fn mul(self, rhs: ScriptExpression<F>) -> Self::Output {
+        ScriptExpression::<F>::from(self) * rhs
+    }
+}
+
+impl<F: BfField> Mul<Variable> for ScriptExpression<F> {
+    type Output = Self;
+
+    fn mul(self, rhs: Variable) -> Self::Output {
+        self * Self::from(rhs)
+    }
+}
+
+pub struct Executor<F: BfField> {
+    to_exec_expr: ScriptExpression<F>,
+    bmap: BTreeMap<Variable, StackVariable>,
+    stack: StackTracker,
+}
+
 pub trait Expression {
     fn express_to_script(
         &self,
         stack: &mut StackTracker,
-        input_variables: &BTreeMap<&Variable, StackVariable>,
+        input_variables: &BTreeMap<Variable, StackVariable>,
     ) -> Script;
 
     fn var_size(&self) -> u32;
 
     #[allow(unused)]
     fn set_debug(&self);
-}
 
+    fn get_var(&self) -> Option<&StackVariable>;
+}
+// bexpr = a_expr.lookup(table); // n s
 impl<F: BfField> Expression for ScriptExpression<F> {
     fn set_debug(&self) {
         match self {
+            ScriptExpression::ValueVariable { debug, .. } => {
+                debug.set(true);
+            }
             ScriptExpression::InputVariable { debug, .. } => {
                 debug.set(true);
             }
-            ScriptExpression::Constant(f) => {}
+            ScriptExpression::Constant { f, .. } => {}
             ScriptExpression::Add { debug, .. } => {
                 debug.set(true);
             }
@@ -109,23 +513,38 @@ impl<F: BfField> Expression for ScriptExpression<F> {
             ScriptExpression::Mul { debug, .. } => {
                 debug.set(true);
             }
+            ScriptExpression::Equal { debug, .. } => {
+                debug.set(true);
+            }
         };
     }
 
     fn express_to_script(
         &self,
         stack: &mut StackTracker,
-        input_variables: &BTreeMap<&Variable, StackVariable>,
+        input_variables: &BTreeMap<Variable, StackVariable>,
     ) -> Script {
         match self {
-            ScriptExpression::InputVariable { sv, debug } => {
-                let var = input_variables.get(sv).unwrap();
-                stack.copy_var(var.clone());
-                stack.debug();
+            ScriptExpression::ValueVariable { v, debug, mut var } => {
+                let intput_var = input_variables.get(&v.var).unwrap();
+                var = stack.copy_var(intput_var.clone());
+                if debug.get() == true {
+                    stack.debug();
+                }
             }
-            ScriptExpression::Constant(f) => {
+            ScriptExpression::InputVariable { sv, debug, mut var } => {
+                let intput_var = input_variables.get(sv).unwrap();
+                var = stack.copy_var(intput_var.clone());
+                if debug.get() == true {
+                    stack.debug();
+                }
+            }
+            ScriptExpression::Constant { f, mut var, debug } => {
                 let v = f.as_u32_vec();
-                stack.bignumber(v);
+                var = stack.bignumber(v);
+                if debug.get() == true {
+                    stack.debug();
+                }
             }
             ScriptExpression::Add {
                 x,
@@ -135,9 +554,6 @@ impl<F: BfField> Expression for ScriptExpression<F> {
             } => {
                 x.express_to_script(stack, input_variables); // F
                 y.express_to_script(stack, input_variables); // EF
-                if debug.get() == true {
-                    stack.debug();
-                }
                 if x.var_size() == y.var_size() {
                     let vars = stack
                         .custom1(
@@ -195,9 +611,6 @@ impl<F: BfField> Expression for ScriptExpression<F> {
             } => {
                 x.express_to_script(stack, input_variables);
                 y.express_to_script(stack, input_variables);
-                if debug.get() == true {
-                    stack.debug();
-                }
                 if x.var_size() == y.var_size() {
                     let vars = stack
                         .custom1(
@@ -252,9 +665,6 @@ impl<F: BfField> Expression for ScriptExpression<F> {
             }
             ScriptExpression::Neg { x, debug, mut var } => {
                 x.express_to_script(stack, input_variables);
-                if debug.get() == true {
-                    stack.debug();
-                }
                 let vars = stack
                     .custom1(
                         script! {
@@ -285,9 +695,6 @@ impl<F: BfField> Expression for ScriptExpression<F> {
             } => {
                 x.express_to_script(stack, input_variables);
                 y.express_to_script(stack, input_variables);
-                if debug.get() == true {
-                    stack.debug();
-                }
                 if x.var_size() == y.var_size() {
                     let vars = stack
                         .custom1(
@@ -336,22 +743,62 @@ impl<F: BfField> Expression for ScriptExpression<F> {
                 }
                 assert_eq!(var.size(), F::U32_SIZE as u32);
             }
+            ScriptExpression::Equal { x, y, debug } => {
+                x.express_to_script(stack, input_variables);
+                y.express_to_script(stack, input_variables);
+                assert_eq!(x.var_size(), y.var_size());
+                if x.var_size() == 1 {
+                    stack.op_equalverify();
+                } else {
+                    stack
+                        .custom(
+                            u31ext_equalverify::<BabyBear4>(),
+                            2,
+                            false,
+                            0,
+                            "u31ext_equalverify",
+                        )
+                        .unwrap();
+                }
+            }
         };
-
         stack.get_script()
     }
 
     fn var_size(&self) -> u32 {
         F::U32_SIZE as u32
     }
+
+    fn get_var(&self) -> Option<&StackVariable> {
+        match self {
+            ScriptExpression::ValueVariable { var, .. } => Some(var),
+            ScriptExpression::InputVariable { var, .. } => Some(var),
+            ScriptExpression::Constant { var, .. } => Some(var),
+            ScriptExpression::Add { var, .. } => Some(var),
+            ScriptExpression::Sub { var, .. } => Some(var),
+            ScriptExpression::Neg { var, .. } => Some(var),
+            ScriptExpression::Mul { var, .. } => Some(var),
+            ScriptExpression::Equal { .. } => None,
+        }
+    }
 }
 
 pub enum ScriptExpression<F: BfField> {
+    ValueVariable {
+        v: ValueVariable<F>,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
     InputVariable {
         sv: Variable,
         debug: Cell<bool>,
+        var: StackVariable,
     },
-    Constant(F),
+    Constant {
+        f: F,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
     Add {
         x: Arc<Box<dyn Expression>>,
         y: Arc<Box<dyn Expression>>,
@@ -375,6 +822,11 @@ pub enum ScriptExpression<F: BfField> {
         var: StackVariable,
         debug: Cell<bool>,
     },
+    Equal {
+        x: Arc<Box<dyn Expression>>,
+        y: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+    },
 }
 
 impl<F: BfField> From<&SymbolicExpression<F>> for ScriptExpression<F> {
@@ -383,11 +835,16 @@ impl<F: BfField> From<&SymbolicExpression<F>> for ScriptExpression<F> {
             SymbolicExpression::Variable(v) => ScriptExpression::InputVariable {
                 sv: v.into(),
                 debug: Cell::new(false),
+                var: StackVariable::null(),
             },
             SymbolicExpression::IsFirstRow => ScriptExpression::one(),
             SymbolicExpression::IsLastRow => ScriptExpression::one(),
             SymbolicExpression::IsTransition => ScriptExpression::one(),
-            SymbolicExpression::Constant(f) => ScriptExpression::Constant(f.clone()),
+            SymbolicExpression::Constant(f) => ScriptExpression::Constant {
+                f: f.clone(),
+                debug: Cell::new(false),
+                var: StackVariable::null(),
+            },
             SymbolicExpression::Add { x, y, .. } => ScriptExpression::Add {
                 x: Arc::new(Box::new(ScriptExpression::from(&*x.clone()))),
                 y: Arc::new(Box::new(ScriptExpression::from(&*y.clone()))),
@@ -417,43 +874,54 @@ impl<F: BfField> From<&SymbolicExpression<F>> for ScriptExpression<F> {
 
 impl<F: BfField> Default for ScriptExpression<F> {
     fn default() -> Self {
-        Self::Constant(F::zero())
+        Self::zero()
     }
 }
 
 impl<F: BfField> From<F> for ScriptExpression<F> {
     fn from(value: F) -> Self {
-        Self::Constant(value)
+        Self::Constant {
+            f: value,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
     }
 }
 
 impl<F: BfField> Debug for ScriptExpression<F> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, fm: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            ScriptExpression::InputVariable { sv, .. } => f
+            ScriptExpression::ValueVariable { v, .. } => fm
+                .debug_struct("ScriptExpression::ValueVariable")
+                .field("var", v)
+                .finish(),
+            ScriptExpression::InputVariable { sv, .. } => fm
                 .debug_struct("ScriptExpression::InputVariable")
                 .field("sv", sv)
                 .finish(),
-            ScriptExpression::Constant(value) => f
+            ScriptExpression::Constant { f, .. } => fm
                 .debug_struct("ScriptExpression::Constant")
-                .field("value", value)
+                .field("f", f)
                 .finish(),
-            ScriptExpression::Add { x, y, debug, var } => f
+            ScriptExpression::Add { x, y, debug, var } => fm
                 .debug_struct("ScriptExpression::Add")
                 .field("variable", var)
                 .finish(),
-            ScriptExpression::Sub { x, y, debug, var } => f
+            ScriptExpression::Sub { x, y, debug, var } => fm
                 .debug_struct("ScriptExpression::Sub")
                 .field("variable", var)
                 .finish(),
-            ScriptExpression::Mul { x, y, debug, var } => f
+            ScriptExpression::Mul { x, y, debug, var } => fm
                 .debug_struct("ScriptExpression::Mul")
                 .field("variable", var)
                 .finish(),
-            ScriptExpression::Neg { x, debug, var } => f
+            ScriptExpression::Neg { x, debug, var } => fm
                 .debug_struct("ScriptExpression::Neg")
                 .field("variable", var)
                 .finish(),
+            ScriptExpression::Equal { x, y, debug } => {
+                fm.debug_struct("ScriptExpression::Equal").finish()
+            }
         }
     }
 }
@@ -461,11 +929,21 @@ impl<F: BfField> Debug for ScriptExpression<F> {
 impl<F: BfField> Clone for ScriptExpression<F> {
     fn clone(&self) -> Self {
         match self {
-            ScriptExpression::InputVariable { sv, debug } => ScriptExpression::InputVariable {
+            ScriptExpression::ValueVariable { v, debug, var } => ScriptExpression::ValueVariable {
+                v: v.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
+            ScriptExpression::InputVariable { sv, debug, var } => ScriptExpression::InputVariable {
                 sv: sv.clone(),
                 debug: debug.clone(),
+                var: var.clone(),
             },
-            ScriptExpression::Constant(value) => ScriptExpression::Constant(value.clone()),
+            ScriptExpression::Constant { f, debug, var } => ScriptExpression::Constant {
+                f: f.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
             ScriptExpression::Add { x, y, debug, var } => ScriptExpression::Add {
                 x: x.clone(),
                 y: y.clone(),
@@ -489,6 +967,11 @@ impl<F: BfField> Clone for ScriptExpression<F> {
                 debug: debug.clone(),
                 var: var.clone(),
             },
+            ScriptExpression::Equal { x, y, debug } => ScriptExpression::Equal {
+                x: x.clone(),
+                y: y.clone(),
+                debug: debug.clone(),
+            },
         }
     }
 }
@@ -497,16 +980,16 @@ impl<F: BfField> AbstractField for ScriptExpression<F> {
     type F = F;
 
     fn zero() -> Self {
-        Self::Constant(F::zero())
+        Self::from(F::zero())
     }
     fn one() -> Self {
-        Self::Constant(F::one())
+        Self::from(F::one())
     }
     fn two() -> Self {
-        Self::Constant(F::two())
+        Self::from(F::two())
     }
     fn neg_one() -> Self {
-        Self::Constant(F::neg_one())
+        Self::from(F::neg_one())
     }
 
     #[inline]
@@ -515,39 +998,39 @@ impl<F: BfField> AbstractField for ScriptExpression<F> {
     }
 
     fn from_bool(b: bool) -> Self {
-        Self::Constant(F::from_bool(b))
+        Self::from(F::from_bool(b))
     }
 
     fn from_canonical_u8(n: u8) -> Self {
-        Self::Constant(F::from_canonical_u8(n))
+        Self::from(F::from_canonical_u8(n))
     }
 
     fn from_canonical_u16(n: u16) -> Self {
-        Self::Constant(F::from_canonical_u16(n))
+        Self::from(F::from_canonical_u16(n))
     }
 
     fn from_canonical_u32(n: u32) -> Self {
-        Self::Constant(F::from_canonical_u32(n))
+        Self::from(F::from_canonical_u32(n))
     }
 
     fn from_canonical_u64(n: u64) -> Self {
-        Self::Constant(F::from_canonical_u64(n))
+        Self::from(F::from_canonical_u64(n))
     }
 
     fn from_canonical_usize(n: usize) -> Self {
-        Self::Constant(F::from_canonical_usize(n))
+        Self::from(F::from_canonical_usize(n))
     }
 
     fn from_wrapped_u32(n: u32) -> Self {
-        Self::Constant(F::from_wrapped_u32(n))
+        Self::from(F::from_wrapped_u32(n))
     }
 
     fn from_wrapped_u64(n: u64) -> Self {
-        Self::Constant(F::from_wrapped_u64(n))
+        Self::from(F::from_wrapped_u64(n))
     }
 
     fn generator() -> Self {
-        Self::Constant(F::generator())
+        Self::from(F::generator())
     }
 }
 
@@ -921,7 +1404,7 @@ mod tests {
         let mut stack = StackTracker::new();
         let mut bmap = BTreeMap::new();
         bmap.insert(
-            &var1,
+            var1,
             stack.var(
                 1,
                 script! { {BabyBear::from_canonical_u32(1u32).as_u32_vec()[0]}},
@@ -929,7 +1412,7 @@ mod tests {
             ),
         );
         bmap.insert(
-            &var2,
+            var2,
             stack.var(
                 1,
                 script! { {BabyBear::from_canonical_u32(2u32).as_u32_vec()[0]}},
@@ -937,7 +1420,7 @@ mod tests {
             ),
         );
         bmap.insert(
-            &var3,
+            var3,
             stack.var(
                 1,
                 script! {{BabyBear::from_canonical_u32(3u32).as_u32_vec()[0]}},
@@ -945,7 +1428,7 @@ mod tests {
             ),
         );
         bmap.insert(
-            &var4,
+            var4,
             stack.var(
                 1,
                 script! {{BabyBear::from_canonical_u32(4u32).as_u32_vec()[0]}},
@@ -956,18 +1439,22 @@ mod tests {
         let var1_wrap = ScriptExpression::InputVariable {
             sv: var1,
             debug: Cell::new(false),
+            var: StackVariable::null(),
         };
         let var2_wrap = ScriptExpression::<BabyBear>::InputVariable {
             sv: var2,
             debug: Cell::new(false),
+            var: StackVariable::null(),
         };
         let var3_wrap = ScriptExpression::InputVariable {
             sv: var3,
             debug: Cell::new(false),
+            var: StackVariable::null(),
         };
         let var4_wrap = ScriptExpression::<BabyBear>::InputVariable {
             sv: var4,
             debug: Cell::new(false),
+            var: StackVariable::null(),
         };
         let res1 = var1_wrap + var2_wrap;
         let res2 = var3_wrap + var4_wrap;
@@ -977,6 +1464,117 @@ mod tests {
 
         stack.number(BabyBear::from_canonical_u32(10u32).as_u32_vec()[0]);
         stack.op_equalverify();
+
+        stack.drop(*bmap.get(&var4).unwrap());
+        stack.drop(*bmap.get(&var3).unwrap());
+        stack.drop(*bmap.get(&var2).unwrap());
+        stack.drop(*bmap.get(&var1).unwrap());
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
+    fn test_script_expr_with_extinput() {
+        let var1 = Variable {
+            row_index: 0,
+            column_index: 0,
+        };
+        let var2 = Variable {
+            row_index: 0,
+            column_index: 1,
+        };
+        let var3 = Variable {
+            row_index: 1,
+            column_index: 0,
+        };
+        let var4 = Variable {
+            row_index: 1,
+            column_index: 1,
+        };
+
+        let mut stack = StackTracker::new();
+        let mut bmap = BTreeMap::new();
+        bmap.insert(
+            var1,
+            stack.var(
+                4,
+                script! {
+                    {EF::from_canonical_u32(1u32).as_u32_vec()[3]}
+                    {EF::from_canonical_u32(1u32).as_u32_vec()[2]}
+                    {EF::from_canonical_u32(1u32).as_u32_vec()[1]}
+                    {EF::from_canonical_u32(1u32).as_u32_vec()[0]}
+                },
+                "input 1",
+            ),
+        );
+        bmap.insert(
+            var2,
+            stack.var(
+                4,
+                script! {
+                    {EF::from_canonical_u32(2u32).as_u32_vec()[3]}
+                    {EF::from_canonical_u32(2u32).as_u32_vec()[2]}
+                    {EF::from_canonical_u32(2u32).as_u32_vec()[1]}
+                    {EF::from_canonical_u32(2u32).as_u32_vec()[0]}
+                },
+                "input 2",
+            ),
+        );
+        bmap.insert(
+            var3,
+            stack.var(
+                4,
+                script! {{EF::from_canonical_u32(3u32).as_u32_vec()[3]} {EF::from_canonical_u32(3u32).as_u32_vec()[2]} {EF::from_canonical_u32(3u32).as_u32_vec()[1]} {EF::from_canonical_u32(3u32).as_u32_vec()[0]}},
+                "input 3",
+            ),
+        );
+        bmap.insert(
+            var4,
+            stack.var(
+                4,
+                script! {{EF::from_canonical_u32(4u32).as_u32_vec()[3]} {EF::from_canonical_u32(4u32).as_u32_vec()[2]} {EF::from_canonical_u32(4u32).as_u32_vec()[1]} {EF::from_canonical_u32(4u32).as_u32_vec()[0]}},
+                "input 4",
+            ),
+        );
+
+        let var1_wrap = ScriptExpression::<EF>::InputVariable {
+            sv: var1,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        };
+        let var2_wrap = ScriptExpression::InputVariable {
+            sv: var2,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        };
+        let var3_wrap = ScriptExpression::InputVariable {
+            sv: var3,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        };
+        let var4_wrap = ScriptExpression::InputVariable {
+            sv: var4,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        };
+        stack.debug();
+        let res1 = var1_wrap + var2_wrap;
+        let res2 = var3_wrap + var4_wrap;
+
+        let res = res1 + res2 + EF::from_canonical_u32(3);
+        res.express_to_script(&mut stack, &bmap);
+
+        // stack.debug();
+        stack.bignumber(EF::from_canonical_u32(13u32).as_u32_vec());
+        stack.custom(
+            u31ext_equalverify::<BabyBear4>(),
+            2,
+            false,
+            0,
+            "u31ext_equalverify",
+        );
+        stack.debug();
 
         stack.drop(*bmap.get(&var4).unwrap());
         stack.drop(*bmap.get(&var3).unwrap());
