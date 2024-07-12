@@ -1,9 +1,6 @@
-use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::cell::Cell;
 
 use bitcoin_script_stack::stack::StackTracker;
 use itertools::Itertools;

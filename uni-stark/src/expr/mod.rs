@@ -216,12 +216,18 @@ impl<F: BfField> Expression for ScriptExpression<F> {
                 if debug.get() == true {
                     stack.debug();
                 }
+                if v.get_var().get_var_size().is_some() {
+                    assert_eq!(var.size(), v.get_var().get_var_size().unwrap());
+                }
             }
             ScriptExpression::InputVariable { sv, debug, mut var } => {
                 let intput_var = input_variables.get(sv).unwrap();
                 var = stack.copy_var(intput_var.clone());
                 if debug.get() == true {
                     stack.debug();
+                }
+                if sv.get_var_size().is_some() {
+                    assert_eq!(var.size(), sv.get_var_size().unwrap());
                 }
             }
             ScriptExpression::Constant { f, mut var, debug } => {
