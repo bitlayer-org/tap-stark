@@ -185,7 +185,7 @@ impl<F: BfField> Expression for ScriptExpression<F> {
             ScriptExpression::InputVariable { debug, .. } => {
                 debug.set(true);
             }
-            ScriptExpression::Constant { f, .. } => {}
+            ScriptExpression::Constant { debug, .. } => debug.set(true),
             ScriptExpression::Add { debug, .. } => {
                 debug.set(true);
             }

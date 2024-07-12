@@ -190,14 +190,6 @@ where
 
     let equal_expr = acc_expr.equal_verify_for_f(folder.accumulator);
     equal_expr.express_to_script(&mut stack, &bmap);
-    // stack.bignumber(folder.accumulator.as_u32_vec());
-    // stack.custom(
-    //     u31ext_equalverify::<BabyBear4>(),
-    //     2,
-    //     false,
-    //     0,
-    //     "u31ext_equalverify",
-    // );
 
     stack.debug();
     script_folder.drop_variable_values(&mut bmap, &mut stack);
