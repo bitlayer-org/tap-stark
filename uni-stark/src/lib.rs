@@ -5,11 +5,10 @@
 extern crate alloc;
 
 mod config;
+mod expr;
 mod folder;
 mod proof;
 mod prover;
-mod scripts;
-mod scripts_expression;
 mod symbolic_builder;
 mod symbolic_expression;
 mod symbolic_variable;
@@ -25,8 +24,6 @@ pub use config::*;
 pub use folder::*;
 pub use proof::*;
 pub use prover::*;
-pub use scripts::*;
-pub use scripts_expression::*;
 pub use symbolic_builder::*;
 pub use symbolic_expression::*;
 pub use symbolic_variable::*;

@@ -14,22 +14,15 @@ use p3_field::{AbstractExtensionField, AbstractField, Field};
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
 use primitives::bf_pcs::Pcs;
+use primitives::field::BfField;
 use script_manager::bc_assignment::DefaultBCAssignment;
 use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
 use tracing::instrument;
 
-use primitives::field::BfField;
-use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
-
-use crate::scripts_expression::{
-    get_constrains_log_degree, get_symbolic_builder, ScriptExpression,
-};
+use crate::expr::{Expression, ScriptConstraintBuilder, ScriptExpression};
 use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
-use crate::{
-    Expression, PcsError, Proof, ScriptConstraintBuilder, StarkGenericConfig, Val,
-    VerifierConstraintFolder,
-};
+use crate::{PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder};
 
 #[instrument(skip_all)]
 pub fn verify<SC, A>(
@@ -57,13 +50,6 @@ where
 
     let degree = 1 << degree_bits;
     let log_quotient_degree = get_log_quotient_degree::<Val<SC>, A>(air, 0, public_values.len());
-    // let sym_main = sym_builder.main(); // two row matrix
-    // let exp_constraints = sym_builder.constraints();
-    // let log_quotient_degree = get_constrains_log_degree(&exp_constraints);
-    // let constraints_script: Vec<ScriptExpression<Val<SC>>> = exp_constraints
-    //     .iter()
-    //     .map(|item| ScriptExpression::from(item))
-    //     .collect();
     let quotient_degree = 1 << log_quotient_degree;
 
     let pcs = config.pcs();
@@ -201,16 +187,18 @@ where
     script_folder.set_variable_values(public_values, &mut bmap, &mut stack);
 
     let acc_expr = script_folder.get_accmulator_expr();
-    acc_expr.express_to_script(&mut stack, &bmap);
 
-    stack.bignumber(folder.accumulator.as_u32_vec());
-    stack.custom(
-        u31ext_equalverify::<BabyBear4>(),
-        2,
-        false,
-        0,
-        "u31ext_equalverify",
-    );
+    let equal_expr = acc_expr.equal_verify_for_f(folder.accumulator);
+    equal_expr.express_to_script(&mut stack, &bmap);
+    // stack.bignumber(folder.accumulator.as_u32_vec());
+    // stack.custom(
+    //     u31ext_equalverify::<BabyBear4>(),
+    //     2,
+    //     false,
+    //     0,
+    //     "u31ext_equalverify",
+    // );
+
     stack.debug();
     script_folder.drop_variable_values(&mut bmap, &mut stack);
     stack.op_true();
