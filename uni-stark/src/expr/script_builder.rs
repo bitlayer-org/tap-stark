@@ -8,7 +8,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use primitives::field::BfField;
 use scripts::treepp::*;
 
-use super::{ScriptExpression, ValueVariable, Variable};
+use super::{FieldScriptExpression, ValueVariable, Variable};
 use crate::SymbolicExpression::{self, *};
 
 pub struct ScriptConstraintBuilder<F: BfField> {
@@ -17,7 +17,7 @@ pub struct ScriptConstraintBuilder<F: BfField> {
     pub is_first_row: F,
     pub is_last_row: F,
     pub is_transition: F,
-    pub constraints: Vec<ScriptExpression<F>>,
+    pub constraints: Vec<FieldScriptExpression<F>>,
     pub alpha: F,
 }
 
@@ -61,7 +61,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
         }
     }
 
-    pub fn get_accmulator_expr(&self) -> ScriptExpression<F> {
+    pub fn get_accmulator_expr(&self) -> FieldScriptExpression<F> {
         let mut acc = self.constraints[0].clone();
         for i in 1..self.constraints.len() {
             acc = acc * self.alpha + self.constraints[i].clone();
@@ -123,7 +123,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
 
 impl<F: BfField> AirBuilder for ScriptConstraintBuilder<F> {
     type F = F;
-    type Expr = ScriptExpression<F>;
+    type Expr = FieldScriptExpression<F>;
     type Var = ValueVariable<F>;
     type M = RowMajorMatrix<Self::Var>;
 

@@ -17,7 +17,7 @@ use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
 use tracing::instrument;
 
-use crate::expr::{Expression, ScriptConstraintBuilder, ScriptExpression};
+use crate::expr::{Expression, FieldScriptExpression, ScriptConstraintBuilder};
 use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder};
 

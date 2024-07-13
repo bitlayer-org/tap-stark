@@ -6,7 +6,7 @@ use bitcoin_script_stack::stack::StackVariable;
 use p3_field::Field;
 use primitives::field::BfField;
 
-use super::ScriptExpression;
+use super::FieldScriptExpression;
 use crate::symbolic_variable::SymbolicVariable;
 use crate::Entry;
 
@@ -33,7 +33,7 @@ impl<F: BfField> ValueVariable<F> {
     }
 }
 
-impl<F: BfField> From<ValueVariable<F>> for ScriptExpression<F> {
+impl<F: BfField> From<ValueVariable<F>> for FieldScriptExpression<F> {
     fn from(var: ValueVariable<F>) -> Self {
         Self::ValueVariable {
             v: var,
@@ -44,30 +44,30 @@ impl<F: BfField> From<ValueVariable<F>> for ScriptExpression<F> {
 }
 
 impl<F: BfField> Add for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        ScriptExpression::<F>::from(self) + ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) + FieldScriptExpression::<F>::from(rhs)
     }
 }
 
 impl<F: BfField> Add<F> for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn add(self, rhs: F) -> Self::Output {
-        ScriptExpression::<F>::from(self) + ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) + FieldScriptExpression::<F>::from(rhs)
     }
 }
 
-impl<F: BfField> Add<ScriptExpression<F>> for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+impl<F: BfField> Add<FieldScriptExpression<F>> for ValueVariable<F> {
+    type Output = FieldScriptExpression<F>;
 
-    fn add(self, rhs: ScriptExpression<F>) -> Self::Output {
-        ScriptExpression::from(self) + rhs
+    fn add(self, rhs: FieldScriptExpression<F>) -> Self::Output {
+        FieldScriptExpression::from(self) + rhs
     }
 }
 
-impl<F: BfField> Add<ValueVariable<F>> for ScriptExpression<F> {
+impl<F: BfField> Add<ValueVariable<F>> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn add(self, rhs: ValueVariable<F>) -> Self::Output {
@@ -76,30 +76,30 @@ impl<F: BfField> Add<ValueVariable<F>> for ScriptExpression<F> {
 }
 
 impl<F: BfField> Sub for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        ScriptExpression::<F>::from(self) - ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) - FieldScriptExpression::<F>::from(rhs)
     }
 }
 
 impl<F: BfField> Sub<F> for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn sub(self, rhs: F) -> Self::Output {
-        ScriptExpression::<F>::from(self) - ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) - FieldScriptExpression::<F>::from(rhs)
     }
 }
 
-impl<F: BfField> Sub<ScriptExpression<F>> for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+impl<F: BfField> Sub<FieldScriptExpression<F>> for ValueVariable<F> {
+    type Output = FieldScriptExpression<F>;
 
-    fn sub(self, rhs: ScriptExpression<F>) -> Self::Output {
-        ScriptExpression::<F>::from(self) - rhs
+    fn sub(self, rhs: FieldScriptExpression<F>) -> Self::Output {
+        FieldScriptExpression::<F>::from(self) - rhs
     }
 }
 
-impl<F: BfField> Sub<ValueVariable<F>> for ScriptExpression<F> {
+impl<F: BfField> Sub<ValueVariable<F>> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn sub(self, rhs: ValueVariable<F>) -> Self::Output {
@@ -108,30 +108,30 @@ impl<F: BfField> Sub<ValueVariable<F>> for ScriptExpression<F> {
 }
 
 impl<F: BfField> Mul for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        ScriptExpression::<F>::from(self) * ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) * FieldScriptExpression::<F>::from(rhs)
     }
 }
 
 impl<F: BfField> Mul<F> for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn mul(self, rhs: F) -> Self::Output {
-        ScriptExpression::<F>::from(self) * ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) * FieldScriptExpression::<F>::from(rhs)
     }
 }
 
-impl<F: BfField> Mul<ScriptExpression<F>> for ValueVariable<F> {
-    type Output = ScriptExpression<F>;
+impl<F: BfField> Mul<FieldScriptExpression<F>> for ValueVariable<F> {
+    type Output = FieldScriptExpression<F>;
 
-    fn mul(self, rhs: ScriptExpression<F>) -> Self::Output {
-        ScriptExpression::<F>::from(self) * rhs
+    fn mul(self, rhs: FieldScriptExpression<F>) -> Self::Output {
+        FieldScriptExpression::<F>::from(self) * rhs
     }
 }
 
-impl<F: BfField> Mul<ValueVariable<F>> for ScriptExpression<F> {
+impl<F: BfField> Mul<ValueVariable<F>> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn mul(self, rhs: ValueVariable<F>) -> Self::Output {
@@ -184,7 +184,7 @@ impl Variable {
     }
 }
 
-impl<F: BfField> From<Variable> for ScriptExpression<F> {
+impl<F: BfField> From<Variable> for FieldScriptExpression<F> {
     fn from(var: Variable) -> Self {
         Self::InputVariable {
             sv: var,
@@ -241,22 +241,22 @@ impl<F: Field> From<&SymbolicVariable<F>> for Variable {
 }
 
 impl<F: BfField> Add<F> for Variable {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn add(self, rhs: F) -> Self::Output {
-        ScriptExpression::<F>::from(self) + ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) + FieldScriptExpression::<F>::from(rhs)
     }
 }
 
-impl<F: BfField> Add<ScriptExpression<F>> for Variable {
-    type Output = ScriptExpression<F>;
+impl<F: BfField> Add<FieldScriptExpression<F>> for Variable {
+    type Output = FieldScriptExpression<F>;
 
-    fn add(self, rhs: ScriptExpression<F>) -> Self::Output {
-        ScriptExpression::from(self) + rhs
+    fn add(self, rhs: FieldScriptExpression<F>) -> Self::Output {
+        FieldScriptExpression::from(self) + rhs
     }
 }
 
-impl<F: BfField> Add<Variable> for ScriptExpression<F> {
+impl<F: BfField> Add<Variable> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn add(self, rhs: Variable) -> Self::Output {
@@ -265,22 +265,22 @@ impl<F: BfField> Add<Variable> for ScriptExpression<F> {
 }
 
 impl<F: BfField> Sub<F> for Variable {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn sub(self, rhs: F) -> Self::Output {
-        ScriptExpression::<F>::from(self) - ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) - FieldScriptExpression::<F>::from(rhs)
     }
 }
 
-impl<F: BfField> Sub<ScriptExpression<F>> for Variable {
-    type Output = ScriptExpression<F>;
+impl<F: BfField> Sub<FieldScriptExpression<F>> for Variable {
+    type Output = FieldScriptExpression<F>;
 
-    fn sub(self, rhs: ScriptExpression<F>) -> Self::Output {
-        ScriptExpression::<F>::from(self) - rhs
+    fn sub(self, rhs: FieldScriptExpression<F>) -> Self::Output {
+        FieldScriptExpression::<F>::from(self) - rhs
     }
 }
 
-impl<F: BfField> Sub<Variable> for ScriptExpression<F> {
+impl<F: BfField> Sub<Variable> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn sub(self, rhs: Variable) -> Self::Output {
@@ -289,22 +289,22 @@ impl<F: BfField> Sub<Variable> for ScriptExpression<F> {
 }
 
 impl<F: BfField> Mul<F> for Variable {
-    type Output = ScriptExpression<F>;
+    type Output = FieldScriptExpression<F>;
 
     fn mul(self, rhs: F) -> Self::Output {
-        ScriptExpression::<F>::from(self) * ScriptExpression::<F>::from(rhs)
+        FieldScriptExpression::<F>::from(self) * FieldScriptExpression::<F>::from(rhs)
     }
 }
 
-impl<F: BfField> Mul<ScriptExpression<F>> for Variable {
-    type Output = ScriptExpression<F>;
+impl<F: BfField> Mul<FieldScriptExpression<F>> for Variable {
+    type Output = FieldScriptExpression<F>;
 
-    fn mul(self, rhs: ScriptExpression<F>) -> Self::Output {
-        ScriptExpression::<F>::from(self) * rhs
+    fn mul(self, rhs: FieldScriptExpression<F>) -> Self::Output {
+        FieldScriptExpression::<F>::from(self) * rhs
     }
 }
 
-impl<F: BfField> Mul<Variable> for ScriptExpression<F> {
+impl<F: BfField> Mul<Variable> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn mul(self, rhs: Variable) -> Self::Output {
