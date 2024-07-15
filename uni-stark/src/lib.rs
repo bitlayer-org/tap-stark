@@ -14,6 +14,7 @@ mod symbolic_expression;
 mod symbolic_variable;
 mod verifier;
 mod zerofier_coset;
+mod scripts;
 
 #[cfg(debug_assertions)]
 mod check_constraints;
@@ -29,3 +30,4 @@ pub use symbolic_expression::*;
 pub use symbolic_variable::*;
 pub use verifier::*;
 pub use zerofier_coset::*;
+pub use scripts::*;
