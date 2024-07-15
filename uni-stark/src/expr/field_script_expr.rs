@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
-use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::{format, vec};
 use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
@@ -66,12 +66,12 @@ pub enum FieldScriptExpression<F: BfField> {
         y: Arc<Box<dyn Expression>>,
         debug: Cell<bool>,
     },
-    // Exp{
-    //     x: Arc<Box<dyn Expression>>,
-    //     y: Arc<Box<dyn Expression>>,
-    //     var: StackVariable,
-    //     debug: Cell<bool>,
-    // },
+    Exp {
+        x: Arc<Box<dyn Expression>>,
+        y: Arc<Box<dyn Expression>>,
+        var: StackVariable,
+        debug: Cell<bool>,
+    },
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
@@ -190,6 +190,9 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 debug.set(true);
             }
             FieldScriptExpression::EqualVerify { debug, .. } => {
+                debug.set(true);
+            }
+            FieldScriptExpression::Exp { debug, .. } => {
                 debug.set(true);
             }
         };
@@ -441,14 +444,19 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                     );
                 }
             }
-            // ScriptExpression::Exp {
-            //     x,
-            //     y,
-            //     debug,
-            //     mut var,
-            // } => {
+            FieldScriptExpression::Exp {
+                x,
+                y,
+                debug,
+                mut var,
+            } => {
+                x.express_to_script(stack, input_variables);
+                // y.express_to_script(stack, input_variables);
 
-            // }
+                // todo: check y is the NumScriptExpression
+
+                assert_eq!(var.size(), F::U32_SIZE as u32);
+            }
         };
         stack.get_script()
     }
@@ -457,16 +465,17 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
         F::U32_SIZE as u32
     }
 
-    fn get_var(&self) -> Option<&StackVariable> {
+    fn get_var(&self) -> Option<Vec<&StackVariable>> {
         match self {
-            FieldScriptExpression::ValueVariable { var, .. } => Some(var),
-            FieldScriptExpression::InputVariable { var, .. } => Some(var),
-            FieldScriptExpression::Constant { var, .. } => Some(var),
-            FieldScriptExpression::Add { var, .. } => Some(var),
-            FieldScriptExpression::Sub { var, .. } => Some(var),
-            FieldScriptExpression::Neg { var, .. } => Some(var),
-            FieldScriptExpression::Mul { var, .. } => Some(var),
+            FieldScriptExpression::ValueVariable { var, .. } => Some(vec![var]),
+            FieldScriptExpression::InputVariable { var, .. } => Some(vec![var]),
+            FieldScriptExpression::Constant { var, .. } => Some(vec![var]),
+            FieldScriptExpression::Add { var, .. } => Some(vec![var]),
+            FieldScriptExpression::Sub { var, .. } => Some(vec![var]),
+            FieldScriptExpression::Neg { var, .. } => Some(vec![var]),
+            FieldScriptExpression::Mul { var, .. } => Some(vec![var]),
             FieldScriptExpression::EqualVerify { .. } => None,
+            FieldScriptExpression::Exp { var, .. } => Some(vec![var]),
         }
     }
 }
@@ -564,6 +573,10 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
             FieldScriptExpression::EqualVerify { x, y, debug } => {
                 fm.debug_struct("ScriptExpression::Equal").finish()
             }
+            FieldScriptExpression::Exp { x, y, debug, var } => fm
+                .debug_struct("ScriptExpression::Exp")
+                .field("variable", var)
+                .finish(),
         }
     }
 }
@@ -620,6 +633,12 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                     debug: debug.clone(),
                 }
             }
+            FieldScriptExpression::Exp { x, y, debug, var } => FieldScriptExpression::Exp {
+                x: x.clone(),
+                y: y.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
         }
     }
 }

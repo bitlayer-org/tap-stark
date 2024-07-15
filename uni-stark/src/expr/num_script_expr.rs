@@ -9,18 +9,11 @@ use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-use common::AbstractField;
-use primitives::field::BfField;
 use scripts::treepp::*;
-use scripts::u31_lib::{
-    u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31ext_add, u31ext_add_u31,
-    u31ext_equalverify, u31ext_mul, u31ext_mul_u31, u31ext_neg, u31ext_sub, u31ext_sub_u31,
-    BabyBear4, BabyBearU31,
-};
 
 use super::variable::{ValueVariable, Variable};
 use super::Expression;
-use crate::SymbolicExpression::{self, *};
+use crate::expr::script_helper::value_to_bits_format;
 
 pub enum NumScriptExpression {
     InputVariable {
@@ -67,6 +60,28 @@ pub enum NumScriptExpression {
         debug: Cell<bool>,
         var: StackVariable,
     },
+    Double {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
+    Square {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
+    ToBits {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+        bits_len: u32,
+    },
+    ToBitsVec {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: Vec<StackVariable>,
+        bits_len: u32,
+    },
     // Exp{
     //     x: Arc<Box<dyn Expression>>,
     //     y: Arc<Box<dyn Expression>>,
@@ -104,6 +119,24 @@ impl NumScriptExpression {
             var: StackVariable::null(),
         }
     }
+
+    pub fn to_bits(&self) -> Self {
+        Self::ToBits {
+            x: Arc::new(Box::new(self.clone())),
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+            bits_len: 32,
+        }
+    }
+
+    pub fn to_custom_bits(&self, bits_len: u32) -> Self {
+        Self::ToBits {
+            x: Arc::new(Box::new(self.clone())),
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+            bits_len: bits_len,
+        }
+    }
 }
 
 impl Expression for NumScriptExpression {
@@ -129,6 +162,18 @@ impl Expression for NumScriptExpression {
                 debug.set(true);
             }
             NumScriptExpression::Equal { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::Double { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::Square { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::ToBits { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::ToBitsVec { debug, .. } => {
                 debug.set(true);
             }
         };
@@ -171,7 +216,7 @@ impl Expression for NumScriptExpression {
                 x.express_to_script(stack, input_variables); // F
                 y.express_to_script(stack, input_variables); // EF
 
-                var = stack.op_add();
+                var = stack.op_add(); // Bitcoin OP_ADD
 
                 if debug.get() == true {
                     stack.debug();
@@ -231,10 +276,10 @@ impl Expression for NumScriptExpression {
                 debug,
                 mut var,
             } => {
-                x.express_to_script(stack, input_variables); // F
-                y.express_to_script(stack, input_variables); // EF
                 assert_eq!(x.var_size(), 1);
                 assert_eq!(y.var_size(), 1);
+                x.express_to_script(stack, input_variables); // F
+                y.express_to_script(stack, input_variables); // EF
 
                 var = stack.op_equal();
 
@@ -242,32 +287,85 @@ impl Expression for NumScriptExpression {
                     stack.debug();
                 }
             }
-            // ScriptExpression::Exp {
-            //     x,
-            //     y,
-            //     debug,
-            //     mut var,
-            // } => {
+            NumScriptExpression::Double { x, debug, mut var } => {
+                assert_eq!(x.var_size(), 1);
+                x.express_to_script(stack, input_variables); // F
+                stack.copy_var(x.get_var().unwrap()[0].clone());
+                stack.op_add();
 
-            // }
+                if debug.get() == true {
+                    stack.debug();
+                }
+            }
+            NumScriptExpression::Square { x, debug, mut var } => {
+                x.express_to_script(stack, input_variables); // F
+                assert_eq!(x.var_size(), 1);
+                // todo: support square
+                assert_eq!(0, 1);
+                // var = stack.op_negate();
+
+                if debug.get() == true {
+                    stack.debug();
+                }
+            }
+            NumScriptExpression::ToBits {
+                x,
+                debug,
+                mut var,
+                bits_len,
+            } => {
+                x.express_to_script(stack, input_variables); // F
+                assert_eq!(x.var_size(), 1);
+                let vars = stack
+                    .custom1(
+                        value_to_bits_format(*bits_len),
+                        x.var_size(),
+                        1,
+                        0,
+                        *bits_len,
+                        "NumExpr::ToBits",
+                    )
+                    .unwrap();
+                var = vars[0];
+
+                if debug.get() == true {
+                    stack.debug();
+                }
+            }
+            NumScriptExpression::ToBitsVec { x, debug, .. } => {
+                // todo: support ToBitsVec
+                assert_eq!(1, 2);
+                // var = stack.custom1(value_to_bits_format(*bits_len), x.var_size(), *bits_len, 0, 1, "NumExpr::ToBitsVec").unwrap();
+            }
         };
         stack.get_script()
     }
 
     fn var_size(&self) -> u32 {
-        1
+        match self {
+            NumScriptExpression::ToBits { bits_len, .. } => *bits_len,
+            NumScriptExpression::ToBitsVec { .. } => 1,
+            _ => 1,
+        }
     }
 
-    fn get_var(&self) -> Option<&StackVariable> {
+    fn get_var(&self) -> Option<Vec<&StackVariable>> {
         match self {
-            NumScriptExpression::InputVariable { var, .. } => Some(var),
-            NumScriptExpression::Constant { var, .. } => Some(var),
-            NumScriptExpression::Add { var, .. } => Some(var),
-            NumScriptExpression::Sub { var, .. } => Some(var),
-            NumScriptExpression::Neg { var, .. } => Some(var),
-            NumScriptExpression::Mul { var, .. } => Some(var),
+            NumScriptExpression::InputVariable { var, .. } => Some(vec![var]),
+            NumScriptExpression::Constant { var, .. } => Some(vec![var]),
+            NumScriptExpression::Add { var, .. } => Some(vec![var]),
+            NumScriptExpression::Sub { var, .. } => Some(vec![var]),
+            NumScriptExpression::Neg { var, .. } => Some(vec![var]),
+            NumScriptExpression::Mul { var, .. } => Some(vec![var]),
             NumScriptExpression::EqualVerify { .. } => None,
-            NumScriptExpression::Equal { var, .. } => Some(var),
+            NumScriptExpression::Equal { var, .. } => Some(vec![var]),
+            NumScriptExpression::Double { var, .. } => Some(vec![var]),
+            NumScriptExpression::Square { var, .. } => Some(vec![var]),
+            NumScriptExpression::ToBits { var, .. } => Some(vec![var]),
+            NumScriptExpression::ToBitsVec { var, .. } => {
+                let vec = var.iter().map(|item| item).collect();
+                Some(vec)
+            }
         }
     }
 }
@@ -332,6 +430,22 @@ impl Debug for NumScriptExpression {
                 .debug_struct("ScriptExpression::Equal")
                 .field("variable", var)
                 .finish(),
+            NumScriptExpression::Double { x, debug, var } => fm
+                .debug_struct("ScriptExpression::Double")
+                .field("variable", var)
+                .finish(),
+            NumScriptExpression::Square { x, debug, var } => fm
+                .debug_struct("ScriptExpression::Square")
+                .field("variable", var)
+                .finish(),
+            NumScriptExpression::ToBits { x, debug, var, .. } => fm
+                .debug_struct("ScriptExpression::ToBits")
+                .field("variable", var)
+                .finish(),
+            NumScriptExpression::ToBitsVec { x, debug, var, .. } => fm
+                .debug_struct("ScriptExpression::ToBits")
+                .field("variable", var)
+                .finish(),
         }
     }
 }
@@ -384,6 +498,38 @@ impl Clone for NumScriptExpression {
                 y: y.clone(),
                 debug: debug.clone(),
                 var: var.clone(),
+            },
+            NumScriptExpression::Double { x, debug, var } => NumScriptExpression::Double {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
+            NumScriptExpression::Square { x, debug, var } => NumScriptExpression::Square {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
+            NumScriptExpression::ToBits {
+                x,
+                debug,
+                var,
+                bits_len,
+            } => NumScriptExpression::ToBits {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+                bits_len: *bits_len,
+            },
+            NumScriptExpression::ToBitsVec {
+                x,
+                debug,
+                var,
+                bits_len,
+            } => NumScriptExpression::ToBitsVec {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+                bits_len: *bits_len,
             },
         }
     }
@@ -538,22 +684,13 @@ impl Product<u32> for NumScriptExpression {
 
 #[cfg(test)]
 mod tests {
-    use alloc::boxed::Box;
     use alloc::collections::BTreeMap;
-    use alloc::sync::Arc;
-    use alloc::vec::Vec;
     use core::cell::{self, Cell};
 
-    use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
-    use common::{AbstractField, BabyBear, BinomialExtensionField};
-    use p3_air::AirBuilder;
-    use p3_matrix::Matrix;
-    use primitives::field::BfField;
+    use bitcoin_script_stack::stack::{StackTracker, StackVariable};
     use scripts::treepp::*;
-    use scripts::u31_lib::{u31ext_equalverify, BabyBear4, BabyBearU31};
 
     use super::{Expression, NumScriptExpression, Variable, *};
-    use crate::{prove, verify, StarkConfig, SymbolicAirBuilder, SymbolicExpression};
 
     #[test]
     fn test_script_expression_add() {
