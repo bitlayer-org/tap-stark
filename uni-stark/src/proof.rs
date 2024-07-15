@@ -18,23 +18,33 @@ type PcsProof<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
 // #[serde(bound = "")]
 #[derive(Clone)]
 pub struct Proof<SC: StarkGenericConfig> {
-    pub(crate) commitments: Commitments<Com<SC>>,
-    pub(crate) opened_values: OpenedValues<SC::Challenge>,
-    pub(crate) opening_proof: PcsProof<SC>,
-    pub(crate) degree_bits: usize,
+    // pub(crate) commitments: Commitments<Com<SC>>,
+    // pub(crate) opened_values: OpenedValues<SC::Challenge>,
+    // pub(crate) opening_proof: PcsProof<SC>,
+    // pub(crate) degree_bits: usize,
+    //remove crate for test
+    pub commitments: Commitments<Com<SC>>,
+    pub opened_values: OpenedValues<SC::Challenge>,
+    pub opening_proof: PcsProof<SC>,
+    pub degree_bits: usize,
 }
 
 // #[derive(Debug, Serialize, Deserialize)]
 #[derive(Clone)]
 pub struct Commitments<Com> {
-    pub(crate) trace: Com,
-    pub(crate) quotient_chunks: Com,
+    // pub(crate) trace: Com,
+    // pub(crate) quotient_chunks: Com,
+    pub trace: Com,
+    pub quotient_chunks: Com,
 }
 
 // #[derive(Debug, Serialize, Deserialize)]
 #[derive(Clone)]
 pub struct OpenedValues<Challenge> {
-    pub(crate) trace_local: Vec<Challenge>,
-    pub(crate) trace_next: Vec<Challenge>,
-    pub(crate) quotient_chunks: Vec<Vec<Challenge>>,
+    // pub(crate) trace_local: Vec<Challenge>,
+    // pub(crate) trace_next: Vec<Challenge>,
+    // pub(crate) quotient_chunks: Vec<Vec<Challenge>>,
+    pub trace_local: Vec<Challenge>,
+    pub trace_next: Vec<Challenge>,
+    pub quotient_chunks: Vec<Vec<Challenge>>,
 }

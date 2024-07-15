@@ -240,7 +240,7 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
         let mut t_idx_to_m_idx = self.leaf_indices.clone();
 
         while working_nodes.len() > 1 {
-            println!("working_nodes len:{:?}", working_nodes.len());
+            // println!("working_nodes len:{:?}", working_nodes.len());
             //the tuple() method in itertool will drop the elements in Iter if the size is not enough to
             //generate a tuple, so we have to save the last node if the size of working node is odd.
             let mut reminder_node: Option<NodeInfo> = None;
