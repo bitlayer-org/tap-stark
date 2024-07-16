@@ -27,8 +27,8 @@ pub mod u31_lib {
     define_pushable!();
 
     pub use rust_bitcoin_u31_or_u30::{
-        u31_add, u31_double, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add,
-        u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
+        u31_add, u31_double, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31_to_v31,
+        u31ext_add, u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
         u31ext_mul_u31_by_constant, u31ext_neg, u31ext_sub, u31ext_sub_u31,
         BabyBear as BabyBearU31, BabyBear4, U31Config, U31ExtConfig,
     };
@@ -36,6 +36,13 @@ pub mod u31_lib {
     pub fn u31_equalverify() -> Script {
         script! {
             OP_EQUALVERIFY
+        }
+    }
+
+    pub fn u32_to_u31() -> Script {
+        script! {
+           {BabyBearU31::MOD}
+           {u31_sub::<BabyBearU31>()}
         }
     }
 }

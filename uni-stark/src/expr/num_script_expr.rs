@@ -9,10 +9,11 @@ use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
+use primitives::field::BfField;
 use scripts::treepp::*;
 
 use super::variable::{ValueVariable, Variable};
-use super::Expression;
+use super::{Expression, FieldScriptExpression};
 use crate::expr::script_helper::value_to_bits_format;
 
 pub enum NumScriptExpression {
@@ -135,6 +136,14 @@ impl NumScriptExpression {
             debug: Cell::new(false),
             var: StackVariable::null(),
             bits_len: bits_len,
+        }
+    }
+
+    pub fn num_to_field<F: BfField>(&self) -> FieldScriptExpression<F> {
+        FieldScriptExpression::NumToField {
+            x: Arc::new(Box::new(self.clone())),
+            debug: Cell::new(false),
+            var: StackVariable::null(),
         }
     }
 }
