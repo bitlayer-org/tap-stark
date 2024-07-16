@@ -3,6 +3,8 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::{format, vec};
+use bitcoin::opcodes::{OP_TOALTSTACK, OP_DROP, OP_FROMALTSTACK};
+use primitives::mmcs::tapleaf::Tapleaf;
 use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
@@ -38,6 +40,11 @@ pub enum FieldScriptExpression<F: BfField> {
     },
     Constant {
         f: F,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
+    Table {
+        table: Vec<F>,
         debug: Cell<bool>,
         var: StackVariable,
     },
@@ -84,6 +91,13 @@ pub enum FieldScriptExpression<F: BfField> {
     },
     NumToField {
         x: Arc<Box<dyn Expression>>,
+        var: StackVariable,
+        debug: Cell<bool>,
+    },
+    Lookup {
+        x: Arc<Box<dyn Expression>>,
+        y: Arc<Box<dyn Expression>>,
+        len: usize,
         var: StackVariable,
         debug: Cell<bool>,
     },
@@ -210,6 +224,9 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 debug.set(true);
             }
             FieldScriptExpression::Constant { debug, .. } => debug.set(true),
+            FieldScriptExpression::Table { debug, .. } => {
+                debug.set(true);
+            }
             FieldScriptExpression::Add { debug, .. } => {
                 debug.set(true);
             }
@@ -232,6 +249,9 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 debug.set(true);
             }
             FieldScriptExpression::NumToField { debug, .. } => {
+                debug.set(true);
+            }
+            FieldScriptExpression::Lookup { debug, .. } => {
                 debug.set(true);
             }
         };
@@ -266,6 +286,16 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Constant { f, mut var, debug } => {
                 let v = f.as_u32_vec();
                 var = stack.bignumber(v);
+                if debug.get() == true {
+                    stack.debug();
+                }
+            }
+            FieldScriptExpression::Table { table, mut var, debug } => {
+                //push table
+                for f in table.iter().rev() {
+                    let v = f.as_u32_vec();
+                    var = stack.bignumber(v);
+                }
                 if debug.get() == true {
                     stack.debug();
                 }
@@ -562,6 +592,35 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 }
                 assert_eq!(var.size(), F::U32_SIZE as u32);
             }
+            FieldScriptExpression::Lookup {
+                x,
+                y,
+                len,
+                debug,
+                mut var,
+            } => {
+                x.express_to_script(stack, input_variables);
+                // todo: check y is the NumScriptExpression
+                y.express_to_script(stack, input_variables);
+                let vars = stack
+                    .custom1(
+                        script! {
+                            OP_PICK
+                        },
+                        1,
+                        1,
+                        0,
+                        F::U32_SIZE as u32,
+                        "ExprLookup_Result",
+                    );
+                stack.to_altstack();
+                for _ in 0..(*len){
+                    stack.op_drop();
+                }
+                var = stack.from_altstack();
+                
+                assert_eq!(var.size(), F::U32_SIZE as u32);
+            }
         };
         stack.get_script()
     }
@@ -575,6 +634,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::ValueVariable { var, .. } => Some(vec![var]),
             FieldScriptExpression::InputVariable { var, .. } => Some(vec![var]),
             FieldScriptExpression::Constant { var, .. } => Some(vec![var]),
+            FieldScriptExpression::Table { var, .. } => Some(vec![var]),
             FieldScriptExpression::Add { var, .. } => Some(vec![var]),
             FieldScriptExpression::Sub { var, .. } => Some(vec![var]),
             FieldScriptExpression::Neg { var, .. } => Some(vec![var]),
@@ -583,6 +643,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::ExpConstant { var, .. } => Some(vec![var]),
             FieldScriptExpression::IndexToROU { var, .. } => Some(vec![var]),
             FieldScriptExpression::NumToField { var, .. } => Some(vec![var]),
+            FieldScriptExpression::Lookup { var, .. } => Some(vec![var]),
         }
     }
 }
@@ -661,6 +722,10 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 .debug_struct("ScriptExpression::Constant")
                 .field("f", f)
                 .finish(),
+            FieldScriptExpression::Table { table, .. } => fm
+                .debug_struct("ScriptExpression::Table")
+                .field("table", table)
+                .finish(),
             FieldScriptExpression::Add { x, y, debug, var } => fm
                 .debug_struct("ScriptExpression::Add")
                 .field("variable", var)
@@ -692,6 +757,10 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
                 .finish(),
+            FieldScriptExpression::Lookup { x, y, len, debug, var } => fm
+                .debug_struct("ScriptExpression::Lookup")
+                .field("variable", var)
+                .finish(),
         }
     }
 }
@@ -715,6 +784,11 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
             }
             FieldScriptExpression::Constant { f, debug, var } => FieldScriptExpression::Constant {
                 f: f.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
+            FieldScriptExpression::Table { table, debug, var } => FieldScriptExpression::Table {
+                table: table.clone(),
                 debug: debug.clone(),
                 var: var.clone(),
             },
@@ -774,6 +848,13 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                     var: var.clone(),
                 }
             }
+            FieldScriptExpression::Lookup { x, y, len, debug, var } => FieldScriptExpression::Lookup {
+                x: x.clone(),
+                y: y.clone(),
+                len: len.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
         }
     }
 }
@@ -991,6 +1072,19 @@ impl<F: BfField> Product<F> for FieldScriptExpression<F> {
     }
 }
 
+impl<F: BfField> FieldScriptExpression<F> {
+    fn lookup(self, index: NumScriptExpression, len: usize) -> Self{
+
+        Self::Lookup {
+            x: Arc::new(Box::new(self)),
+            y: Arc::new(Box::new(index)),
+            len: len,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::boxed::Box;
@@ -1006,11 +1100,13 @@ mod tests {
     use p3_matrix::Matrix;
     use primitives::field::BfField;
     use scripts::treepp::*;
-    use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
+    use scripts::u31_lib::{u31ext_equalverify, BabyBear4, BabyBearU31, u31_equalverify};
 
     use super::{Expression, FieldScriptExpression, Variable, *};
-    use crate::SymbolicAirBuilder;
+    use crate::expr::num_script_expr::NumScriptExpression;
+    use crate::{prove, verify, StarkConfig, SymbolicAirBuilder, SymbolicExpression};
     type EF = BinomialExtensionField<BabyBear, 4>;
+    type F = BabyBear;
 
     #[test]
     fn test_symbolic_expr_constraints() {
@@ -1588,5 +1684,43 @@ mod tests {
         stack.op_true();
         let res = stack.run();
         assert!(res.success);
+    }
+
+    #[test]
+    fn test_lookup() {
+        
+        let vec = vec![F::from_canonical_u32(1 as u32), F::from_canonical_u32(2 as u32), F::from_canonical_u32(3 as u32), F::from_canonical_u32(4 as u32), F::from_canonical_u32(5 as u32)];
+        let mut stack = StackTracker::new();
+        let bmap = BTreeMap::new();
+
+        let table = FieldScriptExpression::Table{
+            table: vec.clone(),          
+            debug: Cell::new(false),
+            var: StackVariable::null()
+        };
+
+        let index = NumScriptExpression::Constant { 
+            values: vec![4], 
+            debug: Cell::new(false),
+            var: StackVariable::null()
+        };
+
+        let m = table.lookup(index, vec.len());
+
+        let script = m.express_to_script(&mut stack, &bmap);
+
+        stack.number(5 as u32);
+
+        stack.custom(
+            u31_equalverify(),
+            2,
+            false,
+            0,
+            "u31_equalverify",
+        );
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+
     }
 }
