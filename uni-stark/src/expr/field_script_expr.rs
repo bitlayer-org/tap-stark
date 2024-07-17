@@ -10,16 +10,19 @@ use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use common::AbstractField;
+use p3_util::log2_strict_usize;
 use primitives::field::BfField;
 use scripts::treepp::*;
 use scripts::u31_lib::{
-    u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31ext_add, u31ext_add_u31,
+    u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add, u31ext_add_u31,
     u31ext_equalverify, u31ext_mul, u31ext_mul_u31, u31ext_neg, u31ext_sub, u31ext_sub_u31,
-    BabyBear4, BabyBearU31,
+    u32_to_u31, BabyBear4, BabyBearU31,
 };
 
+use super::num_script_expr::NumScriptExpression;
 use super::variable::{ValueVariable, Variable};
 use super::Expression;
+use crate::expr::script_helper::{index_to_rou, value_exp_n};
 use crate::SymbolicExpression::{self, *};
 
 pub enum FieldScriptExpression<F: BfField> {
@@ -66,9 +69,21 @@ pub enum FieldScriptExpression<F: BfField> {
         y: Arc<Box<dyn Expression>>,
         debug: Cell<bool>,
     },
-    Exp {
+    ExpConstant {
         x: Arc<Box<dyn Expression>>,
-        y: Arc<Box<dyn Expression>>,
+        y: u32,
+        var: StackVariable,
+        debug: Cell<bool>,
+    },
+    IndexToROU {
+        // calculate generator^index
+        index: Arc<Box<dyn Expression>>, // u32 -> NumberScriptExpression
+        sub_group_bits: u32,
+        var: StackVariable,
+        debug: Cell<bool>,
+    },
+    NumToField {
+        x: Arc<Box<dyn Expression>>,
         var: StackVariable,
         debug: Cell<bool>,
     },
@@ -150,6 +165,15 @@ impl<F: BfField> FieldScriptExpression<F> {
         }
     }
 
+    pub fn exp_constant(&self, power: u32) -> Self {
+        FieldScriptExpression::ExpConstant {
+            x: Arc::new(Box::new(self.clone())),
+            y: power,
+            var: StackVariable::null(),
+            debug: Cell::new(false),
+        }
+    }
+
     pub fn equal_verify(&self, rhs: Self) -> Self {
         FieldScriptExpression::EqualVerify {
             x: Arc::new(Box::new(self.clone())),
@@ -162,6 +186,15 @@ impl<F: BfField> FieldScriptExpression<F> {
         FieldScriptExpression::EqualVerify {
             x: Arc::new(Box::new(self.clone())),
             y: Arc::new(Box::new(Self::from(rhs))),
+            debug: Cell::new(false),
+        }
+    }
+
+    pub fn index_to_rou(index: u32, sub_group_bits: u32) -> Self {
+        FieldScriptExpression::IndexToROU {
+            index: Arc::new(Box::new(NumScriptExpression::from(index))),
+            sub_group_bits: sub_group_bits,
+            var: StackVariable::null(),
             debug: Cell::new(false),
         }
     }
@@ -192,7 +225,13 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::EqualVerify { debug, .. } => {
                 debug.set(true);
             }
-            FieldScriptExpression::Exp { debug, .. } => {
+            FieldScriptExpression::ExpConstant { debug, .. } => {
+                debug.set(true);
+            }
+            FieldScriptExpression::IndexToROU { debug, .. } => {
+                debug.set(true);
+            }
+            FieldScriptExpression::NumToField { debug, .. } => {
                 debug.set(true);
             }
         };
@@ -443,18 +482,84 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                         "u31ext_equalverify",
                     );
                 }
+                if debug.get() == true {
+                    stack.debug();
+                }
             }
-            FieldScriptExpression::Exp {
+            FieldScriptExpression::ExpConstant {
                 x,
                 y,
                 debug,
                 mut var,
             } => {
                 x.express_to_script(stack, input_variables);
-                // y.express_to_script(stack, input_variables);
 
-                // todo: check y is the NumScriptExpression
+                let vars = stack
+                    .custom1(
+                        value_exp_n::<F>(log2_strict_usize(*y as usize)),
+                        1,
+                        1,
+                        0,
+                        x.var_size(),
+                        "FieldExpr::ExpConstant",
+                    )
+                    .unwrap();
+                var = vars[0];
 
+                if debug.get() == true {
+                    stack.debug();
+                }
+                assert_eq!(var.size(), F::U32_SIZE as u32);
+            }
+            FieldScriptExpression::IndexToROU {
+                index,
+                debug,
+                mut var,
+                sub_group_bits,
+            } => {
+                index.express_to_script(stack, input_variables);
+
+                let vars = stack
+                    .custom1(
+                        index_to_rou::<F>(*sub_group_bits),
+                        1,
+                        1,
+                        0,
+                        F::U32_SIZE as u32,
+                        "FieldExpr::IndexToROU",
+                    )
+                    .unwrap();
+                var = vars[0];
+
+                if debug.get() == true {
+                    stack.debug();
+                }
+                assert_eq!(var.size(), F::U32_SIZE as u32);
+            }
+            FieldScriptExpression::NumToField { x, mut var, debug } => {
+                x.express_to_script(stack, input_variables);
+                let vars = stack
+                    .custom1(
+                        script! {
+                            if F::U32_SIZE == 1 {
+                                {u32_to_u31()}
+                            } else {
+                                {u32_to_u31()}
+                                {u31_to_u31ext::<BabyBear4>()}
+                            }
+                        },
+                        1,
+                        1,
+                        0,
+                        F::U32_SIZE as u32,
+                        "FieldExpr::NumToField",
+                    )
+                    .unwrap();
+                var = vars[0];
+
+                if debug.get() == true {
+                    stack.debug();
+                }
                 assert_eq!(var.size(), F::U32_SIZE as u32);
             }
         };
@@ -475,7 +580,9 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Neg { var, .. } => Some(vec![var]),
             FieldScriptExpression::Mul { var, .. } => Some(vec![var]),
             FieldScriptExpression::EqualVerify { .. } => None,
-            FieldScriptExpression::Exp { var, .. } => Some(vec![var]),
+            FieldScriptExpression::ExpConstant { var, .. } => Some(vec![var]),
+            FieldScriptExpression::IndexToROU { var, .. } => Some(vec![var]),
+            FieldScriptExpression::NumToField { var, .. } => Some(vec![var]),
         }
     }
 }
@@ -573,7 +680,15 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
             FieldScriptExpression::EqualVerify { x, y, debug } => {
                 fm.debug_struct("ScriptExpression::Equal").finish()
             }
-            FieldScriptExpression::Exp { x, y, debug, var } => fm
+            FieldScriptExpression::ExpConstant { x, y, debug, var } => fm
+                .debug_struct("ScriptExpression::Exp")
+                .field("variable", var)
+                .finish(),
+            FieldScriptExpression::IndexToROU { debug, var, .. } => fm
+                .debug_struct("ScriptExpression::Exp")
+                .field("variable", var)
+                .finish(),
+            FieldScriptExpression::NumToField { debug, var, .. } => fm
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
                 .finish(),
@@ -633,12 +748,32 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                     debug: debug.clone(),
                 }
             }
-            FieldScriptExpression::Exp { x, y, debug, var } => FieldScriptExpression::Exp {
-                x: x.clone(),
-                y: y.clone(),
+            FieldScriptExpression::ExpConstant { x, y, debug, var } => {
+                FieldScriptExpression::ExpConstant {
+                    x: x.clone(),
+                    y: y.clone(),
+                    debug: debug.clone(),
+                    var: var.clone(),
+                }
+            }
+            FieldScriptExpression::IndexToROU {
+                index,
+                debug,
+                var,
+                sub_group_bits,
+            } => FieldScriptExpression::IndexToROU {
+                index: index.clone(),
                 debug: debug.clone(),
                 var: var.clone(),
+                sub_group_bits: *sub_group_bits,
             },
+            FieldScriptExpression::NumToField { x, debug, var } => {
+                FieldScriptExpression::NumToField {
+                    x: x.clone(),
+                    debug: debug.clone(),
+                    var: var.clone(),
+                }
+            }
         }
     }
 }
@@ -867,13 +1002,14 @@ mod tests {
     use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
     use common::{AbstractField, BabyBear, BinomialExtensionField};
     use p3_air::AirBuilder;
+    use p3_field::TwoAdicField;
     use p3_matrix::Matrix;
     use primitives::field::BfField;
     use scripts::treepp::*;
-    use scripts::u31_lib::{u31ext_equalverify, BabyBear4, BabyBearU31};
+    use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
 
     use super::{Expression, FieldScriptExpression, Variable, *};
-    use crate::{prove, verify, StarkConfig, SymbolicAirBuilder, SymbolicExpression};
+    use crate::SymbolicAirBuilder;
     type EF = BinomialExtensionField<BabyBear, 4>;
 
     #[test]
@@ -894,6 +1030,105 @@ mod tests {
             .iter()
             .map(|cons| FieldScriptExpression::from(cons))
             .collect();
+    }
+
+    #[test]
+    fn test_field_expr_expconst() {
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a_value = BabyBear::two();
+            let b_value = a_value.exp_u64(2);
+            let a = FieldScriptExpression::from(a_value);
+            let b = a.exp_constant(2);
+            let equal = b.equal_verify_for_f(b_value);
+            equal.express_to_script(&mut stack, &bmap);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a_value = EF::two();
+            let b_value = a_value.exp_u64(2);
+            let a = FieldScriptExpression::from(a_value);
+            let b = a.exp_constant(2);
+            let equal = b.equal_verify_for_f(b_value);
+            equal.express_to_script(&mut stack, &bmap);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
+    }
+
+    #[test]
+    fn test_field_expr_index_to_rou() {
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let sub_group_bits = 10u32;
+            let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
+            let index = 7u32;
+            let res = generator.exp_u64(index as u64);
+
+            let b = FieldScriptExpression::index_to_rou(index, sub_group_bits);
+            // b.set_debug();
+            let res_expr = FieldScriptExpression::from(res);
+            let equal = b.equal_verify(res_expr);
+            equal.express_to_script(&mut stack, &bmap);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let sub_group_bits = 10u32;
+            let generator = EF::two_adic_generator(sub_group_bits as usize);
+            let index = 7u32;
+            let res = generator.exp_u64(index as u64);
+
+            let b = FieldScriptExpression::index_to_rou(index, sub_group_bits);
+            let equal = b.equal_verify_for_f(res);
+            equal.express_to_script(&mut stack, &bmap);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
+    }
+
+    #[test]
+    fn test_num_to_field() {
+        let num = 182712u32;
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a = NumScriptExpression::from(num);
+            let b = a.num_to_field();
+            let res = BabyBear::from_canonical_u32(num);
+            let equal = b.equal_verify_for_f(res);
+            equal.express_to_script(&mut stack, &bmap);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a = NumScriptExpression::from(num);
+            let b = a.num_to_field();
+            let res = EF::from_canonical_u32(num);
+            let equal = b.equal_verify_for_f(res);
+            equal.express_to_script(&mut stack, &bmap);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
     }
 
     #[test]

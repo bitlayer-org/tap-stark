@@ -1,18 +1,9 @@
-use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
+
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use core::cell::Cell;
-use core::fmt::Debug;
-use core::iter::{Product, Sum};
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use bitcoin::opcodes::OP_FROMALTSTACK;
-use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-use common::AbstractField;
 use primitives::field::BfField;
-use scripts::pseudo::{OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
+use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
 use scripts::treepp::*;
 use scripts::u31_lib::{
     u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31ext_add, u31ext_add_u31,
@@ -20,9 +11,6 @@ use scripts::u31_lib::{
     BabyBear4, BabyBearU31,
 };
 
-use super::variable::{ValueVariable, Variable};
-use super::Expression;
-use crate::SymbolicExpression::{self, *};
 
 /// constraint: bits <= 31
 /// input: [b_{0}, b_{1}, ..., b_{bits-1}]
@@ -217,18 +205,12 @@ fn value_to_generator_bit_altstack(bits: u32, sub_group_bits: u32) -> Script {
 
 // compute  w^index
 // the input stack:
-// w <- top
-// index : exactly low than 30-bit
+// generator  <-- top
+// index
 pub fn index_to_rou<F: BfField>(sub_group_bits: u32) -> Script {
     assert!(sub_group_bits <= 27);
     // 0..27
     script! {
-        if F::U32_SIZE == 1{
-            OP_TOALTSTACK
-        }else{
-            OP_4TOALTSTACK
-        }
-
 
         OP_DUP
         0
@@ -277,14 +259,88 @@ pub fn index_to_rou<F: BfField>(sub_group_bits: u32) -> Script {
             }
         OP_ENDIF
 
-        if F::U32_SIZE == 1{
-            OP_FROMALTSTACK
-            OP_EQUAL
+    }
+}
+
+fn value_square_with_input<F: BfField>() -> Script {
+    script! {
+        if F::U32_SIZE == 1 {
+            OP_DUP
+            {u31_mul::<BabyBearU31>()}
         }else{
-            OP_4FROMALTSTACK
-            {u31ext_equalverify::<BabyBear4>()}
-            OP_1
+            OP_4DUP
+            {u31ext_mul::<BabyBear4>()}
+        }
+    }
+}
+
+// compute value^n
+pub(crate) fn value_exp_n<F: BfField>(log_n: usize) -> Script {
+    script! {
+        for _ in 0..log_n {
+            {value_square_with_input::<F>()}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use p3_baby_bear::BabyBear;
+    use p3_field::extension::BinomialExtensionField;
+    use p3_field::{AbstractField, TwoAdicField};
+
+    use super::*;
+    type EF = BinomialExtensionField<BabyBear, 4>;
+
+    #[test]
+    fn test_index_to_rou() {
+        let index: u64 = 7; // 111 ;  // 7= 4 + 3=(2+1)
+        let subgroup_bit_size = 10;
+        let generator = BabyBear::two_adic_generator(subgroup_bit_size);
+        let w = generator.exp_u64(index);
+
+        let script = script! {
+            {index as u32}
+            {index_to_rou::<BabyBear>(subgroup_bit_size as u32)}
+            {w.as_u32_vec()[0]}
+            OP_EQUAL
+        };
+
+        let res = execute_script(script);
+        assert!(res.success);
+
+        for j in 0..100 {
+            let index: u32 = j; // 111 ;  // 7= 4 + 3=(2+1)
+            let subgroup_bit_size = 10;
+            let generator = BabyBear::two_adic_generator(subgroup_bit_size);
+            let w = generator.exp_u64(index as u64);
+            let script = script! {
+                {index as u32}
+                {index_to_rou::<BabyBear>(subgroup_bit_size as u32)}
+                {w.as_u32_vec()[0]}
+                OP_EQUAL
+            };
+
+            let res = execute_script(script);
+            assert!(res.success);
         }
 
+        // test the index to root-of-unity over babybear extension
+        for j in 0..100 {
+            let index: u32 = j; // 111 ;  // 7= 4 + 3=(2+1)
+            let subgroup_bit_size = 10;
+            let generator = EF::two_adic_generator(subgroup_bit_size);
+            let w = generator.exp_u64(index as u64);
+            let script = script! {
+                {index as u32}
+                {index_to_rou::<EF>(subgroup_bit_size as u32)}
+                {w.as_u32_vec()[3]}{w.as_u32_vec()[2]}{w.as_u32_vec()[1]}{w.as_u32_vec()[0]}
+                {u31ext_equalverify::<BabyBear4>()}
+                OP_1
+            };
+
+            let res = execute_script(script);
+            assert!(res.success);
+        }
     }
 }
