@@ -289,7 +289,11 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                     stack.debug();
                 }
             }
-            FieldScriptExpression::Table { table, mut var, debug } => {
+            FieldScriptExpression::Table {
+                table,
+                mut var,
+                debug,
+            } => {
                 //push table
                 for f in table.iter().rev() {
                     let v = f.as_u32_vec();
@@ -601,23 +605,22 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 x.express_to_script(stack, input_variables);
                 // todo: check y is the NumScriptExpression
                 y.express_to_script(stack, input_variables);
-                let vars = stack
-                    .custom1(
-                        script! {
-                            OP_PICK
-                        },
-                        1,
-                        1,
-                        0,
-                        F::U32_SIZE as u32,
-                        "ExprLookup_Result",
-                    );
+                let vars = stack.custom1(
+                    script! {
+                        OP_PICK
+                    },
+                    1,
+                    1,
+                    0,
+                    F::U32_SIZE as u32,
+                    "ExprLookup_Result",
+                );
                 stack.to_altstack();
-                for _ in 0..(*len){
+                for _ in 0..(*len) {
                     stack.op_drop();
                 }
                 var = stack.from_altstack();
-                
+
                 assert_eq!(var.size(), F::U32_SIZE as u32);
             }
         };
@@ -713,7 +716,13 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
                 .finish(),
-            FieldScriptExpression::Lookup { x, y, len, debug, var } => fm
+            FieldScriptExpression::Lookup {
+                x,
+                y,
+                len,
+                debug,
+                var,
+            } => fm
                 .debug_struct("ScriptExpression::Lookup")
                 .field("variable", var)
                 .finish(),
@@ -803,8 +812,14 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                     debug: debug.clone(),
                     var: var.clone(),
                 }
-            },
-            FieldScriptExpression::Lookup { x, y, len, debug, var } => FieldScriptExpression::Lookup {
+            }
+            FieldScriptExpression::Lookup {
+                x,
+                y,
+                len,
+                debug,
+                var,
+            } => FieldScriptExpression::Lookup {
                 x: x.clone(),
                 y: y.clone(),
                 len: len.clone(),
@@ -1037,8 +1052,7 @@ impl<F: BfField> Product<F> for FieldScriptExpression<F> {
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
-    pub fn lookup(self, index: NumScriptExpression, len: usize) -> Self{
-
+    pub fn lookup(self, index: NumScriptExpression, len: usize) -> Self {
         Self::Lookup {
             x: Arc::new(Box::new(self)),
             y: Arc::new(Box::new(index)),
@@ -1064,7 +1078,7 @@ mod tests {
     use p3_matrix::Matrix;
     use primitives::field::BfField;
     use scripts::treepp::*;
-    use scripts::u31_lib::{u31ext_equalverify, BabyBear4, u31_equalverify};
+    use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
 
     use super::{Expression, FieldScriptExpression, Variable, *};
     type EF = BinomialExtensionField<BabyBear, 4>;
@@ -1629,20 +1643,26 @@ mod tests {
 
     #[test]
     fn test_lookup() {
-        let vec = vec![BabyBear::from_canonical_u32(1 as u32), BabyBear::from_canonical_u32(2 as u32), BabyBear::from_canonical_u32(3 as u32), BabyBear::from_canonical_u32(4 as u32), BabyBear::from_canonical_u32(5 as u32)];
+        let vec = vec![
+            BabyBear::from_canonical_u32(1 as u32),
+            BabyBear::from_canonical_u32(2 as u32),
+            BabyBear::from_canonical_u32(3 as u32),
+            BabyBear::from_canonical_u32(4 as u32),
+            BabyBear::from_canonical_u32(5 as u32),
+        ];
         let mut stack = StackTracker::new();
         let bmap = BTreeMap::new();
 
-        let table = FieldScriptExpression::Table{
-            table: vec.clone(),          
+        let table = FieldScriptExpression::Table {
+            table: vec.clone(),
             debug: Cell::new(false),
-            var: StackVariable::null()
+            var: StackVariable::null(),
         };
 
-        let index = NumScriptExpression::Constant { 
-            values: vec![4], 
+        let index = NumScriptExpression::Constant {
+            values: vec![4],
             debug: Cell::new(false),
-            var: StackVariable::null()
+            var: StackVariable::null(),
         };
 
         let m = table.lookup(index, vec.len());
@@ -1651,16 +1671,9 @@ mod tests {
 
         stack.number(5 as u32);
 
-        stack.custom(
-            u31_equalverify(),
-            2,
-            false,
-            0,
-            "u31_equalverify",
-        );
+        stack.custom(u31_equalverify(), 2, false, 0, "u31_equalverify");
         stack.op_true();
         let res = stack.run();
         assert!(res.success);
-
     }
 }
