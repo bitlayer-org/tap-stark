@@ -9,16 +9,15 @@ use primitives::field::BfField;
 use scripts::treepp::*;
 
 use super::{FieldScriptExpression, ValueVariable, Variable};
-use crate::SymbolicExpression::{self, *};
 
 pub struct ScriptConstraintBuilder<F: BfField> {
     pub main: RowMajorMatrix<ValueVariable<F>>,
     pub public_values: Vec<Variable>,
-    pub is_first_row: F,
-    pub is_last_row: F,
-    pub is_transition: F,
+    pub is_first_row: FieldScriptExpression<F>,
+    pub is_last_row: FieldScriptExpression<F>,
+    pub is_transition: FieldScriptExpression<F>,
     pub constraints: Vec<FieldScriptExpression<F>>,
-    pub alpha: F,
+    pub alpha: FieldScriptExpression<F>,
 }
 
 impl<F: BfField> ScriptConstraintBuilder<F> {
@@ -30,6 +29,26 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
         is_last_row: F,
         is_transition: F,
         alpha: F,
+    ) -> Self {
+        Self::new_with_expr(
+            local,
+            next,
+            num_public_values,
+            FieldScriptExpression::from(is_first_row),
+            FieldScriptExpression::from(is_last_row),
+            FieldScriptExpression::from(is_transition),
+            FieldScriptExpression::from(alpha),
+        )
+    }
+
+    pub fn new_with_expr(
+        local: Vec<F>,
+        next: Vec<F>,
+        num_public_values: usize,
+        is_first_row: FieldScriptExpression<F>,
+        is_last_row: FieldScriptExpression<F>,
+        is_transition: FieldScriptExpression<F>,
+        alpha: FieldScriptExpression<F>,
     ) -> Self {
         let width = local.len();
         let main_variables: Vec<ValueVariable<F>> = [local, next]
@@ -64,7 +83,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
     pub fn get_accmulator_expr(&self) -> FieldScriptExpression<F> {
         let mut acc = self.constraints[0].clone();
         for i in 1..self.constraints.len() {
-            acc = acc * self.alpha + self.constraints[i].clone();
+            acc = acc * self.alpha.clone() + self.constraints[i].clone();
         }
         acc
     }
@@ -132,16 +151,16 @@ impl<F: BfField> AirBuilder for ScriptConstraintBuilder<F> {
     }
 
     fn is_first_row(&self) -> Self::Expr {
-        Self::Expr::from(self.is_first_row)
+        self.is_first_row.clone()
     }
 
     fn is_last_row(&self) -> Self::Expr {
-        Self::Expr::from(self.is_last_row)
+        self.is_last_row.clone()
     }
 
     fn is_transition_window(&self, size: usize) -> Self::Expr {
         if size == 2 {
-            Self::Expr::from(self.is_transition)
+            self.is_transition.clone()
         } else {
             panic!("uni-stark only supports a window size of 2")
         }

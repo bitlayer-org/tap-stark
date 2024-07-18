@@ -1,4 +1,3 @@
-
 use alloc::vec::Vec;
 use alloc::{format, vec};
 
@@ -10,7 +9,6 @@ use scripts::u31_lib::{
     u31ext_equalverify, u31ext_mul, u31ext_mul_u31, u31ext_neg, u31ext_sub, u31ext_sub_u31,
     BabyBear4, BabyBearU31,
 };
-
 
 /// constraint: bits <= 31
 /// input: [b_{0}, b_{1}, ..., b_{bits-1}]

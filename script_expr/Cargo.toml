@@ -1,0 +1,24 @@
+[package]
+name = "script_expr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git"}
+bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
+bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
+bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
+p3-air = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-commit ={ git = "https://github.com/Plonky3/Plonky3.git" }
+p3-dft = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
+primitives = { path = "../primitives" }
+scripts = {path = "../scripts"}
+common ={ path = "../common" }
+
+[dev-dependencies]
+p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git" }

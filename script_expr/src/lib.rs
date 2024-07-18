@@ -1,3 +1,5 @@
+extern crate alloc;
+
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
@@ -9,17 +11,19 @@ use num_script_expr::NumScriptExpression;
 use primitives::field::BfField;
 use scripts::treepp::*;
 
-use crate::SymbolicExpression::{self, *};
-
 mod script_builder;
-pub use script_builder::*;
 mod variable;
 pub use variable::{ValueVariable, Variable};
 mod num_script_expr;
-// pub use num_script_expr::*;
+pub use num_script_expr::*;
 mod field_script_expr;
 pub use field_script_expr::*;
 mod script_helper;
+pub use script_builder::*;
+mod fraction_expr;
+pub use fraction_expr::*;
+mod lagrange;
+pub use lagrange::*;
 
 pub struct Executor<F: BfField> {
     to_exec_expr: FieldScriptExpression<F>,
