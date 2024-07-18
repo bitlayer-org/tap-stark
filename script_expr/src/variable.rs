@@ -3,12 +3,9 @@ use core::fmt::Debug;
 use core::ops::{Add, Mul, Sub};
 
 use bitcoin_script_stack::stack::StackVariable;
-use p3_field::Field;
 use primitives::field::BfField;
 
 use super::FieldScriptExpression;
-use crate::symbolic_variable::SymbolicVariable;
-use crate::Entry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValueVariable<F: BfField> {
@@ -141,9 +138,9 @@ impl<F: BfField> Mul<ValueVariable<F>> for FieldScriptExpression<F> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Variable {
-    row_index: usize,
-    column_index: usize,
-    expect_var_size: Option<u32>,
+    pub row_index: usize,
+    pub column_index: usize,
+    pub expect_var_size: Option<u32>,
 }
 
 impl Variable {
@@ -190,52 +187,6 @@ impl<F: BfField> From<Variable> for FieldScriptExpression<F> {
             sv: var,
             debug: Cell::new(false),
             var: StackVariable::null(),
-        }
-    }
-}
-
-impl<F: Field> From<SymbolicVariable<F>> for Variable {
-    fn from(value: SymbolicVariable<F>) -> Self {
-        match value.entry {
-            Entry::Main { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Permutation { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Preprocessed { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            _ => panic!("error type"),
-        }
-    }
-}
-
-impl<F: Field> From<&SymbolicVariable<F>> for Variable {
-    fn from(value: &SymbolicVariable<F>) -> Self {
-        match value.entry {
-            Entry::Main { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Permutation { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Preprocessed { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            _ => panic!("error type"),
         }
     }
 }
