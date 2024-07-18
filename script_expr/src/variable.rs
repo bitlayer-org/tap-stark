@@ -7,8 +7,8 @@ use p3_field::Field;
 use primitives::field::BfField;
 
 use super::FieldScriptExpression;
-use crate::symbolic_variable::SymbolicVariable;
-use crate::Entry;
+// use crate::symbolic_variable::SymbolicVariable;
+// use crate::Entry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValueVariable<F: BfField> {
@@ -194,51 +194,51 @@ impl<F: BfField> From<Variable> for FieldScriptExpression<F> {
     }
 }
 
-impl<F: Field> From<SymbolicVariable<F>> for Variable {
-    fn from(value: SymbolicVariable<F>) -> Self {
-        match value.entry {
-            Entry::Main { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Permutation { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Preprocessed { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            _ => panic!("error type"),
-        }
-    }
-}
+// impl<F: Field> From<SymbolicVariable<F>> for Variable {
+//     fn from(value: SymbolicVariable<F>) -> Self {
+//         match value.entry {
+//             Entry::Main { offset } => Variable {
+//                 row_index: value.index,
+//                 column_index: offset,
+//                 expect_var_size: None,
+//             },
+//             Entry::Permutation { offset } => Variable {
+//                 row_index: value.index,
+//                 column_index: offset,
+//                 expect_var_size: None,
+//             },
+//             Entry::Preprocessed { offset } => Variable {
+//                 row_index: value.index,
+//                 column_index: offset,
+//                 expect_var_size: None,
+//             },
+//             _ => panic!("error type"),
+//         }
+//     }
+// }
 
-impl<F: Field> From<&SymbolicVariable<F>> for Variable {
-    fn from(value: &SymbolicVariable<F>) -> Self {
-        match value.entry {
-            Entry::Main { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Permutation { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            Entry::Preprocessed { offset } => Variable {
-                row_index: value.index,
-                column_index: offset,
-                expect_var_size: None,
-            },
-            _ => panic!("error type"),
-        }
-    }
-}
+// impl<F: Field> From<&SymbolicVariable<F>> for Variable {
+//     fn from(value: &SymbolicVariable<F>) -> Self {
+//         match value.entry {
+//             Entry::Main { offset } => Variable {
+//                 row_index: value.index,
+//                 column_index: offset,
+//                 expect_var_size: None,
+//             },
+//             Entry::Permutation { offset } => Variable {
+//                 row_index: value.index,
+//                 column_index: offset,
+//                 expect_var_size: None,
+//             },
+//             Entry::Preprocessed { offset } => Variable {
+//                 row_index: value.index,
+//                 column_index: offset,
+//                 expect_var_size: None,
+//             },
+//             _ => panic!("error type"),
+//         }
+//     }
+// }
 
 impl<F: BfField> Add<F> for Variable {
     type Output = FieldScriptExpression<F>;

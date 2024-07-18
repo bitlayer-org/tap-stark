@@ -26,6 +26,7 @@ segment ={ path = "../segment"}
 script_manager = {path = "../script_manager"}
 fri = { path = "../fri"}
 common = {path = "../common"}
+script_expr = {path = "../script_expr"}
 
 [dev-dependencies]
 p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git" }

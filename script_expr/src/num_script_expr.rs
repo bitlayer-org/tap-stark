@@ -14,7 +14,7 @@ use scripts::treepp::*;
 
 use super::variable::{ValueVariable, Variable};
 use super::{Expression, FieldScriptExpression};
-use crate::expr::script_helper::value_to_bits_format;
+use crate::script_helper::value_to_bits_format;
 
 pub enum NumScriptExpression {
     InputVariable {

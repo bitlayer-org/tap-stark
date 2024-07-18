@@ -4,20 +4,22 @@ use alloc::vec::Vec;
 
 use bitcoin_script_stack::stack::StackTracker;
 use itertools::Itertools;
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
 use p3_field::{AbstractExtensionField, AbstractField, Field};
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
+use p3_util::log2_strict_usize;
 use primitives::bf_pcs::Pcs;
 use primitives::field::BfField;
-use script_manager::bc_assignment::DefaultBCAssignment;
 use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
 use tracing::instrument;
 
-use crate::expr::{Expression, FieldScriptExpression, ScriptConstraintBuilder};
+use script_expr::{
+    selectors_at_point_expr, Expression, FieldScriptExpression, ScriptConstraintBuilder,
+};
 use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder};
 
@@ -168,14 +170,16 @@ where
         return Err(VerificationError::OodEvaluationMismatch);
     }
 
-    let mut script_folder = ScriptConstraintBuilder::new(
+    let log_n = log2_strict_usize(degree);
+    let sels_expr = selectors_at_point_expr(Val::<SC>::one(), zeta, log_n);
+    let mut script_folder = ScriptConstraintBuilder::new_with_expr(
         opened_values.trace_local.clone(),
         opened_values.trace_next.clone(),
         public_values.len(),
-        sels.is_first_row,
-        sels.is_last_row,
-        sels.is_transition,
-        alpha,
+        sels_expr.is_first_row,
+        sels_expr.is_last_row,
+        sels_expr.is_transition,
+        alpha.into(),
     );
 
     air.eval(&mut script_folder);

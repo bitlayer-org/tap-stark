@@ -8,5 +8,5 @@ members = [
     "segment",
     "common",
     "uni-stark"
-]
+, "script_expr"]
 

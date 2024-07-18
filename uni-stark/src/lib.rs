@@ -5,7 +5,6 @@
 extern crate alloc;
 
 mod config;
-mod expr;
 mod folder;
 mod proof;
 mod prover;

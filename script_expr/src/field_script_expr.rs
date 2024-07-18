@@ -7,6 +7,7 @@ use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::Div;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use common::AbstractField;
@@ -22,8 +23,8 @@ use scripts::u31_lib::{
 use super::num_script_expr::NumScriptExpression;
 use super::variable::{ValueVariable, Variable};
 use super::Expression;
-use crate::expr::script_helper::{index_to_rou, value_exp_n};
-use crate::SymbolicExpression::{self, *};
+use crate::script_helper::{index_to_rou, value_exp_n};
+use crate::Fraction;
 
 pub enum FieldScriptExpression<F: BfField> {
     ValueVariable {
@@ -587,48 +588,48 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
     }
 }
 
-impl<F: BfField> From<&SymbolicExpression<F>> for FieldScriptExpression<F> {
-    fn from(value: &SymbolicExpression<F>) -> Self {
-        match value {
-            SymbolicExpression::Variable(v) => FieldScriptExpression::InputVariable {
-                sv: v.into(),
-                debug: Cell::new(false),
-                var: StackVariable::null(),
-            },
-            SymbolicExpression::IsFirstRow => FieldScriptExpression::one(),
-            SymbolicExpression::IsLastRow => FieldScriptExpression::one(),
-            SymbolicExpression::IsTransition => FieldScriptExpression::one(),
-            SymbolicExpression::Constant(f) => FieldScriptExpression::Constant {
-                f: f.clone(),
-                debug: Cell::new(false),
-                var: StackVariable::null(),
-            },
-            SymbolicExpression::Add { x, y, .. } => FieldScriptExpression::Add {
-                x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
-                y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
-                debug: Cell::new(false),
-                var: StackVariable::null(),
-            },
-            SymbolicExpression::Sub { x, y, .. } => FieldScriptExpression::Sub {
-                x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
-                y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
-                debug: Cell::new(false),
-                var: StackVariable::null(),
-            },
-            SymbolicExpression::Neg { x, .. } => FieldScriptExpression::Neg {
-                x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
-                debug: Cell::new(false),
-                var: StackVariable::null(),
-            },
-            SymbolicExpression::Mul { x, y, .. } => FieldScriptExpression::Mul {
-                x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
-                y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
-                debug: Cell::new(false),
-                var: StackVariable::null(),
-            },
-        }
-    }
-}
+// impl<F: BfField> From<&SymbolicExpression<F>> for FieldScriptExpression<F> {
+//     fn from(value: &SymbolicExpression<F>) -> Self {
+//         match value {
+//             SymbolicExpression::Variable(v) => FieldScriptExpression::InputVariable {
+//                 sv: v.into(),
+//                 debug: Cell::new(false),
+//                 var: StackVariable::null(),
+//             },
+//             SymbolicExpression::IsFirstRow => FieldScriptExpression::one(),
+//             SymbolicExpression::IsLastRow => FieldScriptExpression::one(),
+//             SymbolicExpression::IsTransition => FieldScriptExpression::one(),
+//             SymbolicExpression::Constant(f) => FieldScriptExpression::Constant {
+//                 f: f.clone(),
+//                 debug: Cell::new(false),
+//                 var: StackVariable::null(),
+//             },
+//             SymbolicExpression::Add { x, y, .. } => FieldScriptExpression::Add {
+//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
+//                 y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
+//                 debug: Cell::new(false),
+//                 var: StackVariable::null(),
+//             },
+//             SymbolicExpression::Sub { x, y, .. } => FieldScriptExpression::Sub {
+//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
+//                 y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
+//                 debug: Cell::new(false),
+//                 var: StackVariable::null(),
+//             },
+//             SymbolicExpression::Neg { x, .. } => FieldScriptExpression::Neg {
+//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
+//                 debug: Cell::new(false),
+//                 var: StackVariable::null(),
+//             },
+//             SymbolicExpression::Mul { x, y, .. } => FieldScriptExpression::Mul {
+//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
+//                 y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
+//                 debug: Cell::new(false),
+//                 var: StackVariable::null(),
+//             },
+//         }
+//     }
+// }
 
 impl<F: BfField> Default for FieldScriptExpression<F> {
     fn default() -> Self {
@@ -967,6 +968,14 @@ impl<F: BfField> Mul<F> for FieldScriptExpression<F> {
     }
 }
 
+impl<F: BfField> Div for FieldScriptExpression<F> {
+    type Output = Fraction<F>;
+
+    fn div(self, rhs: Self) -> Fraction<F> {
+        Fraction::<F>::new(self, rhs)
+    }
+}
+
 impl<F: BfField> MulAssign for FieldScriptExpression<F> {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs;
@@ -1009,28 +1018,28 @@ mod tests {
     use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
 
     use super::{Expression, FieldScriptExpression, Variable, *};
-    use crate::SymbolicAirBuilder;
     type EF = BinomialExtensionField<BabyBear, 4>;
+    
+    // use crate::SymbolicAirBuilder;
+    // #[test]
+    // fn test_symbolic_expr_constraints() {
+    //     let air_width: usize = 2;
+    //     let mut builder = SymbolicAirBuilder::<BabyBear>::new(0, air_width, 0);
+    //     let main_values = builder.main();
+    //     let (local, next) = (main_values.row_slice(0), main_values.row_slice(1));
+    //     let mut when_transition = builder.when_transition();
+    //     // a' <- b
+    //     when_transition.assert_eq(local[0], local[1]);
 
-    #[test]
-    fn test_symbolic_expr_constraints() {
-        let air_width: usize = 2;
-        let mut builder = SymbolicAirBuilder::<BabyBear>::new(0, air_width, 0);
-        let main_values = builder.main();
-        let (local, next) = (main_values.row_slice(0), main_values.row_slice(1));
-        let mut when_transition = builder.when_transition();
-        // a' <- b
-        when_transition.assert_eq(local[0], local[1]);
+    //     // b' <- a + b
+    //     when_transition.assert_eq(local[0] + local[1], next[1]);
 
-        // b' <- a + b
-        when_transition.assert_eq(local[0] + local[1], next[1]);
-
-        let cs = builder.constraints();
-        let script_exp: Vec<FieldScriptExpression<BabyBear>> = cs
-            .iter()
-            .map(|cons| FieldScriptExpression::from(cons))
-            .collect();
-    }
+    //     let cs = builder.constraints();
+    //     let script_exp: Vec<FieldScriptExpression<BabyBear>> = cs
+    //         .iter()
+    //         .map(|cons| FieldScriptExpression::from(cons))
+    //         .collect();
+    // }
 
     #[test]
     fn test_field_expr_expconst() {
