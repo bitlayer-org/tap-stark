@@ -90,3 +90,14 @@ pub fn get_generator<F: BfField>(generator: F, quotient_chunk_nums: usize) -> Sc
         }
     }
 }
+
+pub fn get_table<F: BfField>(generator: F, quotient_chunk_nums: usize) -> Vec<F> {
+    let mut table = vec![];
+    for i in (0..quotient_chunk_nums).rev() {
+        table.push(generator.exp_u64(i as u64));
+    }
+    for i in 1..quotient_chunk_nums {
+        table.push(generator.exp_u64(i as u64).try_inverse().unwrap());
+    }
+    table
+}

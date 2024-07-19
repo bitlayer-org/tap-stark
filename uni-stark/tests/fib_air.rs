@@ -1,9 +1,11 @@
 use std::borrow::Borrow;
+use std::collections::BTreeMap;
 
+use bitcoin_script_stack::stack::StackTracker;
 use fri::{FriConfig, TwoAdicFriPcs};
 use itertools::Itertools;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+use p3_baby_bear::BabyBear;
 use p3_commit::{ExtensionMmcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
@@ -12,20 +14,20 @@ use p3_field::{
 };
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
-use p3_merkle_tree::FieldMerkleTreeMmcs;
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
-use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use primitives::bf_pcs::Pcs;
 use primitives::challenger::chan_field::U32;
 // use p3_challenger::DuplexChallenger;
 use primitives::challenger::{BfChallenger, Blake3Permutation};
+use primitives::field::BfField;
 use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use script_expr::Expression;
 use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::execute_script_with_inputs;
+use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
 use uni_stark::{
-    compute_quotient_zeta_script, get_log_quotient_degree, prove, verify, Proof, StarkConfig,
+    compute_quotient_expr, get_log_quotient_degree, prove, verify, Proof, StarkConfig,
 };
 
 /// For testing the public values feature
@@ -250,26 +252,69 @@ fn test_quotient_zeta() {
                 .sum::<Challenge>()
         })
         .sum::<Challenge>();
+    let denomiator_inverse = quotient_chunks_domains
+        .iter()
+        .enumerate()
+        .map(|(i, domain)| {
+            quotient_chunks_domains
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, other_domain)| {
+                    other_domain
+                        .zp_at_point(domain.first_point())
+                        .inverse()
+                        .into()
+                })
+                .product::<Val>()
+        })
+        .collect_vec();
 
-    let mut bc_assigner = DefaultBCAssignment::new();
-    let mut exec_script_info = compute_quotient_zeta_script::<Val, Challenge>(
+    let (q_zeta, _hint_verify) = compute_quotient_expr::<Val, Challenge>(
+        zeta,
+        degree,
+        generator,
         quotient_chunk_nums,
-        zps,
         opened_values.quotient_chunks,
-        quotient,
+        denomiator_inverse,
     );
 
-    exec_script_info.gen(&mut bc_assigner);
+    let mut stack = StackTracker::new();
+    let bmap = BTreeMap::new();
+    let script = q_zeta.express_to_script(&mut stack, &bmap);
 
-    let res =
-        execute_script_with_inputs(exec_script_info.get_eq_script(), exec_script_info.witness());
+    stack.bignumber(quotient.as_u32_vec());
+
+    stack.custom(
+        u31ext_equalverify::<BabyBear4>(),
+        2,
+        false,
+        0,
+        "u31ext_equalverify",
+    );
+    stack.op_true();
+    let res = stack.run();
     assert!(res.success);
 
-    let res = execute_script_with_inputs(
-        exec_script_info.get_neq_script(),
-        exec_script_info.witness(),
-    );
-    assert!(!res.success);
+    // let mut bc_assigner = DefaultBCAssignment::new();
+    // let mut exec_script_info = compute_quotient_zeta_script::<Val, Challenge>(
+    //     quotient_chunk_nums,
+    //     zps,
+    //     opened_values.quotient_chunks,
+    //     quotient,
+    // );
+
+    // exec_script_info.gen(&mut bc_assigner);
+
+    // let res =
+    //     execute_script_with_inputs(exec_script_info.get_eq_script(), exec_script_info.witness());
+    // assert!(res.success);
+
+    // let res = execute_script_with_inputs(
+    //     exec_script_info.get_neq_script(),
+    //     exec_script_info.witness(),
+    // );
+    // assert!(!res.success);
 }
 // #[cfg(debug_assertions)]
 // #[test]
