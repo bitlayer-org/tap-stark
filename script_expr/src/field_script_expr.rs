@@ -1052,11 +1052,19 @@ impl<F: BfField> Product<F> for FieldScriptExpression<F> {
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
-    pub fn lookup(self, index: NumScriptExpression, len: usize) -> Self {
+    pub fn lookup(self, index: u32, len: usize) -> Self {
+        let index = NumScriptExpression::from(index);
         Self::Lookup {
             x: Arc::new(Box::new(self)),
             y: Arc::new(Box::new(index)),
             len: len,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
+    pub fn from_table(table: &[F]) -> Self {
+        Self::Table {
+            table: table.into(),
             debug: Cell::new(false),
             var: StackVariable::null(),
         }
@@ -1659,11 +1667,7 @@ mod tests {
             var: StackVariable::null(),
         };
 
-        let index = NumScriptExpression::Constant {
-            values: vec![4],
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
+        let index = 4;
 
         let m = table.lookup(index, vec.len());
 

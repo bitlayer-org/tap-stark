@@ -270,7 +270,7 @@ fn test_quotient_zeta() {
         })
         .collect_vec();
 
-    let q_zeta = compute_quotient_expr::<Val, Challenge>(
+    let (q_zeta, _hint_verify) = compute_quotient_expr::<Val, Challenge>(
         zeta,
         degree,
         generator,

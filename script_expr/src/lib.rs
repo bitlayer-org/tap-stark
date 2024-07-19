@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::cell::Cell;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-pub use num_script_expr::NumScriptExpression;
+use num_script_expr::NumScriptExpression;
 use primitives::field::BfField;
 use scripts::treepp::*;
 
