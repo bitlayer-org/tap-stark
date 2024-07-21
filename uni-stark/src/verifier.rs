@@ -108,7 +108,6 @@ where
         ],
         opening_proof,
         challenger,
-        script_managers,
     )
     .map_err(VerificationError::InvalidOpeningArgument)?;
 
