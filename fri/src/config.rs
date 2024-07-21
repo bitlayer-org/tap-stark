@@ -3,6 +3,8 @@ use core::fmt::Debug;
 
 use p3_field::Field;
 use p3_matrix::Matrix;
+use primitives::field::BfField;
+use script_expr::{Expression, NumScriptExpression};
 
 #[derive(Debug)]
 pub struct FriConfig<M> {
@@ -41,4 +43,18 @@ pub trait FriGenericConfig<F: Field> {
 
     /// Same as applying fold_row to every row, possibly faster.
     fn fold_matrix<M: Matrix<F>>(&self, beta: F, m: M) -> Vec<F>;
+}
+
+pub trait FriGenericConfigWithExpr<F: BfField, Expr: Expression>: FriGenericConfig<F> {
+    fn fold_row_with_expr(
+        &self,
+        index: usize,
+        log_height: usize,
+        folded_eval: Expr,
+        sibling_eval: Expr,
+        x: Expr, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
+        point_index: usize,
+        index_sibling: usize,
+        beta: Expr,
+    ) -> (Expr, Expr);
 }

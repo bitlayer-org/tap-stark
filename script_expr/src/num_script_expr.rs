@@ -14,7 +14,7 @@ use scripts::treepp::*;
 
 use super::variable::{ValueVariable, Variable};
 use super::{Expression, FieldScriptExpression};
-use crate::script_helper::value_to_bits_format;
+use crate::script_helper::{reverse_bits_len_script_with_input, value_to_bits_format};
 
 pub enum NumScriptExpression {
     InputVariable {
@@ -83,6 +83,12 @@ pub enum NumScriptExpression {
         var: Vec<StackVariable>,
         bits_len: u32,
     },
+    BitReverse {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+        bits_len: u32,
+    },
     // Exp{
     //     x: Arc<Box<dyn Expression>>,
     //     y: Arc<Box<dyn Expression>>,
@@ -146,6 +152,15 @@ impl NumScriptExpression {
             var: StackVariable::null(),
         }
     }
+
+    pub fn index_to_rou<F: BfField>(self, sub_group_bits: u32) -> FieldScriptExpression<F> {
+        FieldScriptExpression::<F>::num_index_to_rou(self, sub_group_bits)
+    }
+
+    pub fn debug(self) -> Self {
+        self.set_debug();
+        self
+    }
 }
 
 impl Expression for NumScriptExpression {
@@ -183,6 +198,9 @@ impl Expression for NumScriptExpression {
                 debug.set(true);
             }
             NumScriptExpression::ToBitsVec { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::BitReverse { debug, .. } => {
                 debug.set(true);
             }
         };
@@ -346,6 +364,19 @@ impl Expression for NumScriptExpression {
                 assert_eq!(1, 2);
                 // var = stack.custom1(value_to_bits_format(*bits_len), x.var_size(), *bits_len, 0, 1, "NumExpr::ToBitsVec").unwrap();
             }
+            NumScriptExpression::BitReverse {
+                x,
+                debug,
+                mut var,
+                bits_len,
+            } => {
+                x.express_to_script(stack, input_variables); // F
+                assert_eq!(2, 1);
+
+                // if debug.get() == true {
+                //     stack.debug();
+                // }
+            }
         };
         stack.get_script()
     }
@@ -375,6 +406,7 @@ impl Expression for NumScriptExpression {
                 let vec = var.iter().map(|item| item).collect();
                 Some(vec)
             }
+            NumScriptExpression::BitReverse { var, .. } => Some(vec![var]),
         }
     }
 }
@@ -452,6 +484,10 @@ impl Debug for NumScriptExpression {
                 .field("variable", var)
                 .finish(),
             NumScriptExpression::ToBitsVec { x, debug, var, .. } => fm
+                .debug_struct("ScriptExpression::ToBits")
+                .field("variable", var)
+                .finish(),
+            NumScriptExpression::BitReverse { x, debug, var, .. } => fm
                 .debug_struct("ScriptExpression::ToBits")
                 .field("variable", var)
                 .finish(),
@@ -535,6 +571,17 @@ impl Clone for NumScriptExpression {
                 var,
                 bits_len,
             } => NumScriptExpression::ToBitsVec {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+                bits_len: *bits_len,
+            },
+            NumScriptExpression::BitReverse {
+                x,
+                debug,
+                var,
+                bits_len,
+            } => NumScriptExpression::BitReverse {
                 x: x.clone(),
                 debug: debug.clone(),
                 var: var.clone(),

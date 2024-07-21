@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
 bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
 bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
+bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git"}
 
 p3-commit ={ git = "https://github.com/Plonky3/Plonky3.git" }
 p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git" }
@@ -21,7 +22,7 @@ itertools = "0.12.0"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
-
+script_expr ={ path = "../script_expr" }
 rand = "0.8.5"
 
 

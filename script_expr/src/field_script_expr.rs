@@ -70,6 +70,12 @@ pub enum FieldScriptExpression<F: BfField> {
         y: Arc<Box<dyn Expression>>,
         debug: Cell<bool>,
     },
+    Equal {
+        x: Arc<Box<dyn Expression>>,
+        y: Arc<Box<dyn Expression>>,
+        var: StackVariable,
+        debug: Cell<bool>,
+    },
     ExpConstant {
         x: Arc<Box<dyn Expression>>,
         y: u32,
@@ -175,6 +181,24 @@ impl<F: BfField> FieldScriptExpression<F> {
         }
     }
 
+    pub fn equal(&self, rhs: Self) -> Self {
+        FieldScriptExpression::Equal {
+            x: Arc::new(Box::new(self.clone())),
+            y: Arc::new(Box::new(rhs.clone())),
+            var: StackVariable::null(),
+            debug: Cell::new(false),
+        }
+    }
+
+    pub fn equal_for_f(&self, rhs: F) -> Self {
+        FieldScriptExpression::Equal {
+            x: Arc::new(Box::new(self.clone())),
+            y: Arc::new(Box::new(Self::from(rhs))),
+            var: StackVariable::null(),
+            debug: Cell::new(false),
+        }
+    }
+
     pub fn equal_verify(&self, rhs: Self) -> Self {
         FieldScriptExpression::EqualVerify {
             x: Arc::new(Box::new(self.clone())),
@@ -199,6 +223,20 @@ impl<F: BfField> FieldScriptExpression<F> {
             debug: Cell::new(false),
         }
     }
+
+    pub fn num_index_to_rou(index: NumScriptExpression, sub_group_bits: u32) -> Self {
+        FieldScriptExpression::IndexToROU {
+            index: Arc::new(Box::new(index)),
+            sub_group_bits: sub_group_bits,
+            var: StackVariable::null(),
+            debug: Cell::new(false),
+        }
+    }
+
+    pub fn debug(self) -> Self {
+        self.set_debug();
+        self
+    }
 }
 
 impl<F: BfField> Expression for FieldScriptExpression<F> {
@@ -210,7 +248,10 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::InputVariable { debug, .. } => {
                 debug.set(true);
             }
-            FieldScriptExpression::Constant { debug, .. } => debug.set(true),
+            FieldScriptExpression::Constant { debug, .. } => {
+                debug.set(true);
+            }
+
             FieldScriptExpression::Add { debug, .. } => {
                 debug.set(true);
             }
@@ -224,6 +265,9 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 debug.set(true);
             }
             FieldScriptExpression::EqualVerify { debug, .. } => {
+                debug.set(true);
+            }
+            FieldScriptExpression::Equal { debug, .. } => {
                 debug.set(true);
             }
             FieldScriptExpression::ExpConstant { debug, .. } => {
@@ -457,7 +501,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                             2, // consumes 2 variable, one size is 4 and the other size is 1
                             1, // the size of output variable is 4
                             0,
-                            F::U32_SIZE as u32,
+                            x.var_size().max(y.var_size()),
                             "ExprMUL_Result",
                         )
                         .unwrap();
@@ -482,6 +526,31 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                         0,
                         "u31ext_equalverify",
                     );
+                }
+                if debug.get() == true {
+                    stack.debug();
+                }
+            }
+            FieldScriptExpression::Equal {
+                x,
+                y,
+                mut var,
+                debug,
+            } => {
+                x.express_to_script(stack, input_variables);
+                y.express_to_script(stack, input_variables);
+                assert_eq!(x.var_size(), y.var_size());
+                if x.var_size() == 1 {
+                    var = stack.op_equal();
+                } else {
+                    stack.custom(
+                        u31ext_equalverify::<BabyBear4>(),
+                        2,
+                        false,
+                        0,
+                        "u31ext_equalverify",
+                    );
+                    var = stack.op_true();
                 }
                 if debug.get() == true {
                     stack.debug();
@@ -581,6 +650,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Neg { var, .. } => Some(vec![var]),
             FieldScriptExpression::Mul { var, .. } => Some(vec![var]),
             FieldScriptExpression::EqualVerify { .. } => None,
+            FieldScriptExpression::Equal { var, .. } => Some(vec![var]),
             FieldScriptExpression::ExpConstant { var, .. } => Some(vec![var]),
             FieldScriptExpression::IndexToROU { var, .. } => Some(vec![var]),
             FieldScriptExpression::NumToField { var, .. } => Some(vec![var]),
@@ -638,6 +708,10 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
             FieldScriptExpression::EqualVerify { x, y, debug } => {
                 fm.debug_struct("ScriptExpression::Equal").finish()
             }
+            FieldScriptExpression::Equal { debug, var, .. } => fm
+                .debug_struct("ScriptExpression::Exp")
+                .field("variable", var)
+                .finish(),
             FieldScriptExpression::ExpConstant { x, y, debug, var } => fm
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
@@ -706,6 +780,12 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                     debug: debug.clone(),
                 }
             }
+            FieldScriptExpression::Equal { x, y, debug, var } => FieldScriptExpression::Equal {
+                x: x.clone(),
+                y: y.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
             FieldScriptExpression::ExpConstant { x, y, debug, var } => {
                 FieldScriptExpression::ExpConstant {
                     x: x.clone(),
