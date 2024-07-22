@@ -48,11 +48,10 @@ pub trait FriGenericConfig<F: Field> {
 pub trait FriGenericConfigWithExpr<F: BfField, Expr: Expression>: FriGenericConfig<F> {
     fn fold_row_with_expr(
         &self,
-        index: usize,
-        log_height: usize,
         folded_eval: Expr,
         sibling_eval: Expr,
         x: Expr, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
+        x_hint: F,
         point_index: usize,
         index_sibling: usize,
         beta: Expr,

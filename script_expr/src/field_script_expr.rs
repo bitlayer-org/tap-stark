@@ -1712,16 +1712,26 @@ mod tests {
         let mut stack = StackTracker::new();
         let a = FieldScriptExpression::from(EF::one());
         let b = -a * EF::two();
-        let script = b.express_to_script(&mut stack, &bmap);
-        stack.bignumber(EF::from_canonical_u32(EF::MOD - 2).as_u32_vec());
-        stack.custom(
-            u31ext_equalverify::<BabyBear4>(),
-            2,
-            false,
-            0,
-            "u31ext_equalverify",
-        );
-        stack.op_true();
+        let equal = b.equal_for_f(EF::from_canonical_u32(EF::MOD - 2));
+        let script = equal.express_to_script(&mut stack, &bmap);
+        let res = stack.run();
+        assert!(res.success);
+    }
+    #[test]
+    fn test_ext_equal() {
+        let bmap = BTreeMap::new();
+        let mut stack = StackTracker::new();
+        let a = FieldScriptExpression::from(EF::two());
+        let exp =a.equal_for_f(EF::two());
+        let script = exp.express_to_script(&mut stack, &bmap);
+        let res = stack.run();
+        assert!(res.success);
+
+        let bmap = BTreeMap::new();
+        let mut stack = StackTracker::new();
+        let a = FieldScriptExpression::from(BabyBear::two());
+        let exp =a.equal_for_f(BabyBear::two());
+        let script = exp.express_to_script(&mut stack, &bmap);
         let res = stack.run();
         assert!(res.success);
     }

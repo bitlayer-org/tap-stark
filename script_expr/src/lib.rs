@@ -6,7 +6,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use bitcoin_script_stack::stack::{StackTracker, StackVariable};
+use bitcoin_script_stack::{debugger::StepResult, stack::{StackTracker, StackVariable}};
 use primitives::field::BfField;
 use scripts::treepp::*;
 
@@ -43,4 +43,22 @@ pub trait Expression {
     fn set_debug(&self);
 
     fn get_var(&self) -> Option<Vec<&StackVariable>>;
+}
+
+pub fn run_expr<F:BfField>(expr:FieldScriptExpression<F>,value:F) -> StepResult{
+    let assert_expr = expr.equal_for_f(value);
+    let mut stack = StackTracker::new();
+    let mut inputs = BTreeMap::new();
+    assert_expr.express_to_script(&mut stack, &mut inputs);
+     stack.run()
+}
+
+pub fn assert_field_expr<F:BfField>(expr:FieldScriptExpression<F>,value:F) {
+    let res = run_expr(expr, value);
+    assert!(res.success);
+}
+
+pub fn debug_assert_field_expr<F:BfField>(expr:FieldScriptExpression<F>,value:F) {
+    let res = run_expr(expr, value);
+    debug_assert!(res.success);
 }

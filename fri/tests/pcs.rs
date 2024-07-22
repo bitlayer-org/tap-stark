@@ -222,4 +222,20 @@ mod babybear_fri_pcs {
     mod blowup_2 {
         make_tests_for_pcs!(super::get_pcs(2));
     }
+
+    #[cfg(test)]
+    mod tests{
+        use p3_util::reverse_bits_len;
+
+        use super::get_pcs;
+        #[test]
+        fn test_for_pcs_fold(){
+            let pcs = get_pcs(1);
+            let log_height = 5;
+            let index = 2;
+            let rev_index = reverse_bits_len(index, log_height);
+        }
+    }
 }
+
+

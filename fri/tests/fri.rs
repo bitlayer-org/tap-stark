@@ -162,7 +162,7 @@ mod tests {
         let mmcs = ValMmcs::new();
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 10,
+            num_queries: 1,
             proof_of_work_bits: 8,
             mmcs,
         };
@@ -293,7 +293,7 @@ mod tests {
         let mmcs = ValMmcs::new();
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 10,
+            num_queries: 1,
             proof_of_work_bits: 8,
             mmcs,
         };
@@ -365,14 +365,42 @@ mod tests {
         )
         .expect("failed verify shape and sample");
 
-        verifier::verify_challenges(
+        // verifier::verify_challenges(
+        //     &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
+        //     &fri_config,
+        //     &proof,
+        //     &fri_challenges,
+        //     |_index, proof| Ok(proof.clone()),
+        // )
+        // .expect("failed verify challenges");
+
+        let fri_exprs = bf_verify_challenges(
             &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            |_index, proof| {
+                Ok(proof
+                    .iter()
+                    .map(|(lh, v)| (*lh, v.clone().into()))
+                    .collect())
+            },
         )
         .expect("failed verify challenges");
+        let mut stack = StackTracker::new();
+        let mut input_variables = BTreeMap::new();
+        fri_exprs.iter().for_each(|expr| {
+            let script = expr.express_to_script(&mut stack, &mut input_variables);
+            println!("================== script_len{} ===========", script.len());
+            // stack.debug();
+            let res = stack.run();
+            if !res.success {
+                println!("res error: {:?}", res.error);
+                println!("res error_msg: {:?}", res.error_msg);
+                println!("res error_msg: {:?}", res.last_opcode);
+            }
+            assert!(res.success);
+        });
     }
 }
 

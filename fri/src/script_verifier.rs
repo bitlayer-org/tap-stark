@@ -13,7 +13,7 @@ use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
-use script_expr::{Expression, FieldScriptExpression, NumScriptExpression};
+use script_expr::{assert_field_expr, run_expr, Expression, FieldScriptExpression, NumScriptExpression};
 use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
 use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
@@ -82,7 +82,8 @@ where
 
     let rev_index = reverse_bits_len(index, log_max_height);
     let mut x = NumScriptExpression::from(rev_index as u32).index_to_rou(log_max_height as u32);
-
+    let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
+    assert_field_expr(x.clone(), x_hint);
     // let generator = F::two_adic_generator(log_max_height);
     // let mut x = generator.exp_u64(rev_index as u64);
 
@@ -103,9 +104,9 @@ where
         let poins_leaf: PointsLeaf<F> = step.points_leaf.clone();
         let challenge_point: Point<F> = poins_leaf.get_point_by_index(point_index).unwrap().clone();
 
-        // if log_folded_height < log_max_height - 1 {
-        //     assert_eq!(folded_eval, challenge_point.y);
-        // }
+        if log_folded_height < log_max_height - 1 {
+            assert_field_expr(folded_eval.clone(),challenge_point.y);
+        }
         let sibling_point: Point<F> = poins_leaf
             .get_point_by_index(index_sibling)
             .unwrap()
@@ -115,8 +116,8 @@ where
         // let neg_x = x * F::two_adic_generator(1);
         // assert_eq!(sibling_point.x, neg_x);
 
-        let mut evals = vec![folded_eval.clone(); 2];
-        evals[index_sibling % 2] = sibling_point.y.into(); // sibling_point.y is field_script_expression::input_variable
+        // let mut evals = vec![folded_eval.clone(); 2];
+        // evals[index_sibling % 2] = sibling_point.y.into(); // sibling_point.y is field_script_expression::input_variable
 
         // let mut xs = vec![x; 2];
         // xs[index_sibling % 2] = neg_x;
@@ -143,23 +144,27 @@ where
             .verify_taptree(step, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
-        index = index_pair;
-        println!("log_folded_height:{}", log_folded_height);
+        println!("=================log_folded_height:{} ====index:{}======rev_index:{}=====", log_folded_height,index,rev_index);
+        println!("=================index_sibling:{} ====point_index:{}", index_sibling,point_index);
         (folded_eval, _) = g.fold_row_with_expr(
-            index,
-            log_folded_height,
             folded_eval.clone(),
             sibling_point.y.into(),
             x.clone(),
+            x_hint,
             point_index,
             index_sibling,
             beta.into(),
         );
 
+        index = index_pair;
+
+        // folded_eval_value = g.fold_row(index, log_folded_height, beta, evals.into_iter());
+
         // folded_eval_value = g.fold_row(index, log_folded_height, beta, evals.into_iter());
         // folded_eval.clone().equal_for_f(fold)
         if log_folded_height != 1 {
             x = x.clone() * x.clone();
+            x_hint = x_hint * x_hint;
         }
     }
 

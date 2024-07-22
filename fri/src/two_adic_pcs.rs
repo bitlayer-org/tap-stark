@@ -26,7 +26,7 @@ use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
-use script_expr::{Expression, FieldScriptExpression, NumScriptExpression};
+use script_expr::{assert_field_expr, Expression, FieldScriptExpression, NumScriptExpression};
 use script_manager::script_info::ScriptInfo;
 use tracing::{debug_span, info_span, instrument};
 
@@ -154,11 +154,10 @@ impl<F: BfField, InputProof, InputError: Debug>
 {
     fn fold_row_with_expr(
         &self,
-        index: usize,
-        log_height: usize,
         folded_eval: FieldScriptExpression<F>,
         sibling_eval: FieldScriptExpression<F>,
         x: FieldScriptExpression<F>, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
+        x_hint: F,
         _point_index: usize,
         index_sibling: usize,
         beta: FieldScriptExpression<F>,
@@ -168,29 +167,26 @@ impl<F: BfField, InputProof, InputError: Debug>
         // If performance critical, make this API stateful to avoid this
         // This is a bit more math than is necessary, but leaving it here
         // in case we want higher arity in the future
-        let subgroup_start = F::two_adic_generator(log_height + log_arity)
-            .exp_u64(reverse_bits_len(index, log_height) as u64);
-        let mut xs_hint = F::two_adic_generator(log_arity)
-            .shifted_powers(subgroup_start)
-            .take(arity)
-            .collect_vec();
-        reverse_slice_index_bits(&mut xs_hint);
-        let xs1_minus_xs0_inverse_hint = (xs_hint[1] - xs_hint[0]).inverse();
+
+        let rev_x_hint = x_hint * F::two_adic_generator(log_arity);
+        let mut xs_hint = vec![x_hint; 2];
+        xs_hint[index_sibling % 2] = rev_x_hint;
+        let xs1_minus_xs0_inverse_hint = F::one()/(xs_hint[1] - xs_hint[0]);
+        let expect_res = xs1_minus_xs0_inverse_hint * (xs_hint[1] - xs_hint[0]);
+        assert_eq!(expect_res,F::one());
+        println!("xs1_minus_xs0_inverse {}", xs1_minus_xs0_inverse_hint);
+        println!("x minius {}", xs_hint[1] - xs_hint[0]);
+
+        let mut xs = vec![x.clone(),x.clone()];
+        let rev_x = x.clone() * F::two_adic_generator(log_arity);
+        xs[index_sibling % 2] = rev_x.clone();
+        assert_field_expr(xs[0].clone(), xs_hint[0]);
+        assert_field_expr(xs[1].clone(), xs_hint[1]);
         println!("xs_hint[0] {}", xs_hint[0]);
         println!("xs_hint[1] {}", xs_hint[1]);
-        println!("xs1_minus_xs0_inverse {}", xs1_minus_xs0_inverse_hint);
-        assert!(!(xs_hint[1] - xs_hint[0]).is_zero());
 
-        let rev_x = x.clone() * F::two_adic_generator(log_arity);
-        let mut evals = vec![folded_eval; 2];
+        let mut evals = vec![folded_eval.clone(),folded_eval.clone()];
         evals[index_sibling % 2] = sibling_eval;
-        let mut xs = vec![x.clone(); 2];
-        xs[index_sibling % 2] = rev_x;
-        // reverse_slice_index_bits(&mut xs);
-        // debug_span!("fold_row_with_expr::verify xs_hint[1] xs_hint[0]").in_scope(||{
-        //     let xs_debug = xs.clone();
-        //     let xs_hint_debug = xs_hint.clone();
-        // });
         assert_eq!(log_arity, 1, "can only interpolate two points for now");
         // interpolate and evaluate at beta
         let next_folded = evals[0].clone()
@@ -198,18 +194,13 @@ impl<F: BfField, InputProof, InputError: Debug>
                 * (evals[1].clone() - evals[0].clone())
                 * xs1_minus_xs0_inverse_hint;
 
-        let verify_hint = (xs[1].clone().debug() - xs[0].clone().debug())
+        let xs_minus = xs[1].clone() - xs[0].clone();
+        assert_field_expr(xs_minus.clone().debug(),xs_hint[1] - xs_hint[0] );
+        let verify_hint =xs_minus.debug()
             * FieldScriptExpression::<F>::from(xs1_minus_xs0_inverse_hint);
 
-        let mut stack = StackTracker::new();
-        let mut inputs = BTreeMap::new();
-        verify_hint.equal_for_f(F::one());
         verify_hint.set_debug();
-        verify_hint.express_to_script(&mut stack, &mut inputs);
-        let res = stack.run();
-
-        assert!(res.success);
-
+        assert_field_expr(verify_hint.clone(), F::one());
         (next_folded, verify_hint)
     }
 }
@@ -718,4 +709,15 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
             )
         })
         .collect()
+}
+
+
+#[cfg(test)]
+mod tests{
+
+    #[test]
+    fn test_for_pcs_expr(){
+
+        
+    }
 }
