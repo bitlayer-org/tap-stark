@@ -3,6 +3,7 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::{format, vec};
+use scripts::blake3::blake3_var_length;
 use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
@@ -70,6 +71,12 @@ pub enum FieldScriptExpression<F: BfField> {
         var: StackVariable,
         debug: Cell<bool>,
     },
+    Blake3Perm {
+        x: Arc<Box<dyn Expression>>,
+        num_bytes: usize,
+        var: StackVariable,
+        debug: Cell<bool>,
+    }
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
@@ -309,6 +316,9 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Lookup { debug, .. } => {
                 debug.set(true);
             }
+            FieldScriptExpression::Blake3Perm { debug, .. } => {
+                debug.set(true);
+            }
         };
     }
 
@@ -418,6 +428,24 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
 
                 vec![var]
             }
+            FieldScriptExpression::Blake3Perm {
+                x,
+                num_bytes,
+                debug,
+                mut var,
+            } => {
+                x.express_to_script(stack, input_variables);
+                let vars = stack.custom1(
+                    blake3_var_length(*num_bytes),
+                    *num_bytes as u32,
+                    //TODO:
+                    32,
+                    0,
+                    F::U32_SIZE as u32,
+                    "ExprBlake3Perm_Result",
+                ).unwrap();
+                vars
+            }
         }
     }
 
@@ -474,6 +502,15 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 var,
             } => fm
                 .debug_struct("ScriptExpression::Lookup")
+                .field("variable", var)
+                .finish(),
+            FieldScriptExpression::Blake3Perm {
+                x,
+                num_bytes,
+                debug,
+                var,
+            } => fm
+                .debug_struct("ScriptExpression::Blake3Perm")
                 .field("variable", var)
                 .finish(),
         }
@@ -535,6 +572,17 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                 debug: debug.clone(),
                 var: var.clone(),
             },
+            FieldScriptExpression::Blake3Perm { 
+                x, 
+                num_bytes, 
+                var, 
+                debug 
+            } => FieldScriptExpression::Blake3Perm {
+                x: x.clone(),
+                num_bytes: num_bytes.clone(),
+                var: var.clone(),
+                debug: debug.clone(), 
+            }
         }
     }
 }
@@ -748,6 +796,14 @@ impl<F: BfField> FieldScriptExpression<F> {
             var: StackVariable::null(),
         }
     }
+    pub fn blake3(self, num_bytes: usize) -> Self {
+        Self::Blake3Perm { 
+            x: Arc::new(Box::new(self)),
+            num_bytes, 
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -756,6 +812,7 @@ mod tests {
     use alloc::collections::BTreeMap;
     use alloc::sync::Arc;
     use alloc::vec::Vec;
+    use scripts::u32_std::u32_equalverify;
     use core::cell::{self, Cell};
 
     use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
@@ -1354,6 +1411,53 @@ mod tests {
         stack.op_true();
         let res = stack.run();
         assert!(res.success);
+    }
+
+    #[test]
+    fn test_blake3_perm() {
+        let mut vec = vec![];
+        for _ in 0..16 {
+            vec.push(BabyBear::one());
+            vec.push(BabyBear::zero());
+            vec.push(BabyBear::zero());
+            vec.push(BabyBear::zero());
+        }
+        let mut stack = StackTracker::new();
+        let bmap = BTreeMap::new();
+
+        let preimage = FieldScriptExpression::Table {
+            table: vec.clone(),
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        };
+
+        let m = preimage.blake3(64);
+
+        let script = m.express_to_script(&mut stack, &bmap);
+
+        let hex = "86ca95aefdee3d969af9bcc78b48a5c1115be5d66cafc2fc106bbd982d820e70";
+        let hex: String = hex
+            .chars()
+            .filter(|c| c.is_ascii_digit() || c.is_ascii_alphabetic())
+            .collect();
+
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect::<Vec<u8>>();
+
+        for i in (0 .. bytes.len()).rev().step_by(4) {
+            stack.number(bytes[i] as u32);
+            stack.number(bytes[i-1] as u32);
+            stack.number(bytes[i-2] as u32);
+            stack.number(bytes[i-3] as u32);
+            stack.custom(u32_equalverify(), 8, false, 0, "u32_equalverify");
+        }
+
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+
     }
 }
 

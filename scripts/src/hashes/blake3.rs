@@ -553,7 +553,6 @@ mod tests {
     #[test]
     fn test_blake3_var_length() {
         let hex_out = "11b4167bd0184b9fc8b3474a4c29d08e801cbc1596b63a5ab380ce0fc83a15cd";
-
         let script = script! {
             for _ in 0..15 {
                 {u32_push(1)}
