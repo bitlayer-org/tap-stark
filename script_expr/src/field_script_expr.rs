@@ -812,13 +812,15 @@ mod tests {
     use alloc::collections::BTreeMap;
     use alloc::sync::Arc;
     use alloc::vec::Vec;
+    use bitcoin::constants;
+    use bitcoin::hex::FromHex;
     use scripts::u32_std::u32_equalverify;
     use core::cell::{self, Cell};
 
     use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
     use common::{AbstractField, BabyBear, BinomialExtensionField};
     use p3_air::AirBuilder;
-    use p3_field::TwoAdicField;
+    use p3_field::{TwoAdicField, PrimeField};
     use p3_matrix::Matrix;
     use primitives::field::BfField;
     use scripts::treepp::*;
@@ -826,6 +828,7 @@ mod tests {
 
     use super::{Expression, FieldScriptExpression, Variable, *};
     type EF = BinomialExtensionField<BabyBear, 4>;
+    type F = BabyBear;
 
     #[test]
     fn test_field_expr_expconst() {
@@ -1457,8 +1460,791 @@ mod tests {
         stack.op_true();
         let res = stack.run();
         assert!(res.success);
-
     }
+
+    #[test]
+    fn test_poseidon2_perm() {
+        let t = 16;
+        let rounds_f_beginning = 1;
+        let rounds_p = 1;
+        let rounds = 3;
+
+        let mut current_state = vec![];
+        for i in 0..t {
+            current_state.push(FieldScriptExpression::from(BabyBear::from_canonical_u32(i as u32)));
+        }
+
+        matmul_external(&mut current_state);
+
+        for r in 0..rounds_f_beginning {
+            current_state = add_rc(&current_state, &RC16[r]);
+            current_state = sbox(&current_state);
+            matmul_external(&mut current_state);
+        }
+
+        // let p_end = rounds_f_beginning + rounds_p;
+        // for r in rounds_f_beginning..p_end {
+        //     current_state[0].add_assign(RC16[r][0]);
+        //     current_state[0] = current_state[0].exp_constant(4) * current_state[0].exp_constant(2) * current_state[0].clone();
+        //     matmul_internal(&mut current_state);
+        // }
+        
+        // for r in p_end..rounds {
+        //     current_state = add_rc(&current_state, &RC16[r]);
+        //     current_state = sbox(&current_state);
+        //     matmul_external(&mut current_state);
+        // }
+        let mut stack = StackTracker::new();
+        let bmap = BTreeMap::new();
+
+        println!("begin express_to_script");
+        current_state[0].express_to_script(&mut stack, &bmap);
+        println!("finish express_to_script");
+        stack.debug();
+        
+    }
+
+    fn sbox(input: &[FieldScriptExpression<F>]) -> Vec<FieldScriptExpression<F>> {
+        input.iter().map(|el| el.exp_constant(4) * el.exp_constant(2) * el.clone()).collect()
+    }
+
+    
+    fn matmul_internal(input: &mut[FieldScriptExpression<F>]) {
+        let t = 16;
+        let mut sum = input[0].clone();
+        input
+            .iter()
+            .skip(1)
+            .take(t-1)
+            .for_each(|el| sum.add_assign(el.clone()));
+        // Add sum + diag entry * element to each element
+        for i in 0..input.len() {
+            input[i].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[i]));
+            input[i].add_assign(sum.clone());
+        }
+    }
+
+    fn matmul_external(input: &mut[FieldScriptExpression<F>]) {
+        let t = 16;
+        matmul_m4(input);
+
+        // Applying second cheap matrix for t > 4
+        let t4 = t / 4;
+        let mut stored = vec![FieldScriptExpression::from(F::zero()); 4];
+        for l in 0..4 {
+            stored[l] = input[l].clone();
+            for j in 1..t4 {
+                stored[l].add_assign(input[4 * j + l].clone());
+            }
+        }
+        for i in 0..input.len() {
+            input[i].add_assign(stored[i % 4].clone());
+        }
+    }
+
+    fn matmul_m4(input: &mut[FieldScriptExpression<F>]) {
+        let t = 16;
+        let t4 = t / 4;
+        for i in 0..t4 {
+            let start_index = i * 4;
+            let mut t_0 = input[start_index].clone();
+            t_0.add_assign(input[start_index + 1].clone());
+            let mut t_1 = input[start_index + 2].clone();
+            t_1.add_assign(input[start_index + 3].clone());
+            let mut t_2 = input[start_index + 1].clone();
+            t_2 = t_2.clone() + t_2.clone();
+            t_2.add_assign(t_1.clone());
+            let mut t_3 = input[start_index + 3].clone();
+            t_3 = t_3.clone() + t_3.clone();
+            t_3.add_assign(t_0.clone());
+            let mut t_4 = t_1.clone();
+            t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
+            t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
+            t_4.add_assign(t_3.clone());
+            let mut t_5 = t_0.clone();
+            t_5 = t_5.clone() + t_5.clone();
+            t_5 = t_5.clone() + t_5.clone();
+            t_5.add_assign(t_2.clone());
+            let mut t_6 = t_3.clone();
+            t_6.add_assign(t_5.clone());
+            let mut t_7 = t_2.clone();
+            t_7.add_assign(t_4.clone());
+            input[start_index] = t_6.clone();
+            input[start_index + 1] = t_5.clone();
+            input[start_index + 2] = t_7.clone();
+            input[start_index + 3] = t_4.clone();
+        }
+    }
+
+    fn add_rc(input: &[FieldScriptExpression<F>], rc: &[F]) -> Vec<FieldScriptExpression<F>> {
+        input
+            .iter()
+            .zip(rc.iter())
+            .map(|(a, b)| {
+                let mut r = a.clone();
+                r.add_assign(FieldScriptExpression::from(*b));
+                r
+            })
+            .collect()
+    }
+
+    use lazy_static::lazy_static;
+
+lazy_static! {
+    pub static ref MAT_DIAG16_M_1: Vec<BabyBear> = vec![
+    BabyBear::from_canonical_u32(0x0a632d94),
+    BabyBear::from_canonical_u32(0x6db657b7),
+    BabyBear::from_canonical_u32(0x56fbdc9e),
+    BabyBear::from_canonical_u32(0x052b3d8a),
+    BabyBear::from_canonical_u32(0x33745201),
+    BabyBear::from_canonical_u32(0x5c03108c),
+    BabyBear::from_canonical_u32(0x0beba37b),
+    BabyBear::from_canonical_u32(0x258c2e8b),
+    BabyBear::from_canonical_u32(0x12029f39),
+    BabyBear::from_canonical_u32(0x694909ce),
+    BabyBear::from_canonical_u32(0x6d231724),
+    BabyBear::from_canonical_u32(0x21c3b222),
+    BabyBear::from_canonical_u32(0x3c0904a5),
+    BabyBear::from_canonical_u32(0x01d6acda),
+    BabyBear::from_canonical_u32(0x27705c83),
+    BabyBear::from_canonical_u32(0x5231c802),
+    ];
+
+    pub static ref MAT_INTERNAL16: Vec<Vec<BabyBear>> = vec![
+    vec![BabyBear::from_canonical_u32(0x0a632d95),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x6db657b8),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x56fbdc9f),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x052b3d8b),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x33745202),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x5c03108d),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x0beba37c),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x258c2e8c),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x12029f3a),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x694909cf),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x6d231725),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x21c3b223),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x3c0904a6),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x01d6acdb),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x27705c84),
+    BabyBear::from_canonical_u32(0x00000001),
+    ],
+    vec![BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x00000001),
+    BabyBear::from_canonical_u32(0x5231c803),
+    ],
+    ];
+
+    pub static ref RC16: Vec<Vec<BabyBear>> = vec![
+    vec![BabyBear::from_canonical_u32(0x69cbb6af),
+    BabyBear::from_canonical_u32(0x46ad93f9),
+    BabyBear::from_canonical_u32(0x60a00f4e),
+    BabyBear::from_canonical_u32(0x6b1297cd),
+    BabyBear::from_canonical_u32(0x23189afe),
+    BabyBear::from_canonical_u32(0x732e7bef),
+    BabyBear::from_canonical_u32(0x72c246de),
+    BabyBear::from_canonical_u32(0x2c941900),
+    BabyBear::from_canonical_u32(0x0557eede),
+    BabyBear::from_canonical_u32(0x1580496f),
+    BabyBear::from_canonical_u32(0x3a3ea77b),
+    BabyBear::from_canonical_u32(0x54f3f271),
+    BabyBear::from_canonical_u32(0x0f49b029),
+    BabyBear::from_canonical_u32(0x47872fe1),
+    BabyBear::from_canonical_u32(0x221e2e36),
+    BabyBear::from_canonical_u32(0x1ab7202e),
+    ],
+    vec![BabyBear::from_canonical_u32(0x487779a6),
+    BabyBear::from_canonical_u32(0x3851c9d8),
+    BabyBear::from_canonical_u32(0x38dc17c0),
+    BabyBear::from_canonical_u32(0x209f8849),
+    BabyBear::from_canonical_u32(0x268dcee8),
+    BabyBear::from_canonical_u32(0x350c48da),
+    BabyBear::from_canonical_u32(0x5b9ad32e),
+    BabyBear::from_canonical_u32(0x0523272b),
+    BabyBear::from_canonical_u32(0x3f89055b),
+    BabyBear::from_canonical_u32(0x01e894b2),
+    BabyBear::from_canonical_u32(0x13ddedde),
+    BabyBear::from_canonical_u32(0x1b2ef334),
+    BabyBear::from_canonical_u32(0x7507d8b4),
+    BabyBear::from_canonical_u32(0x6ceeb94e),
+    BabyBear::from_canonical_u32(0x52eb6ba2),
+    BabyBear::from_canonical_u32(0x50642905),
+    ],
+    vec![BabyBear::from_canonical_u32(0x05453f3f),
+    BabyBear::from_canonical_u32(0x06349efc),
+    BabyBear::from_canonical_u32(0x6922787c),
+    BabyBear::from_canonical_u32(0x04bfff9c),
+    BabyBear::from_canonical_u32(0x768c714a),
+    BabyBear::from_canonical_u32(0x3e9ff21a),
+    BabyBear::from_canonical_u32(0x15737c9c),
+    BabyBear::from_canonical_u32(0x2229c807),
+    BabyBear::from_canonical_u32(0x0d47f88c),
+    BabyBear::from_canonical_u32(0x097e0ecc),
+    BabyBear::from_canonical_u32(0x27eadba0),
+    BabyBear::from_canonical_u32(0x2d7d29e4),
+    BabyBear::from_canonical_u32(0x3502aaa0),
+    BabyBear::from_canonical_u32(0x0f475fd7),
+    BabyBear::from_canonical_u32(0x29fbda49),
+    BabyBear::from_canonical_u32(0x018afffd),
+    ],
+    vec![BabyBear::from_canonical_u32(0x0315b618),
+    BabyBear::from_canonical_u32(0x6d4497d1),
+    BabyBear::from_canonical_u32(0x1b171d9e),
+    BabyBear::from_canonical_u32(0x52861abd),
+    BabyBear::from_canonical_u32(0x2e5d0501),
+    BabyBear::from_canonical_u32(0x3ec8646c),
+    BabyBear::from_canonical_u32(0x6e5f250a),
+    BabyBear::from_canonical_u32(0x148ae8e6),
+    BabyBear::from_canonical_u32(0x17f5fa4a),
+    BabyBear::from_canonical_u32(0x3e66d284),
+    BabyBear::from_canonical_u32(0x0051aa3b),
+    BabyBear::from_canonical_u32(0x483f7913),
+    BabyBear::from_canonical_u32(0x2cfe5f15),
+    BabyBear::from_canonical_u32(0x023427ca),
+    BabyBear::from_canonical_u32(0x2cc78315),
+    BabyBear::from_canonical_u32(0x1e36ea47),
+    ],
+    vec![BabyBear::from_canonical_u32(0x5a8053c0),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x693be639),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x3858867d),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x19334f6b),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x128f0fd8),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x4e2b1ccb),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x61210ce0),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x3c318939),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x0b5b2f22),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x2edb11d5),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x213effdf),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x0cac4606),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x241af16d),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    BabyBear::from_canonical_u32(0x00000000),
+    ],
+    vec![BabyBear::from_canonical_u32(0x7290a80d),
+    BabyBear::from_canonical_u32(0x6f7e5329),
+    BabyBear::from_canonical_u32(0x598ec8a8),
+    BabyBear::from_canonical_u32(0x76a859a0),
+    BabyBear::from_canonical_u32(0x6559e868),
+    BabyBear::from_canonical_u32(0x657b83af),
+    BabyBear::from_canonical_u32(0x13271d3f),
+    BabyBear::from_canonical_u32(0x1f876063),
+    BabyBear::from_canonical_u32(0x0aeeae37),
+    BabyBear::from_canonical_u32(0x706e9ca6),
+    BabyBear::from_canonical_u32(0x46400cee),
+    BabyBear::from_canonical_u32(0x72a05c26),
+    BabyBear::from_canonical_u32(0x2c589c9e),
+    BabyBear::from_canonical_u32(0x20bd37a7),
+    BabyBear::from_canonical_u32(0x6a2d3d10),
+    BabyBear::from_canonical_u32(0x20523767),
+    ],
+    vec![BabyBear::from_canonical_u32(0x5b8fe9c4),
+    BabyBear::from_canonical_u32(0x2aa501d6),
+    BabyBear::from_canonical_u32(0x1e01ac3e),
+    BabyBear::from_canonical_u32(0x1448bc54),
+    BabyBear::from_canonical_u32(0x5ce5ad1c),
+    BabyBear::from_canonical_u32(0x4918a14d),
+    BabyBear::from_canonical_u32(0x2c46a83f),
+    BabyBear::from_canonical_u32(0x4fcf6876),
+    BabyBear::from_canonical_u32(0x61d8d5c8),
+    BabyBear::from_canonical_u32(0x6ddf4ff9),
+    BabyBear::from_canonical_u32(0x11fda4d3),
+    BabyBear::from_canonical_u32(0x02933a8f),
+    BabyBear::from_canonical_u32(0x170eaf81),
+    BabyBear::from_canonical_u32(0x5a9c314f),
+    BabyBear::from_canonical_u32(0x49a12590),
+    BabyBear::from_canonical_u32(0x35ec52a1),
+    ],
+    vec![BabyBear::from_canonical_u32(0x58eb1611),
+    BabyBear::from_canonical_u32(0x5e481e65),
+    BabyBear::from_canonical_u32(0x367125c9),
+    BabyBear::from_canonical_u32(0x0eba33ba),
+    BabyBear::from_canonical_u32(0x1fc28ded),
+    BabyBear::from_canonical_u32(0x066399ad),
+    BabyBear::from_canonical_u32(0x0cbec0ea),
+    BabyBear::from_canonical_u32(0x75fd1af0),
+    BabyBear::from_canonical_u32(0x50f5bf4e),
+    BabyBear::from_canonical_u32(0x643d5f41),
+    BabyBear::from_canonical_u32(0x6f4fe718),
+    BabyBear::from_canonical_u32(0x5b3cbbde),
+    BabyBear::from_canonical_u32(0x1e3afb3e),
+    BabyBear::from_canonical_u32(0x296fb027),
+    BabyBear::from_canonical_u32(0x45e1547b),
+    BabyBear::from_canonical_u32(0x4a8db2ab),
+    ],
+    vec![BabyBear::from_canonical_u32(0x59986d19),
+    BabyBear::from_canonical_u32(0x30bcdfa3),
+    BabyBear::from_canonical_u32(0x1db63932),
+    BabyBear::from_canonical_u32(0x1d7c2824),
+    BabyBear::from_canonical_u32(0x53b33681),
+    BabyBear::from_canonical_u32(0x0673b747),
+    BabyBear::from_canonical_u32(0x038a98a3),
+    BabyBear::from_canonical_u32(0x2c5bce60),
+    BabyBear::from_canonical_u32(0x351979cd),
+    BabyBear::from_canonical_u32(0x5008fb73),
+    BabyBear::from_canonical_u32(0x547bca78),
+    BabyBear::from_canonical_u32(0x711af481),
+    BabyBear::from_canonical_u32(0x3f93bf64),
+    BabyBear::from_canonical_u32(0x644d987b),
+    BabyBear::from_canonical_u32(0x3c8bcd87),
+    BabyBear::from_canonical_u32(0x608758b8),
+    ],
+    ];
+}
 }
 
 #[cfg(test)]
