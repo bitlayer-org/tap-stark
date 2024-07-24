@@ -164,6 +164,10 @@ impl NumScriptExpression {
 }
 
 impl Expression for NumScriptExpression {
+    fn as_share_ptr(self) -> Arc<Box<dyn Expression>>{
+        Arc::new(Box::new(self))
+    }
+    
     fn set_debug(&self) {
         match self {
             NumScriptExpression::InputVariable { debug, .. } => {
@@ -210,7 +214,7 @@ impl Expression for NumScriptExpression {
         &self,
         stack: &mut StackTracker,
         input_variables: &BTreeMap<Variable, StackVariable>,
-    ) -> Script {
+    )  {
         match self {
             NumScriptExpression::InputVariable { sv, debug, mut var } => {
                 let intput_var = input_variables.get(sv).unwrap();
@@ -378,7 +382,6 @@ impl Expression for NumScriptExpression {
                 // }
             }
         };
-        stack.get_script()
     }
 
     fn var_size(&self) -> u32 {
@@ -389,24 +392,23 @@ impl Expression for NumScriptExpression {
         }
     }
 
-    fn get_var(&self) -> Option<Vec<&StackVariable>> {
+    fn get_var(&self) -> Option<Vec<StackVariable>> {
         match self {
-            NumScriptExpression::InputVariable { var, .. } => Some(vec![var]),
-            NumScriptExpression::Constant { var, .. } => Some(vec![var]),
-            NumScriptExpression::Add { var, .. } => Some(vec![var]),
-            NumScriptExpression::Sub { var, .. } => Some(vec![var]),
-            NumScriptExpression::Neg { var, .. } => Some(vec![var]),
-            NumScriptExpression::Mul { var, .. } => Some(vec![var]),
+            NumScriptExpression::InputVariable { var, .. } => Some(vec![*var]),
+            NumScriptExpression::Constant { var, .. } => Some(vec![*var]),
+            NumScriptExpression::Add { var, .. } => Some(vec![*var]),
+            NumScriptExpression::Sub { var, .. } => Some(vec![*var]),
+            NumScriptExpression::Neg { var, .. } => Some(vec![*var]),
+            NumScriptExpression::Mul { var, .. } => Some(vec![*var]),
             NumScriptExpression::EqualVerify { .. } => None,
-            NumScriptExpression::Equal { var, .. } => Some(vec![var]),
-            NumScriptExpression::Double { var, .. } => Some(vec![var]),
-            NumScriptExpression::Square { var, .. } => Some(vec![var]),
-            NumScriptExpression::ToBits { var, .. } => Some(vec![var]),
+            NumScriptExpression::Equal { var, .. } => Some(vec![*var]),
+            NumScriptExpression::Double { var, .. } => Some(vec![*var]),
+            NumScriptExpression::Square { var, .. } => Some(vec![*var]),
+            NumScriptExpression::ToBits { var, .. } => Some(vec![*var]),
             NumScriptExpression::ToBitsVec { var, .. } => {
-                let vec = var.iter().map(|item| item).collect();
-                Some(vec)
+                Some(var.clone())
             }
-            NumScriptExpression::BitReverse { var, .. } => Some(vec![var]),
+            NumScriptExpression::BitReverse { var, .. } => Some(vec![*var]),
         }
     }
 }

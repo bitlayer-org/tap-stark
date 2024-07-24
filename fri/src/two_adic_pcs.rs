@@ -179,24 +179,27 @@ impl<F: BfField, InputProof, InputError: Debug>
 
         let mut xs = vec![x.clone(),x.clone()];
         let rev_x = x.clone() * F::two_adic_generator(log_arity);
-        xs[index_sibling % 2] = rev_x.clone();
-        assert_field_expr(xs[0].clone(), xs_hint[0]);
-        assert_field_expr(xs[1].clone(), xs_hint[1]);
+        // let rev_x = FieldScriptExpression::from(x_hint) * F::two_adic_generator(log_arity);
+        xs[index_sibling % 2] = rev_x;
+        assert_field_expr(xs[0].clone().debug(), xs_hint[0]);
+        assert_field_expr(xs[1].clone().debug(), xs_hint[1]);
         println!("xs_hint[0] {}", xs_hint[0]);
         println!("xs_hint[1] {}", xs_hint[1]);
 
         let mut evals = vec![folded_eval.clone(),folded_eval.clone()];
         evals[index_sibling % 2] = sibling_eval;
         assert_eq!(log_arity, 1, "can only interpolate two points for now");
-        // interpolate and evaluate at beta
+        // interpolate and evaluate at betawo
         let next_folded = evals[0].clone()
             + (beta - xs[0].clone())
                 * (evals[1].clone() - evals[0].clone())
                 * xs1_minus_xs0_inverse_hint;
 
-        let xs_minus = xs[1].clone() - xs[0].clone();
+        // let xs_minus = FieldScriptExpression::from(xs_hint[1]) - xs[0].clone().debug();
+        // let xs_minus = xs[1].clone().debug() - FieldScriptExpression::from(xs_hint[0]).debug();
+        let xs_minus =  -xs[0].clone().debug() + xs[1].clone().debug();
         assert_field_expr(xs_minus.clone().debug(),xs_hint[1] - xs_hint[0] );
-        let verify_hint =xs_minus.debug()
+        let verify_hint =xs_minus
             * FieldScriptExpression::<F>::from(xs1_minus_xs0_inverse_hint);
 
         verify_hint.set_debug();

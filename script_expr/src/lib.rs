@@ -24,6 +24,12 @@ pub use fraction_expr::*;
 mod lagrange;
 pub use lagrange::*;
 
+#[derive(Debug,Clone,Copy)]
+pub enum ScriptExprError {
+    DoubleCopy,
+    InvalidExpression,
+    InvalidScript,
+}
 pub struct Executor<F: BfField> {
     to_exec_expr: FieldScriptExpression<F>,
     bmap: BTreeMap<Variable, StackVariable>,
@@ -31,18 +37,24 @@ pub struct Executor<F: BfField> {
 }
 
 pub trait Expression {
+
+    // fn is_to_copy(&self) -> bool;
+    fn set_copy_var(&self, var:StackVariable){
+        unimplemented!()
+    }
+    fn as_share_ptr(self) -> Arc<Box<dyn Expression>>;
     fn express_to_script(
         &self,
         stack: &mut StackTracker,
         input_variables: &BTreeMap<Variable, StackVariable>,
-    ) -> Script;
+    );
 
     fn var_size(&self) -> u32;
 
     #[allow(unused)]
     fn set_debug(&self);
 
-    fn get_var(&self) -> Option<Vec<&StackVariable>>;
+    fn get_var(&self) -> Option<Vec<StackVariable>>;
 }
 
 pub fn run_expr<F:BfField>(expr:FieldScriptExpression<F>,value:F) -> StepResult{
