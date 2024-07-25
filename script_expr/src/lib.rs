@@ -26,6 +26,11 @@ pub use fraction_expr::*;
 mod lagrange;
 pub use lagrange::*;
 
+pub mod opcode;
+pub use opcode::*;
+pub mod script_gen;
+pub use script_gen::*;
+
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptExprError {
     DoubleCopy,
@@ -47,7 +52,7 @@ pub trait Expression {
     fn set_copy_var(&self, var: StackVariable) {
         unimplemented!()
     }
-    fn as_share_ptr(self) -> Arc<Box<dyn Expression>>;
+    fn as_arc_ptr(self) -> Arc<RwLock<Box<dyn Expression>>>;
     fn express_to_script(
         &self,
         stack: &mut StackTracker,
@@ -59,7 +64,9 @@ pub trait Expression {
     #[allow(unused)]
     fn set_debug(&self);
 
-    fn get_var(&self) -> Option<Vec<StackVariable>>;
+    fn get_var(&self) -> Option<Vec<StackVariable>> {
+        unimplemented!()
+    }
 }
 
 pub fn run_expr<F: BfField>(expr: FieldScriptExpression<F>, value: F) -> StepResult {

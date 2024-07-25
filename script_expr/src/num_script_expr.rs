@@ -7,6 +7,7 @@ use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::sync::RwLock;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use primitives::field::BfField;
@@ -164,8 +165,8 @@ impl NumScriptExpression {
 }
 
 impl Expression for NumScriptExpression {
-    fn as_share_ptr(self) -> Arc<Box<dyn Expression>> {
-        Arc::new(Box::new(self))
+    fn as_arc_ptr(self) -> Arc<RwLock<Box<dyn Expression>>> {
+        Arc::new(RwLock::new(Box::new(self)))
     }
 
     fn set_debug(&self) {
