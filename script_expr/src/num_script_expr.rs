@@ -164,10 +164,10 @@ impl NumScriptExpression {
 }
 
 impl Expression for NumScriptExpression {
-    fn as_share_ptr(self) -> Arc<Box<dyn Expression>>{
+    fn as_share_ptr(self) -> Arc<Box<dyn Expression>> {
         Arc::new(Box::new(self))
     }
-    
+
     fn set_debug(&self) {
         match self {
             NumScriptExpression::InputVariable { debug, .. } => {
@@ -214,7 +214,7 @@ impl Expression for NumScriptExpression {
         &self,
         stack: &mut StackTracker,
         input_variables: &BTreeMap<Variable, StackVariable>,
-    )  {
+    ) {
         match self {
             NumScriptExpression::InputVariable { sv, debug, mut var } => {
                 let intput_var = input_variables.get(sv).unwrap();
@@ -405,9 +405,7 @@ impl Expression for NumScriptExpression {
             NumScriptExpression::Double { var, .. } => Some(vec![*var]),
             NumScriptExpression::Square { var, .. } => Some(vec![*var]),
             NumScriptExpression::ToBits { var, .. } => Some(vec![*var]),
-            NumScriptExpression::ToBitsVec { var, .. } => {
-                Some(var.clone())
-            }
+            NumScriptExpression::ToBitsVec { var, .. } => Some(var.clone()),
             NumScriptExpression::BitReverse { var, .. } => Some(vec![*var]),
         }
     }

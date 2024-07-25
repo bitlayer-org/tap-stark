@@ -5,8 +5,10 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::Cell;
+use std::sync::RwLock;
 
-use bitcoin_script_stack::{debugger::StepResult, stack::{StackTracker, StackVariable}};
+use bitcoin_script_stack::debugger::StepResult;
+use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use primitives::field::BfField;
 use scripts::treepp::*;
 
@@ -24,7 +26,7 @@ pub use fraction_expr::*;
 mod lagrange;
 pub use lagrange::*;
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum ScriptExprError {
     DoubleCopy,
     InvalidExpression,
@@ -37,9 +39,12 @@ pub struct Executor<F: BfField> {
 }
 
 pub trait Expression {
-
     // fn is_to_copy(&self) -> bool;
-    fn set_copy_var(&self, var:StackVariable){
+    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
+        unimplemented!()
+    }
+
+    fn set_copy_var(&self, var: StackVariable) {
         unimplemented!()
     }
     fn as_share_ptr(self) -> Arc<Box<dyn Expression>>;
@@ -57,20 +62,20 @@ pub trait Expression {
     fn get_var(&self) -> Option<Vec<StackVariable>>;
 }
 
-pub fn run_expr<F:BfField>(expr:FieldScriptExpression<F>,value:F) -> StepResult{
+pub fn run_expr<F: BfField>(expr: FieldScriptExpression<F>, value: F) -> StepResult {
     let assert_expr = expr.equal_for_f(value);
     let mut stack = StackTracker::new();
     let mut inputs = BTreeMap::new();
     assert_expr.express_to_script(&mut stack, &mut inputs);
-     stack.run()
+    stack.run()
 }
 
-pub fn assert_field_expr<F:BfField>(expr:FieldScriptExpression<F>,value:F) {
+pub fn assert_field_expr<F: BfField>(expr: FieldScriptExpression<F>, value: F) {
     let res = run_expr(expr, value);
     assert!(res.success);
 }
 
-pub fn debug_assert_field_expr<F:BfField>(expr:FieldScriptExpression<F>,value:F) {
+pub fn debug_assert_field_expr<F: BfField>(expr: FieldScriptExpression<F>, value: F) {
     let res = run_expr(expr, value);
     debug_assert!(res.success);
 }
