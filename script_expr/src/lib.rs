@@ -30,6 +30,10 @@ pub mod opcode;
 pub use opcode::*;
 pub mod script_gen;
 pub use script_gen::*;
+pub mod alias;
+pub use alias::*;
+pub mod std_expr;
+pub use std_expr::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptExprError {
@@ -44,29 +48,28 @@ pub struct Executor<F: BfField> {
 }
 
 pub trait Expression {
-    // fn is_to_copy(&self) -> bool;
-    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
+    fn to_copy(&self) -> Result<ExprPtr, ScriptExprError> {
         unimplemented!()
     }
 
     fn set_copy_var(&self, var: StackVariable) {
         unimplemented!()
     }
-    fn as_arc_ptr(self) -> Arc<RwLock<Box<dyn Expression>>>;
+    fn as_expr_ptr(self) -> ExprPtr;
     fn express_to_script(
         &self,
         stack: &mut StackTracker,
         input_variables: &BTreeMap<Variable, StackVariable>,
-    );
+    ) -> Vec<StackVariable>;
 
     fn var_size(&self) -> u32;
 
     #[allow(unused)]
     fn set_debug(&self);
 
-    fn get_var(&self) -> Option<Vec<StackVariable>> {
-        unimplemented!()
-    }
+    // fn get_var(&self) -> Option<Vec<StackVariable>> {
+    //     unimplemented!()
+    // }
 }
 
 pub fn run_expr<F: BfField>(expr: FieldScriptExpression<F>, value: F) -> StepResult {

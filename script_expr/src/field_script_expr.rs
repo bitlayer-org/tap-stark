@@ -28,104 +28,7 @@ use super::variable::{ValueVariable, Variable};
 use super::Expression;
 use crate::opcode::Opcode;
 use crate::script_helper::{index_to_rou, value_exp_n};
-use crate::{op_mul, Fraction, ScriptExprError};
-
-pub(crate) struct CopyVar {
-    to_copy_var: Cell<StackVariable>,
-    var: Cell<StackVariable>,
-    debug: Cell<bool>,
-    var_size: u32,
-    to_copy: RefCell<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-}
-
-impl CopyVar {
-    pub(crate) fn new(var_size: u32) -> Self {
-        CopyVar {
-            to_copy_var: Cell::new(StackVariable::null()),
-            var: Cell::new(StackVariable::null()),
-            debug: Cell::new(false),
-            var_size: var_size,
-            to_copy: RefCell::new(None),
-        }
-    }
-}
-
-impl Clone for CopyVar {
-    fn clone(&self) -> Self {
-        CopyVar {
-            to_copy_var: Cell::new(self.to_copy_var.get()),
-            var: Cell::new(self.var.get()),
-            debug: Cell::new(self.debug.get()),
-            var_size: self.var_size,
-            to_copy: RefCell::new(None),
-        }
-    }
-}
-
-impl Debug for CopyVar {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("CopyVar")
-            .field("to_copy_var", &self.to_copy_var.get())
-            .field("var", &self.var.get())
-            .field("debug", &self.debug.get())
-            .field("var_size", &self.var_size)
-            .finish()
-    }
-}
-
-impl Expression for CopyVar {
-    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
-        if self.to_copy.borrow().is_some() {
-            return Err(ScriptExprError::DoubleCopy);
-        }
-
-        let self_copy = CopyVar::new(self.var_size());
-
-        let copy_expr = Arc::new(RwLock::new(Box::new(self_copy) as Box<dyn Expression>));
-
-        *self.to_copy.borrow_mut() = Some(copy_expr.clone());
-        Ok(copy_expr)
-    }
-
-    fn set_copy_var(&self, var: StackVariable) {
-        self.to_copy_var.set(var);
-    }
-
-    fn as_arc_ptr(self) -> Arc<RwLock<Box<dyn Expression>>> {
-        Arc::new(RwLock::new(Box::new(self)))
-    }
-
-    fn set_debug(&self) {
-        self.debug.set(true);
-    }
-
-    fn express_to_script(
-        &self,
-        stack: &mut StackTracker,
-        _input_variables: &BTreeMap<Variable, StackVariable>,
-    ) {
-        assert!(self.to_copy_var.get().is_null() == false);
-        let var1: StackVariable = stack.move_var(self.to_copy_var.get());
-        let to_copy = self.to_copy.borrow();
-
-        if to_copy.is_none() {
-            self.var.set(var1);
-            return;
-        }
-
-        let var_top = stack.copy_var(var1); // var_top stay at the top of the stack
-        to_copy.as_ref().unwrap().read().unwrap().set_copy_var(var1);
-        self.var.set(var_top);
-    }
-
-    fn var_size(&self) -> u32 {
-        self.var_size
-    }
-
-    fn get_var(&self) -> Option<Vec<StackVariable>> {
-        Some(vec![self.var.get()])
-    }
-}
+use crate::{op_mul, CopyVar, ExprPtr, Fraction, OpcodeId, ScriptExprError};
 
 pub enum FieldScriptExpression<F: BfField> {
     ValueVariable {
@@ -140,43 +43,21 @@ pub enum FieldScriptExpression<F: BfField> {
     },
     Constant {
         f: F,
-        debug: Cell<bool>,
-        var: StackVariable,
+        // debug: Cell<bool>,
+        // var: StackVariable,
+        opcode: Opcode<0,1>,
     },
     Table {
         table: Vec<F>,
         debug: Cell<bool>,
         var: StackVariable,
     },
-    Add {
-        x: Arc<Box<dyn Expression>>,
-        y: Arc<Box<dyn Expression>>,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
-    Sub {
-        x: Arc<Box<dyn Expression>>,
-        y: Arc<Box<dyn Expression>>,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
-    Neg {
-        x: Arc<Box<dyn Expression>>,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
+    Add(Opcode<2, 1>),
+    Sub(Opcode<2, 1>),
+    Neg(Opcode<1, 1>),
     Mul(Opcode<2, 1>),
-    EqualVerify {
-        x: Arc<Box<dyn Expression>>,
-        y: Arc<Box<dyn Expression>>,
-        debug: Cell<bool>,
-    },
-    Equal {
-        x: Arc<Box<dyn Expression>>,
-        y: Arc<Box<dyn Expression>>,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
+    EqualVerify(Opcode<2, 0>),
+    Equal(Opcode<2, 1>),
     ExpConstant {
         x: Arc<Box<dyn Expression>>,
         y: u32,
@@ -205,60 +86,81 @@ pub enum FieldScriptExpression<F: BfField> {
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
-    pub fn new_mul_from_arc(
-        x: Arc<RwLock<Box<dyn Expression>>>,
-        y: Arc<RwLock<Box<dyn Expression>>>,
-    ) -> Self {
-        // let var_size = x.var_size().max(y.var_size());
-        Self::Mul(Opcode::new(
-            vec![x, y],
-            F::U32_SIZE as u32,
-            Box::new(op_mul::<F>),
-        ))
+    pub fn new_mul_from_expr_ptr(x: ExprPtr, y: ExprPtr) -> Self {
+        Self::new_two_input_from_expr_ptr(x, y, OpcodeId::Mul)
     }
 
     pub fn new_mul(x: Self, y: Self) -> Self {
+        Self::new_two_input(x, y, OpcodeId::Mul)
+    }
+
+    pub fn new_add(x: Self, y: Self) -> Self {
+        Self::new_two_input(x, y, OpcodeId::Add)
+    }
+
+    pub fn new_sub(x: Self, y: Self) -> Self {
+        Self::new_two_input(x, y, OpcodeId::Sub)
+    }
+
+    pub fn new_neg(x: Self) -> Self {
+        Self::new_one_input(x, OpcodeId::Neg)
+    }
+
+    pub fn new_two_input(x: Self, y: Self, opcode_id: OpcodeId) -> Self {
         let var_size = x.var_size().max(y.var_size());
         Self::Mul(Opcode::new(
-            vec![x.as_arc_ptr(), y.as_arc_ptr()],
+            vec![x.as_expr_ptr(), y.as_expr_ptr()],
             var_size,
-            Box::new(op_mul::<F>),
+            opcode_id,
         ))
     }
 
-    pub fn add_ext<EF: BfField>(
-        &self,
-        rhs: FieldScriptExpression<EF>,
-    ) -> FieldScriptExpression<EF> {
-        assert_eq!(F::U32_SIZE, 1);
-        assert_eq!(EF::U32_SIZE, 4);
-        FieldScriptExpression::<EF>::Add {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(rhs)),
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+    pub fn new_two_input_from_expr_ptr(x: ExprPtr, y: ExprPtr, opcode_id: OpcodeId) -> Self {
+        let var_size = x
+            .read()
+            .unwrap()
+            .var_size()
+            .max(y.read().unwrap().var_size());
+        Self::Mul(Opcode::new(vec![x, y], var_size, opcode_id))
     }
 
-    pub fn add_base<Base: BfField>(&self, rhs: FieldScriptExpression<Base>) -> Self {
+    pub fn new_one_input(x: Self, opcode_id: OpcodeId) -> Self {
+        let var_size = x.var_size();
+        Self::Mul(Opcode::new(vec![x.as_expr_ptr()], var_size, opcode_id))
+    }
+
+    pub fn new_one_input_from_expr_ptr(x: ExprPtr, y: ExprPtr, opcode_id: OpcodeId) -> Self {
+        let var_size = x.read().unwrap().var_size();
+        Self::Mul(Opcode::new(vec![x, y], var_size, opcode_id))
+    }
+
+    pub fn add_ext<EF: BfField>(self, rhs: FieldScriptExpression<EF>) -> FieldScriptExpression<EF> {
+        assert_eq!(F::U32_SIZE, 1);
+        assert_eq!(EF::U32_SIZE, 4);
+        FieldScriptExpression::<EF>::Add(Opcode::new(
+            vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
+            EF::U32_SIZE as u32,
+            OpcodeId::Add,
+        ))
+    }
+
+    pub fn add_base<Base: BfField>(self, rhs: FieldScriptExpression<Base>) -> Self {
         assert_eq!(F::U32_SIZE, 4);
         assert_eq!(Base::U32_SIZE, 1);
-        FieldScriptExpression::Add {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(rhs)),
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+        Self::Add(Opcode::new(
+            vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
+            F::U32_SIZE as u32,
+            OpcodeId::Add,
+        ))
     }
 
     pub fn mul_ext<EF: BfField>(self, rhs: FieldScriptExpression<EF>) -> FieldScriptExpression<EF> {
         assert_eq!(F::U32_SIZE, 1);
         assert_eq!(EF::U32_SIZE, 4);
-        // FieldScriptExpression::<EF>::new_mul1(self,rhs)
         FieldScriptExpression::<EF>::Mul(Opcode::new(
-            vec![self.as_arc_ptr(), rhs.as_arc_ptr()],
+            vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             EF::U32_SIZE as u32,
-            Box::new(op_mul::<EF>),
+            OpcodeId::Mul,
         ))
     }
 
@@ -266,35 +168,30 @@ impl<F: BfField> FieldScriptExpression<F> {
         assert_eq!(F::U32_SIZE, 4);
         assert_eq!(Base::U32_SIZE, 1);
         Self::Mul(Opcode::new(
-            vec![self.as_arc_ptr(), rhs.as_arc_ptr()],
+            vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             F::U32_SIZE as u32,
-            Box::new(op_mul::<F>),
+            OpcodeId::Mul,
         ))
     }
 
-    pub fn sub_ext<EF: BfField>(
-        &self,
-        rhs: FieldScriptExpression<EF>,
-    ) -> FieldScriptExpression<EF> {
+    pub fn sub_ext<EF: BfField>(self, rhs: FieldScriptExpression<EF>) -> FieldScriptExpression<EF> {
         assert_eq!(F::U32_SIZE, 1);
         assert_eq!(EF::U32_SIZE, 4);
-        FieldScriptExpression::<EF>::Sub {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(rhs)),
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+        FieldScriptExpression::<EF>::Sub(Opcode::new(
+            vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
+            EF::U32_SIZE as u32,
+            OpcodeId::Sub,
+        ))
     }
 
-    pub fn sub_base<Base: BfField>(&self, rhs: FieldScriptExpression<Base>) -> Self {
+    pub fn sub_base<Base: BfField>(self, rhs: FieldScriptExpression<Base>) -> Self {
         assert_eq!(F::U32_SIZE, 4);
         assert_eq!(Base::U32_SIZE, 1);
-        FieldScriptExpression::Sub {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(rhs)),
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+        Self::Sub(Opcode::new(
+            vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
+            F::U32_SIZE as u32,
+            OpcodeId::Sub,
+        ))
     }
 
     pub fn exp_constant(&self, power: u32) -> Self {
@@ -306,38 +203,36 @@ impl<F: BfField> FieldScriptExpression<F> {
         }
     }
 
-    pub fn equal(&self, rhs: Self) -> Self {
-        FieldScriptExpression::Equal {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(rhs.clone())),
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+    pub fn equal(self, rhs: Self) -> Self {
+        FieldScriptExpression::Equal(Opcode::new(
+            vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
+            F::U32_SIZE as u32,
+            OpcodeId::Equal,
+        ))
     }
 
-    pub fn equal_for_f(&self, rhs: F) -> Self {
-        FieldScriptExpression::Equal {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(Self::from(rhs))),
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+    pub fn equal_for_f(self, rhs: F) -> Self {
+        FieldScriptExpression::Equal(Opcode::new(
+            vec![self.as_expr_ptr(), Self::from(rhs).as_expr_ptr()],
+            F::U32_SIZE as u32,
+            OpcodeId::Equal,
+        ))
     }
 
-    pub fn equal_verify(&self, rhs: Self) -> Self {
-        FieldScriptExpression::EqualVerify {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(rhs.clone())),
-            debug: Cell::new(false),
-        }
+    pub fn equal_verify(self, rhs: Self) -> Self {
+        FieldScriptExpression::EqualVerify(Opcode::new(
+            vec![self.as_expr_ptr(), Self::from(rhs).as_expr_ptr()],
+            F::U32_SIZE as u32,
+            OpcodeId::EqualVerify,
+        ))
     }
 
-    pub fn equal_verify_for_f(&self, rhs: F) -> Self {
-        FieldScriptExpression::EqualVerify {
-            x: Arc::new(Box::new(self.clone())),
-            y: Arc::new(Box::new(Self::from(rhs))),
-            debug: Cell::new(false),
-        }
+    pub fn equal_verify_for_f(self, rhs: F) -> Self {
+        FieldScriptExpression::EqualVerify(Opcode::new(
+            vec![self.as_expr_ptr(), Self::from(rhs).as_expr_ptr()],
+            F::U32_SIZE as u32,
+            OpcodeId::EqualVerify,
+        ))
     }
 
     pub fn index_to_rou(index: u32, sub_group_bits: u32) -> Self {
@@ -365,20 +260,18 @@ impl<F: BfField> FieldScriptExpression<F> {
 }
 
 impl<F: BfField> Expression for FieldScriptExpression<F> {
-    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
+    fn to_copy(&self) -> Result<ExprPtr, ScriptExprError> {
         match self {
+            FieldScriptExpression::Add(op) => op.to_copy(),
             FieldScriptExpression::Mul(op) => op.to_copy(),
-            // FieldScriptExpression::Add(op) => {
-            //     op.to_copy()
-            // },
-            // FieldScriptExpression::Sub(op) => {
-            //     op.to_copy()
-            // },
+            FieldScriptExpression::Sub(op) => op.to_copy(),
+            FieldScriptExpression::Neg(op) => op.to_copy(),
+            FieldScriptExpression::Equal(op) => op.to_copy(),
             _ => panic!("to_copy is only for Mul"),
         }
     }
 
-    fn as_arc_ptr(self) -> Arc<RwLock<Box<dyn Expression>>> {
+    fn as_expr_ptr(self) -> ExprPtr {
         Arc::new(RwLock::new(Box::new(self)))
     }
 
@@ -394,22 +287,12 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Table { debug, .. } => {
                 debug.set(true);
             }
-            FieldScriptExpression::Add { debug, .. } => {
-                debug.set(true);
-            }
-            FieldScriptExpression::Sub { debug, .. } => {
-                debug.set(true);
-            }
-            FieldScriptExpression::Neg { debug, .. } => {
-                debug.set(true);
-            }
+            FieldScriptExpression::Add(op) => op.set_debug(),
+            FieldScriptExpression::Sub(op) => op.set_debug(),
+            FieldScriptExpression::Neg(op) => op.set_debug(),
             FieldScriptExpression::Mul(op) => op.set_debug(),
-            FieldScriptExpression::EqualVerify { debug, .. } => {
-                debug.set(true);
-            }
-            FieldScriptExpression::Equal { debug, .. } => {
-                debug.set(true);
-            }
+            FieldScriptExpression::EqualVerify(op) => op.set_debug(),
+            FieldScriptExpression::Equal(op) => op.set_debug(),
             FieldScriptExpression::ExpConstant { debug, .. } => {
                 debug.set(true);
             }
@@ -429,7 +312,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
         &self,
         stack: &mut StackTracker,
         input_variables: &BTreeMap<Variable, StackVariable>,
-    ) {
+    ) -> Vec<StackVariable> {
         match self {
             FieldScriptExpression::ValueVariable { v, debug, mut var } => {
                 let intput_var = input_variables.get(v.get_var()).unwrap();
@@ -440,6 +323,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 if v.get_var().get_var_size().is_some() {
                     assert_eq!(var.size(), v.get_var().get_var_size().unwrap());
                 }
+                vec![var]
             }
             FieldScriptExpression::InputVariable { sv, debug, mut var } => {
                 let intput_var = input_variables.get(sv).unwrap();
@@ -450,6 +334,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 if sv.get_var_size().is_some() {
                     assert_eq!(var.size(), sv.get_var_size().unwrap());
                 }
+                vec![var]
             }
             FieldScriptExpression::Constant { f, mut var, debug } => {
                 let v = f.as_u32_vec();
@@ -457,6 +342,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![var]
             }
             FieldScriptExpression::Table {
                 table,
@@ -464,205 +350,23 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 debug,
             } => {
                 //push table
+                let mut vars = vec![];
                 for f in table.iter().rev() {
                     let v = f.as_u32_vec();
-                    var = stack.bignumber(v);
+                    vars.push(stack.bignumber(v));
                 }
                 if debug.get() == true {
                     stack.debug();
                 }
+                vars
             }
-            FieldScriptExpression::Add {
-                x,
-                y,
-                debug,
-                mut var,
-            } => {
-                x.express_to_script(stack, input_variables); // F
-                y.express_to_script(stack, input_variables); // EF
-                if x.var_size() == y.var_size() {
-                    let vars = stack
-                        .custom1(
-                            script! {
-                                if x.var_size() == 1{
-                                    {u31_add::<BabyBearU31>()}
-                                }else{
-                                    {u31ext_add::<BabyBear4>()}
-                                }
-                            },
-                            2,
-                            1,
-                            0,
-                            F::U32_SIZE as u32,
-                            "ExprADD_Result",
-                        )
-                        .unwrap();
-                    var = vars[0];
-                    assert_eq!(var.size(), x.var_size() as u32);
-                } else {
-                    let mut script = Script::default();
-                    if x.var_size() > y.var_size() {
-                        script = script! {
-                            {u31ext_add_u31::<BabyBear4>()}
-                        };
-                    } else {
-                        script = script! {
-                            4 OP_ROLL
-                            {u31ext_add_u31::<BabyBear4>()}
-                        };
-                    }
-                    let output_var_size = x.var_size().max(y.var_size());
-                    let vars = stack
-                        .custom1(
-                            script,
-                            2, // consumes 2 variable, one size is 4 and the other size is 1
-                            1, // the output variable size is 4
-                            0,
-                            output_var_size,
-                            "ExprADD_Result",
-                        )
-                        .unwrap();
-                    var = vars[0];
-                    assert_eq!(var.size(), output_var_size as u32);
-                }
-                if debug.get() == true {
-                    stack.debug();
-                }
-            }
-            FieldScriptExpression::Sub {
-                x,
-                y,
-                debug,
-                mut var,
-            } => {
-                x.express_to_script(stack, input_variables);
-                y.express_to_script(stack, input_variables);
-                if x.var_size() == y.var_size() {
-                    let vars = stack
-                        .custom1(
-                            script! {
-                                if F::U32_SIZE == 1{
-                                    {u31_sub::<BabyBearU31>()}
-                                }else{
-                                    {u31ext_sub::<BabyBear4>()}
-                                }
-                            },
-                            2,
-                            1,
-                            0,
-                            F::U32_SIZE as u32,
-                            "ExprSUB_Result",
-                        )
-                        .unwrap();
-                    var = vars[0];
-                } else {
-                    let mut script = Script::default();
-
-                    if x.var_size() > y.var_size() {
-                        script = script! {
-                            {u31ext_sub_u31::<BabyBear4>()}
-                        };
-                    } else {
-                        script = script! {
-                            4 OP_ROLL
-                            {u31_sub_u31ext::<BabyBear4>()}
-                        };
-                    }
-                    let vars = stack
-                        .custom1(
-                            script,
-                            2, // consumes 2 variable, one size is 4 and the other size is 1
-                            1, // the size of output variable is 4
-                            0,
-                            x.var_size().max(y.var_size()),
-                            "ExprSUB_Result",
-                        )
-                        .unwrap();
-                    var = vars[0];
-                }
-
-                if debug.get() == true {
-                    stack.debug();
-                }
-                assert_eq!(var.size(), F::U32_SIZE as u32);
-            }
-            FieldScriptExpression::Neg { x, debug, mut var } => {
-                x.express_to_script(stack, input_variables);
-                let vars = stack
-                    .custom1(
-                        script! {
-                            if F::U32_SIZE == 1{
-                                {u31_neg::<BabyBearU31>()}
-                            }else{
-                                {u31ext_neg::<BabyBear4>()}
-                            }
-                        },
-                        1,
-                        1,
-                        0,
-                        F::U32_SIZE as u32,
-                        "ExprNEG_Result",
-                    )
-                    .unwrap();
-                var = vars[0];
-                if debug.get() == true {
-                    stack.debug();
-                }
-                assert_eq!(var.size(), F::U32_SIZE as u32);
-            }
-            FieldScriptExpression::Mul(op) => {
-                op.express_to_script(stack, input_variables);
-            }
-            FieldScriptExpression::EqualVerify { x, y, debug } => {
-                x.express_to_script(stack, input_variables);
-                y.express_to_script(stack, input_variables);
-                assert_eq!(x.var_size(), y.var_size());
-                if x.var_size() == 1 {
-                    stack.op_equalverify();
-                } else {
-                    stack.custom(
-                        u31ext_equalverify::<BabyBear4>(),
-                        2,
-                        false,
-                        0,
-                        "u31ext_equalverify",
-                    );
-                }
-                if debug.get() == true {
-                    stack.debug();
-                }
-            }
-            FieldScriptExpression::Equal {
-                x,
-                y,
-                mut var,
-                debug,
-            } => {
-                x.express_to_script(stack, input_variables);
-                y.express_to_script(stack, input_variables);
-                assert_eq!(x.var_size(), y.var_size());
-                if x.var_size() == 1 {
-                    var = stack.op_equal();
-                } else {
-                    stack.custom(
-                        u31ext_equalverify::<BabyBear4>(),
-                        2,
-                        false,
-                        0,
-                        "u31ext_equalverify",
-                    );
-                    var = stack.op_true();
-                }
-                if debug.get() == true {
-                    stack.debug();
-                }
-            }
-            FieldScriptExpression::ExpConstant {
-                x,
-                y,
-                debug,
-                mut var,
-            } => {
+            FieldScriptExpression::Add(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::Sub(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::Neg(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::Mul(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::EqualVerify(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::Equal(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::ExpConstant { x, y, debug, .. } => {
                 x.express_to_script(stack, input_variables);
 
                 let vars = stack
@@ -675,17 +379,17 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                         "FieldExpr::ExpConstant",
                     )
                     .unwrap();
-                var = vars[0];
 
                 if debug.get() == true {
                     stack.debug();
                 }
-                assert_eq!(var.size(), F::U32_SIZE as u32);
+                assert_eq!(vars[0].size(), F::U32_SIZE as u32);
+                vars
             }
             FieldScriptExpression::IndexToROU {
                 index,
                 debug,
-                mut var,
+                var,
                 sub_group_bits,
             } => {
                 index.express_to_script(stack, input_variables);
@@ -700,14 +404,13 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                         "FieldExpr::IndexToROU",
                     )
                     .unwrap();
-                var = vars[0];
 
                 if debug.get() == true {
                     stack.debug();
                 }
-                assert_eq!(var.size(), F::U32_SIZE as u32);
+                vars
             }
-            FieldScriptExpression::NumToField { x, mut var, debug } => {
+            FieldScriptExpression::NumToField { x, var, debug } => {
                 x.express_to_script(stack, input_variables);
                 let vars = stack
                     .custom1(
@@ -726,12 +429,11 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                         "FieldExpr::NumToField",
                     )
                     .unwrap();
-                var = vars[0];
 
                 if debug.get() == true {
                     stack.debug();
                 }
-                assert_eq!(var.size(), F::U32_SIZE as u32);
+                vars
             }
             FieldScriptExpression::Lookup {
                 x,
@@ -759,33 +461,15 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 }
                 var = stack.from_altstack();
 
-                assert_eq!(var.size(), F::U32_SIZE as u32);
+                vec![var]
             }
-        };
+        }
     }
 
     fn var_size(&self) -> u32 {
         F::U32_SIZE as u32
     }
 
-    fn get_var(&self) -> Option<Vec<StackVariable>> {
-        match self {
-            FieldScriptExpression::ValueVariable { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::InputVariable { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::Constant { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::Table { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::Add { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::Sub { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::Neg { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::Mul(op) => Some(vec![StackVariable::null()]),
-            FieldScriptExpression::EqualVerify { .. } => None,
-            FieldScriptExpression::Equal { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::ExpConstant { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::IndexToROU { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::NumToField { var, .. } => Some(vec![*var]),
-            FieldScriptExpression::Lookup { var, .. } => Some(vec![*var]),
-        }
-    }
 }
 
 impl<F: BfField> Default for FieldScriptExpression<F> {
@@ -823,26 +507,12 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 .debug_struct("ScriptExpression::Table")
                 .field("table", table)
                 .finish(),
-            FieldScriptExpression::Add { x, y, debug, var } => fm
-                .debug_struct("ScriptExpression::Add")
-                .field("variable", var)
-                .finish(),
-            FieldScriptExpression::Sub { x, y, debug, var } => fm
-                .debug_struct("ScriptExpression::Sub")
-                .field("variable", var)
-                .finish(),
+            FieldScriptExpression::Add(op) => op.fmt(fm),
+            FieldScriptExpression::Sub(op) => op.fmt(fm),
             FieldScriptExpression::Mul(op) => op.fmt(fm),
-            FieldScriptExpression::Neg { x, debug, var } => fm
-                .debug_struct("ScriptExpression::Neg")
-                .field("variable", var)
-                .finish(),
-            FieldScriptExpression::EqualVerify { x, y, debug } => {
-                fm.debug_struct("ScriptExpression::Equal").finish()
-            }
-            FieldScriptExpression::Equal { debug, var, .. } => fm
-                .debug_struct("ScriptExpression::Exp")
-                .field("variable", var)
-                .finish(),
+            FieldScriptExpression::Neg(op) => op.fmt(fm),
+            FieldScriptExpression::EqualVerify(op) => op.fmt(fm),
+            FieldScriptExpression::Equal(op) => op.fmt(fm),
             FieldScriptExpression::ExpConstant { x, y, debug, var } => fm
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
@@ -896,37 +566,14 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                 debug: debug.clone(),
                 var: var.clone(),
             },
-            FieldScriptExpression::Add { x, y, debug, var } => FieldScriptExpression::Add {
-                x: x.clone(),
-                y: y.clone(),
-                debug: debug.clone(),
-                var: var.clone(),
-            },
+            FieldScriptExpression::Add(op) => FieldScriptExpression::Add(op.clone()),
             FieldScriptExpression::Mul(op) => FieldScriptExpression::Mul(op.clone()),
-            FieldScriptExpression::Sub { x, y, debug, var } => FieldScriptExpression::Sub {
-                x: x.clone(),
-                y: y.clone(),
-                debug: debug.clone(),
-                var: var.clone(),
-            },
-            FieldScriptExpression::Neg { x, debug, var } => FieldScriptExpression::Neg {
-                x: x.clone(),
-                debug: debug.clone(),
-                var: var.clone(),
-            },
-            FieldScriptExpression::EqualVerify { x, y, debug } => {
-                FieldScriptExpression::EqualVerify {
-                    x: x.clone(),
-                    y: y.clone(),
-                    debug: debug.clone(),
-                }
+            FieldScriptExpression::Sub(op) => FieldScriptExpression::Sub(op.clone()),
+            FieldScriptExpression::Neg(op) => FieldScriptExpression::Neg(op.clone()),
+            FieldScriptExpression::EqualVerify(op) => {
+                FieldScriptExpression::EqualVerify(op.clone())
             }
-            FieldScriptExpression::Equal { x, y, debug, var } => FieldScriptExpression::Equal {
-                x: x.clone(),
-                y: y.clone(),
-                debug: debug.clone(),
-                var: var.clone(),
-            },
+            FieldScriptExpression::Equal(op) => FieldScriptExpression::Equal(op.clone()),
             FieldScriptExpression::ExpConstant { x, y, debug, var } => {
                 FieldScriptExpression::ExpConstant {
                     x: x.clone(),
@@ -1028,30 +675,19 @@ impl<F: BfField> AbstractField for FieldScriptExpression<F> {
     }
 }
 
-impl<F: BfField> Add<F> for FieldScriptExpression<F> {
-    type Output = Self;
-
-    fn add(self, rhs: F) -> Self {
-        Self::Add {
-            x: Arc::new(Box::new(self)),
-            y: Arc::new(Box::new(Self::from(rhs))),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
-        // self + Self::from(rhs)
-    }
-}
-
 impl<F: BfField> Add<Self> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self {
-        Self::Add {
-            x: Arc::new(Box::new(self)),
-            y: Arc::new(Box::new(rhs)),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+        Self::new_add(self, rhs)
+    }
+}
+
+impl<F: BfField> Add<F> for FieldScriptExpression<F> {
+    type Output = Self;
+
+    fn add(self, rhs: F) -> Self {
+        self + Self::from(rhs)
     }
 }
 
@@ -1059,12 +695,7 @@ impl<F: BfField> Add<&Self> for FieldScriptExpression<F> {
     type Output = Self;
 
     fn add(self, rhs: &Self) -> Self {
-        Self::Add {
-            x: Arc::new(Box::new(self)),
-            y: Arc::new(Box::new(rhs.clone())),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+        Self::new_add(self, rhs.clone())
     }
 }
 
@@ -1096,12 +727,7 @@ impl<F: BfField> Sub for FieldScriptExpression<F> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
-        Self::Sub {
-            x: Arc::new(Box::new(self)),
-            y: Arc::new(Box::new(rhs.clone())),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+        Self::new_sub(self, rhs)
     }
 }
 
@@ -1113,13 +739,6 @@ impl<F: BfField> Sub<F> for FieldScriptExpression<F> {
     }
 }
 
-// impl <F: BfField> Sub<F> for Arc<Box<FieldScriptExpression<F>>> {
-//     type Output = Self;
-
-//     fn sub(self, rhs: F) -> Self {
-//         self - Self::from(rhs)
-//     }
-// }
 impl<F: BfField> SubAssign for FieldScriptExpression<F> {
     fn sub_assign(&mut self, rhs: Self) {
         *self = self.clone() - rhs;
@@ -1136,11 +755,7 @@ impl<F: BfField> Neg for FieldScriptExpression<F> {
     type Output = Self;
 
     fn neg(self) -> Self {
-        Self::Neg {
-            x: Arc::new(Box::new(self)),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+        Self::new_neg(self)
     }
 }
 
@@ -1405,24 +1020,20 @@ mod tests {
         let mut stack = StackTracker::new();
         let a = FieldScriptExpression::from(BabyBear::one());
         let b = FieldScriptExpression::from(EF::two());
-        let c = a.mul_ext(b);
-
+        b.set_debug();
+        // let c = a.mul_ext(b);
+        let c = b.mul_base(a);
+        c.set_debug();
         let d = FieldScriptExpression::from(BabyBear::two());
         let e = FieldScriptExpression::from(EF::from_canonical_u32(4));
         let f = e.mul_base(d);
-
+        f.set_debug();
         let g = c * f;
-        let script = g.express_to_script(&mut stack, &bmap);
-        stack.bignumber(EF::from_canonical_u32(16).as_u32_vec());
-        stack.custom(
-            u31ext_equalverify::<BabyBear4>(),
-            2,
-            false,
-            0,
-            "equal result",
-        );
-        stack.op_true();
+        let equal = g.equal_for_f(EF::from_canonical_u32(16));
+        equal.express_to_script(&mut stack, &bmap);
         let res = stack.run();
+        println!("{:?}", res.error);
+        println!("{:?}", res.error_msg);
         assert!(res.success);
     }
 
@@ -1865,30 +1476,30 @@ mod tests2 {
 
             let c = FieldScriptExpression::from(c_value);
             let d = a + b;
-            let d_share = d.as_arc_ptr();
-            let e = FieldScriptExpression::<BabyBear>::new_mul_from_arc(
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
                 d_share.clone(),
-                c.as_arc_ptr(),
+                c.as_expr_ptr(),
             );
 
-            let e_share = e.as_arc_ptr();
-            let f = FieldScriptExpression::<BabyBear>::new_mul_from_arc(
+            let e_share = e.as_expr_ptr();
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
                 e_share.clone(),
                 d_share.clone(),
             );
-            let g = FieldScriptExpression::<BabyBear>::new_mul_from_arc(
+            let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
                 e_share.clone(),
-                f.as_arc_ptr(),
+                f.as_expr_ptr(),
             );
-            let h = FieldScriptExpression::<BabyBear>::new_mul_from_arc(
-                g.as_arc_ptr(),
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                g.as_expr_ptr(),
                 e_share.clone(),
             );
 
             let equal = h.equal_for_f(h_value);
             equal.express_to_script(&mut stack, &bmap);
             let res = stack.run();
-            println!("{:?}", e_share.clone().read().unwrap().get_var());
+            // println!("{:?}", e_share.clone().read().unwrap().get_var());
             println!("script len {:?}", stack.get_script().len());
             assert!(res.success);
         }
@@ -1910,20 +1521,23 @@ mod tests2 {
 
             let c = FieldScriptExpression::from(c_value);
             let d = a + b;
-            let d_share = d.as_arc_ptr();
-            let e = FieldScriptExpression::<BabyBear>::new_mul_from_arc(
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
                 d_share.clone(),
-                c.as_arc_ptr(),
+                c.as_expr_ptr(),
             );
             let e_copy = e.to_copy().unwrap();
             let e_copy_copy = e_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
-            let f = FieldScriptExpression::<BabyBear>::new_mul_from_arc(
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
                 e_copy_copy.clone(),
                 d_share.clone(),
             );
-            let g = FieldScriptExpression::<BabyBear>::new_mul_from_arc(e_copy, f.as_arc_ptr());
-            let h =
-                FieldScriptExpression::<BabyBear>::new_mul_from_arc(e.as_arc_ptr(), g.as_arc_ptr());
+            let g =
+                FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(e_copy, f.as_expr_ptr());
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e.as_expr_ptr(),
+                g.as_expr_ptr(),
+            );
 
             let equal = h.equal_for_f(h_value);
             equal.express_to_script(&mut stack, &bmap);
