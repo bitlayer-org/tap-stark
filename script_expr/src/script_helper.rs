@@ -278,6 +278,34 @@ pub(crate) fn value_exp_n<F: BfField>(log_n: usize) -> Script {
         }
     }
 }
+pub(crate) fn value_exp_7<F: BfField>() -> Script {
+    script! {
+        if F::U32_SIZE == 1 {
+            OP_DUP
+            OP_TOALTSTACK  //x 
+            {value_square_with_input::<F>()} //x^2
+            OP_DUP
+            OP_TOALTSTACK   //x^2
+            {value_square_with_input::<F>()} //x^4
+            OP_FROMALTSTACK
+            {u31_mul::<BabyBearU31>()}
+            OP_FROMALTSTACK
+            {u31_mul::<BabyBearU31>()}
+        } else {
+            OP_4DUP
+            OP_4TOALTSTACK  //x 
+            {value_square_with_input::<F>()} //x^2
+            OP_4DUP
+            OP_4TOALTSTACK   //x^2
+            {value_square_with_input::<F>()} //x^4
+            OP_4FROMALTSTACK
+            {u31ext_mul::<BabyBear4>()}
+            OP_4FROMALTSTACK
+            {u31ext_mul::<BabyBear4>()}
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
