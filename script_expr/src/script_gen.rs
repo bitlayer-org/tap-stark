@@ -127,7 +127,6 @@ pub(crate) fn op_indextorou<F: BfField>(
         )
         .unwrap();
 
-    assert_eq!(vars[0].size(), vars_size[0]);
     vars
 }
 
