@@ -28,7 +28,10 @@ use super::variable::{ValueVariable, Variable};
 use super::Expression;
 use crate::opcode::Opcode;
 use crate::script_helper::{index_to_rou, value_exp_n};
-use crate::{op_mul, CopyVar, ExprPtr, Fraction, OpcodeId, ScriptExprError};
+use crate::{
+    op_mul, CopyVar, CustomOpcode, CustomOpcodeId, ExprPtr, Fraction, ScriptExprError,
+    StandardOpcode, StandardOpcodeId,
+};
 
 pub enum FieldScriptExpression<F: BfField> {
     ValueVariable {
@@ -41,36 +44,20 @@ pub enum FieldScriptExpression<F: BfField> {
         debug: Cell<bool>,
         var: StackVariable,
     },
-    Constant {
-        f: F,
-        // debug: Cell<bool>,
-        // var: StackVariable,
-        opcode: Opcode<0,1>,
-    },
+    Constant(CustomOpcode<0, 1, F>),
     Table {
         table: Vec<F>,
         debug: Cell<bool>,
         var: StackVariable,
     },
-    Add(Opcode<2, 1>),
-    Sub(Opcode<2, 1>),
-    Neg(Opcode<1, 1>),
-    Mul(Opcode<2, 1>),
-    EqualVerify(Opcode<2, 0>),
-    Equal(Opcode<2, 1>),
-    ExpConstant {
-        x: Arc<Box<dyn Expression>>,
-        y: u32,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
-    IndexToROU {
-        // calculate generator^index
-        index: Arc<Box<dyn Expression>>, // u32 -> NumberScriptExpression
-        sub_group_bits: u32,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
+    Add(StandardOpcode<2, 1>),
+    Sub(StandardOpcode<2, 1>),
+    Neg(StandardOpcode<1, 1>),
+    Mul(StandardOpcode<2, 1>),
+    EqualVerify(StandardOpcode<2, 0>),
+    Equal(StandardOpcode<2, 1>),
+    ExpConstant(CustomOpcode<1, 1, F>),
+    IndexToROU(CustomOpcode<1, 1, F>),
     NumToField {
         x: Arc<Box<dyn Expression>>,
         var: StackVariable,
@@ -87,170 +74,199 @@ pub enum FieldScriptExpression<F: BfField> {
 
 impl<F: BfField> FieldScriptExpression<F> {
     pub fn new_mul_from_expr_ptr(x: ExprPtr, y: ExprPtr) -> Self {
-        Self::new_two_input_from_expr_ptr(x, y, OpcodeId::Mul)
+        Self::new_two_input_from_expr_ptr(x, y, StandardOpcodeId::Mul)
     }
 
     pub fn new_mul(x: Self, y: Self) -> Self {
-        Self::new_two_input(x, y, OpcodeId::Mul)
+        Self::new_two_input(x, y, StandardOpcodeId::Mul)
     }
 
     pub fn new_add(x: Self, y: Self) -> Self {
-        Self::new_two_input(x, y, OpcodeId::Add)
+        Self::new_two_input(x, y, StandardOpcodeId::Add)
     }
 
     pub fn new_sub(x: Self, y: Self) -> Self {
-        Self::new_two_input(x, y, OpcodeId::Sub)
+        Self::new_two_input(x, y, StandardOpcodeId::Sub)
     }
 
     pub fn new_neg(x: Self) -> Self {
-        Self::new_one_input(x, OpcodeId::Neg)
+        Self::new_one_input(x, StandardOpcodeId::Neg)
     }
 
-    pub fn new_two_input(x: Self, y: Self, opcode_id: OpcodeId) -> Self {
+    pub fn new_two_input(x: Self, y: Self, opcode_id: StandardOpcodeId) -> Self {
         let var_size = x.var_size().max(y.var_size());
-        Self::Mul(Opcode::new(
+        Self::Mul(StandardOpcode::new(
             vec![x.as_expr_ptr(), y.as_expr_ptr()],
             var_size,
             opcode_id,
         ))
     }
 
-    pub fn new_two_input_from_expr_ptr(x: ExprPtr, y: ExprPtr, opcode_id: OpcodeId) -> Self {
+    pub fn new_two_input_from_expr_ptr(
+        x: ExprPtr,
+        y: ExprPtr,
+        opcode_id: StandardOpcodeId,
+    ) -> Self {
         let var_size = x
             .read()
             .unwrap()
             .var_size()
             .max(y.read().unwrap().var_size());
-        Self::Mul(Opcode::new(vec![x, y], var_size, opcode_id))
+        Self::Mul(StandardOpcode::new(vec![x, y], var_size, opcode_id))
     }
 
-    pub fn new_one_input(x: Self, opcode_id: OpcodeId) -> Self {
+    pub fn new_one_input(x: Self, opcode_id: StandardOpcodeId) -> Self {
         let var_size = x.var_size();
-        Self::Mul(Opcode::new(vec![x.as_expr_ptr()], var_size, opcode_id))
+        Self::Mul(StandardOpcode::new(
+            vec![x.as_expr_ptr()],
+            var_size,
+            opcode_id,
+        ))
     }
 
-    pub fn new_one_input_from_expr_ptr(x: ExprPtr, y: ExprPtr, opcode_id: OpcodeId) -> Self {
+    pub fn new_one_input_from_expr_ptr(
+        x: ExprPtr,
+        y: ExprPtr,
+        opcode_id: StandardOpcodeId,
+    ) -> Self {
         let var_size = x.read().unwrap().var_size();
-        Self::Mul(Opcode::new(vec![x, y], var_size, opcode_id))
+        Self::Mul(StandardOpcode::new(vec![x, y], var_size, opcode_id))
+    }
+
+    pub fn new_expconst(x: ExprPtr, power: u32) -> Self {
+        let var_size = x.read().unwrap().var_size();
+        Self::ExpConstant(CustomOpcode::new(
+            vec![power],
+            vec![x],
+            var_size,
+            CustomOpcodeId::ExpConst,
+        ))
+    }
+
+    pub fn new_indextorou(x: ExprPtr, sub_group_bits: u32) -> Self {
+        let var_size = x.read().unwrap().var_size();
+        Self::IndexToROU(CustomOpcode::new(
+            vec![sub_group_bits],
+            vec![x],
+            var_size,
+            CustomOpcodeId::IndexToRou,
+        ))
+    }
+
+    pub fn new_constant(value: F) -> Self {
+        Self::Constant(CustomOpcode::new(
+            value.as_u32_vec(),
+            vec![],
+            F::U32_SIZE as u32,
+            CustomOpcodeId::Constant,
+        ))
     }
 
     pub fn add_ext<EF: BfField>(self, rhs: FieldScriptExpression<EF>) -> FieldScriptExpression<EF> {
         assert_eq!(F::U32_SIZE, 1);
         assert_eq!(EF::U32_SIZE, 4);
-        FieldScriptExpression::<EF>::Add(Opcode::new(
+        FieldScriptExpression::<EF>::Add(StandardOpcode::new(
             vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             EF::U32_SIZE as u32,
-            OpcodeId::Add,
+            StandardOpcodeId::Add,
         ))
     }
 
     pub fn add_base<Base: BfField>(self, rhs: FieldScriptExpression<Base>) -> Self {
         assert_eq!(F::U32_SIZE, 4);
         assert_eq!(Base::U32_SIZE, 1);
-        Self::Add(Opcode::new(
+        Self::Add(StandardOpcode::new(
             vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             F::U32_SIZE as u32,
-            OpcodeId::Add,
+            StandardOpcodeId::Add,
         ))
     }
 
     pub fn mul_ext<EF: BfField>(self, rhs: FieldScriptExpression<EF>) -> FieldScriptExpression<EF> {
         assert_eq!(F::U32_SIZE, 1);
         assert_eq!(EF::U32_SIZE, 4);
-        FieldScriptExpression::<EF>::Mul(Opcode::new(
+        FieldScriptExpression::<EF>::Mul(StandardOpcode::new(
             vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             EF::U32_SIZE as u32,
-            OpcodeId::Mul,
+            StandardOpcodeId::Mul,
         ))
     }
 
     pub fn mul_base<Base: BfField>(self, rhs: FieldScriptExpression<Base>) -> Self {
         assert_eq!(F::U32_SIZE, 4);
         assert_eq!(Base::U32_SIZE, 1);
-        Self::Mul(Opcode::new(
+        Self::Mul(StandardOpcode::new(
             vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             F::U32_SIZE as u32,
-            OpcodeId::Mul,
+            StandardOpcodeId::Mul,
         ))
     }
 
     pub fn sub_ext<EF: BfField>(self, rhs: FieldScriptExpression<EF>) -> FieldScriptExpression<EF> {
         assert_eq!(F::U32_SIZE, 1);
         assert_eq!(EF::U32_SIZE, 4);
-        FieldScriptExpression::<EF>::Sub(Opcode::new(
+        FieldScriptExpression::<EF>::Sub(StandardOpcode::new(
             vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             EF::U32_SIZE as u32,
-            OpcodeId::Sub,
+            StandardOpcodeId::Sub,
         ))
     }
 
     pub fn sub_base<Base: BfField>(self, rhs: FieldScriptExpression<Base>) -> Self {
         assert_eq!(F::U32_SIZE, 4);
         assert_eq!(Base::U32_SIZE, 1);
-        Self::Sub(Opcode::new(
+        Self::Sub(StandardOpcode::new(
             vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             F::U32_SIZE as u32,
-            OpcodeId::Sub,
+            StandardOpcodeId::Sub,
         ))
     }
 
-    pub fn exp_constant(&self, power: u32) -> Self {
-        FieldScriptExpression::ExpConstant {
-            x: Arc::new(Box::new(self.clone())),
-            y: power,
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+    pub fn exp_constant(self, power: u32) -> Self {
+        Self::new_expconst(self.as_expr_ptr(), power)
     }
 
     pub fn equal(self, rhs: Self) -> Self {
-        FieldScriptExpression::Equal(Opcode::new(
+        FieldScriptExpression::Equal(StandardOpcode::new(
             vec![self.as_expr_ptr(), rhs.as_expr_ptr()],
             F::U32_SIZE as u32,
-            OpcodeId::Equal,
+            StandardOpcodeId::Equal,
         ))
     }
 
     pub fn equal_for_f(self, rhs: F) -> Self {
-        FieldScriptExpression::Equal(Opcode::new(
+        FieldScriptExpression::Equal(StandardOpcode::new(
             vec![self.as_expr_ptr(), Self::from(rhs).as_expr_ptr()],
             F::U32_SIZE as u32,
-            OpcodeId::Equal,
+            StandardOpcodeId::Equal,
         ))
     }
 
     pub fn equal_verify(self, rhs: Self) -> Self {
-        FieldScriptExpression::EqualVerify(Opcode::new(
+        FieldScriptExpression::EqualVerify(StandardOpcode::new(
             vec![self.as_expr_ptr(), Self::from(rhs).as_expr_ptr()],
             F::U32_SIZE as u32,
-            OpcodeId::EqualVerify,
+            StandardOpcodeId::EqualVerify,
         ))
     }
 
     pub fn equal_verify_for_f(self, rhs: F) -> Self {
-        FieldScriptExpression::EqualVerify(Opcode::new(
+        FieldScriptExpression::EqualVerify(StandardOpcode::new(
             vec![self.as_expr_ptr(), Self::from(rhs).as_expr_ptr()],
             F::U32_SIZE as u32,
-            OpcodeId::EqualVerify,
+            StandardOpcodeId::EqualVerify,
         ))
     }
 
     pub fn index_to_rou(index: u32, sub_group_bits: u32) -> Self {
-        FieldScriptExpression::IndexToROU {
-            index: Arc::new(Box::new(NumScriptExpression::from(index))),
-            sub_group_bits: sub_group_bits,
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+        Self::new_indextorou(
+            NumScriptExpression::from(index).as_expr_ptr(),
+            sub_group_bits,
+        )
     }
 
     pub fn num_index_to_rou(index: NumScriptExpression, sub_group_bits: u32) -> Self {
-        FieldScriptExpression::IndexToROU {
-            index: Arc::new(Box::new(index)),
-            sub_group_bits: sub_group_bits,
-            var: StackVariable::null(),
-            debug: Cell::new(false),
-        }
+        Self::new_indextorou(index.as_expr_ptr(), sub_group_bits)
     }
 
     pub fn debug(self) -> Self {
@@ -283,7 +299,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::InputVariable { debug, .. } => {
                 debug.set(true);
             }
-            FieldScriptExpression::Constant { debug, .. } => debug.set(true),
+            FieldScriptExpression::Constant(op) => op.set_debug(),
             FieldScriptExpression::Table { debug, .. } => {
                 debug.set(true);
             }
@@ -293,12 +309,8 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Mul(op) => op.set_debug(),
             FieldScriptExpression::EqualVerify(op) => op.set_debug(),
             FieldScriptExpression::Equal(op) => op.set_debug(),
-            FieldScriptExpression::ExpConstant { debug, .. } => {
-                debug.set(true);
-            }
-            FieldScriptExpression::IndexToROU { debug, .. } => {
-                debug.set(true);
-            }
+            FieldScriptExpression::ExpConstant(op) => op.set_debug(),
+            FieldScriptExpression::IndexToROU(op) => op.set_debug(),
             FieldScriptExpression::NumToField { debug, .. } => {
                 debug.set(true);
             }
@@ -336,14 +348,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 }
                 vec![var]
             }
-            FieldScriptExpression::Constant { f, mut var, debug } => {
-                let v = f.as_u32_vec();
-                var = stack.bignumber(v);
-                if debug.get() == true {
-                    stack.debug();
-                }
-                vec![var]
-            }
+            FieldScriptExpression::Constant(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::Table {
                 table,
                 mut var,
@@ -366,50 +371,8 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Mul(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::EqualVerify(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::Equal(op) => op.express_to_script(stack, input_variables),
-            FieldScriptExpression::ExpConstant { x, y, debug, .. } => {
-                x.express_to_script(stack, input_variables);
-
-                let vars = stack
-                    .custom1(
-                        value_exp_n::<F>(log2_strict_usize(*y as usize)),
-                        1,
-                        1,
-                        0,
-                        x.var_size(),
-                        "FieldExpr::ExpConstant",
-                    )
-                    .unwrap();
-
-                if debug.get() == true {
-                    stack.debug();
-                }
-                assert_eq!(vars[0].size(), F::U32_SIZE as u32);
-                vars
-            }
-            FieldScriptExpression::IndexToROU {
-                index,
-                debug,
-                var,
-                sub_group_bits,
-            } => {
-                index.express_to_script(stack, input_variables);
-
-                let vars = stack
-                    .custom1(
-                        index_to_rou::<F>(*sub_group_bits),
-                        1,
-                        1,
-                        0,
-                        F::U32_SIZE as u32,
-                        "FieldExpr::IndexToROU",
-                    )
-                    .unwrap();
-
-                if debug.get() == true {
-                    stack.debug();
-                }
-                vars
-            }
+            FieldScriptExpression::ExpConstant(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::IndexToROU(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::NumToField { x, var, debug } => {
                 x.express_to_script(stack, input_variables);
                 let vars = stack
@@ -469,7 +432,6 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
     fn var_size(&self) -> u32 {
         F::U32_SIZE as u32
     }
-
 }
 
 impl<F: BfField> Default for FieldScriptExpression<F> {
@@ -480,11 +442,7 @@ impl<F: BfField> Default for FieldScriptExpression<F> {
 
 impl<F: BfField> From<F> for FieldScriptExpression<F> {
     fn from(value: F) -> Self {
-        Self::Constant {
-            f: value,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+        Self::new_constant(value)
     }
 }
 
@@ -499,10 +457,7 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 .debug_struct("ScriptExpression::InputVariable")
                 .field("sv", sv)
                 .finish(),
-            FieldScriptExpression::Constant { f, .. } => fm
-                .debug_struct("ScriptExpression::Constant")
-                .field("f", f)
-                .finish(),
+            FieldScriptExpression::Constant(op) => op.fmt(fm),
             FieldScriptExpression::Table { table, .. } => fm
                 .debug_struct("ScriptExpression::Table")
                 .field("table", table)
@@ -513,14 +468,8 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
             FieldScriptExpression::Neg(op) => op.fmt(fm),
             FieldScriptExpression::EqualVerify(op) => op.fmt(fm),
             FieldScriptExpression::Equal(op) => op.fmt(fm),
-            FieldScriptExpression::ExpConstant { x, y, debug, var } => fm
-                .debug_struct("ScriptExpression::Exp")
-                .field("variable", var)
-                .finish(),
-            FieldScriptExpression::IndexToROU { debug, var, .. } => fm
-                .debug_struct("ScriptExpression::Exp")
-                .field("variable", var)
-                .finish(),
+            FieldScriptExpression::ExpConstant(op) => op.fmt(fm),
+            FieldScriptExpression::IndexToROU(op) => op.fmt(fm),
             FieldScriptExpression::NumToField { debug, var, .. } => fm
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
@@ -556,11 +505,7 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                     var: var.clone(),
                 }
             }
-            FieldScriptExpression::Constant { f, debug, var } => FieldScriptExpression::Constant {
-                f: f.clone(),
-                debug: debug.clone(),
-                var: var.clone(),
-            },
+            FieldScriptExpression::Constant(op) => FieldScriptExpression::Constant(op.clone()),
             FieldScriptExpression::Table { table, debug, var } => FieldScriptExpression::Table {
                 table: table.clone(),
                 debug: debug.clone(),
@@ -574,25 +519,10 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                 FieldScriptExpression::EqualVerify(op.clone())
             }
             FieldScriptExpression::Equal(op) => FieldScriptExpression::Equal(op.clone()),
-            FieldScriptExpression::ExpConstant { x, y, debug, var } => {
-                FieldScriptExpression::ExpConstant {
-                    x: x.clone(),
-                    y: y.clone(),
-                    debug: debug.clone(),
-                    var: var.clone(),
-                }
+            FieldScriptExpression::ExpConstant(op) => {
+                FieldScriptExpression::ExpConstant(op.clone())
             }
-            FieldScriptExpression::IndexToROU {
-                index,
-                debug,
-                var,
-                sub_group_bits,
-            } => FieldScriptExpression::IndexToROU {
-                index: index.clone(),
-                debug: debug.clone(),
-                var: var.clone(),
-                sub_group_bits: *sub_group_bits,
-            },
+            FieldScriptExpression::IndexToROU(op) => FieldScriptExpression::IndexToROU(op.clone()),
             FieldScriptExpression::NumToField { x, debug, var } => {
                 FieldScriptExpression::NumToField {
                     x: x.clone(),

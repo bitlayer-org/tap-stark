@@ -28,7 +28,7 @@ use super::variable::{ValueVariable, Variable};
 use super::Expression;
 use crate::opcode::Opcode;
 use crate::script_helper::{index_to_rou, value_exp_n};
-use crate::{op_mul, Fraction, OpcodeId, ScriptExprError};
+use crate::{op_mul, Fraction, ScriptExprError, StandardOpcodeId};
 
 pub(crate) struct CopyVar {
     to_copy_var: Cell<StackVariable>,

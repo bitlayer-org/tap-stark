@@ -15,11 +15,11 @@ use scripts::u31_lib::{
     u32_to_u31, BabyBear4, BabyBearU31,
 };
 
-use crate::script_helper::value_exp_n;
+use crate::script_helper::{index_to_rou, value_exp_n};
 use crate::{CopyVar, Expression, ScriptExprError, StackVariable, Variable};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum OpcodeId {
+pub(crate) enum StandardOpcodeId {
     Add,
     Mul,
     Sub,
@@ -28,39 +28,139 @@ pub(crate) enum OpcodeId {
     EqualVerify,
 }
 
-pub(crate) type OpScriptGen = dyn Fn(
+// #[derive(Debug, Clone, Copy)]
+// pub(crate) enum ValueOpcodeId {
+//     Constant,
+//     Table,
+// }
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum CustomOpcodeId {
+    Constant,
+    ExpConst,
+    IndexToRou,
+    Lookup,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum InputOpcodeId {
+    InputVariable,
+    ValueVariable,
+}
+
+pub(crate) type CustomOpScriptGen = dyn Fn(
+        Vec<u32>,
         Vec<u32>,
         &mut StackTracker,
         Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
     ) -> Vec<StackVariable>
     + 'static;
 
-pub(crate) fn script_genreator(opid: OpcodeId) -> Box<OpScriptGen> {
+pub(crate) type StandardOpScriptGen = dyn Fn(
+        Vec<u32>,
+        &mut StackTracker,
+        Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
+    ) -> Vec<StackVariable>
+    + 'static;
+
+pub(crate) fn standard_script_genreator(opid: StandardOpcodeId) -> Box<StandardOpScriptGen> {
     match opid {
-        OpcodeId::Add => Box::new(op_add),
-        OpcodeId::Mul => Box::new(op_mul),
-        OpcodeId::Sub => Box::new(op_sub),
-        OpcodeId::Neg => Box::new(op_neg),
-        OpcodeId::EqualVerify => Box::new(op_euqalverify),
-        OpcodeId::Equal => Box::new(op_euqal),
+        StandardOpcodeId::Add => Box::new(op_add),
+        StandardOpcodeId::Mul => Box::new(op_mul),
+        StandardOpcodeId::Sub => Box::new(op_sub),
+        StandardOpcodeId::Neg => Box::new(op_neg),
+        StandardOpcodeId::EqualVerify => Box::new(op_euqalverify),
+        StandardOpcodeId::Equal => Box::new(op_euqal),
     }
 }
-fn to_copy(
-    low_var: StackVariable,
+
+pub(crate) fn custom_script_generator<F: BfField>(opid: CustomOpcodeId) -> Box<CustomOpScriptGen> {
+    match opid {
+        CustomOpcodeId::ExpConst => Box::new(op_expconst::<F>),
+        CustomOpcodeId::IndexToRou => Box::new(op_indextorou::<F>),
+        CustomOpcodeId::Constant => Box::new(op_constant),
+        CustomOpcodeId::Lookup => Box::new(op_lookup::<F>),
+    }
+}
+
+pub(crate) fn op_lookup<F: BfField>(
+    len: Vec<u32>,
+    vars_size: Vec<u32>,
     stack: &mut StackTracker,
     copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Option<StackVariable> {
-    if copy_ref.is_none() {
-        return None;
+) -> Vec<StackVariable> {
+    assert_eq!(len.len(), 1);
+    let vars = stack.custom1(
+        script! {
+            OP_PICK
+        },
+        1,
+        1,
+        0,
+        F::U32_SIZE as u32,
+        "ExprLookup_Result",
+    );
+    stack.to_altstack();
+    for _ in 0..(len[0]) {
+        stack.op_drop();
     }
-    let top_var = stack.copy_var(low_var);
-    copy_ref
-        .as_ref()
-        .unwrap()
-        .read()
-        .unwrap()
-        .set_copy_var(low_var);
-    Some(top_var)
+    let var = stack.from_altstack();
+
+    vec![var]
+}
+
+pub(crate) fn op_indextorou<F: BfField>(
+    sub_group_bits: Vec<u32>,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
+) -> Vec<StackVariable> {
+    assert_eq!(sub_group_bits.len(), 1);
+    let vars = stack
+        .custom1(
+            index_to_rou::<F>(sub_group_bits[0]),
+            1,
+            1,
+            0,
+            F::U32_SIZE as u32,
+            "FieldExpr::IndexToROU",
+        )
+        .unwrap();
+
+    assert_eq!(vars[0].size(), vars_size[0]);
+    vars
+}
+
+pub(crate) fn op_expconst<F: BfField>(
+    const_exp_power: Vec<u32>,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
+) -> Vec<StackVariable> {
+    assert_eq!(const_exp_power.len(), 1);
+    let vars = stack
+        .custom1(
+            value_exp_n::<F>(log2_strict_usize(const_exp_power[0] as usize)),
+            1,
+            1,
+            0,
+            vars_size[0],
+            "FieldExpr::ExpConstant",
+        )
+        .unwrap();
+
+    assert_eq!(vars[0].size(), vars_size[0]);
+    vars
+}
+
+pub(crate) fn op_constant(
+    value: Vec<u32>,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
+) -> Vec<StackVariable> {
+    let var = stack.bignumber(value);
+    vec![var]
 }
 
 pub(crate) fn op_euqal(
@@ -181,12 +281,14 @@ pub(crate) fn op_sub(
             .unwrap();
     }
 
-    let copy_var = to_copy(vars[0], stack, copy_ref);
-    if copy_var.is_some() {
-        vec![copy_var.unwrap()]
-    } else {
-        vars
-    }
+    vars
+
+    // let copy_var = to_copy(vars[0], stack, copy_ref);
+    // if copy_var.is_some() {
+    //     vec![copy_var.unwrap()]
+    // } else {
+    //     vars
+    // }
 }
 
 pub(crate) fn op_add(
@@ -238,12 +340,14 @@ pub(crate) fn op_add(
             .unwrap();
     }
 
-    let copy_var = to_copy(vars[0], stack, copy_ref);
-    if copy_var.is_some() {
-        vec![copy_var.unwrap()]
-    } else {
-        vars
-    }
+    vars
+
+    // let copy_var = to_copy(vars[0], stack, copy_ref);
+    // if copy_var.is_some() {
+    //     vec![copy_var.unwrap()]
+    // } else {
+    //     vars
+    // }
 }
 
 pub(crate) fn op_mul(
@@ -295,11 +399,12 @@ pub(crate) fn op_mul(
             )
             .unwrap();
     }
+    vars
 
-    let copy_var = to_copy(vars[0], stack, copy_ref);
-    if copy_var.is_some() {
-        vec![copy_var.unwrap()]
-    } else {
-        vars
-    }
+    // let copy_var = to_copy(vars[0], stack, copy_ref);
+    // if copy_var.is_some() {
+    //     vec![copy_var.unwrap()]
+    // } else {
+    //     vars
+    // }
 }
