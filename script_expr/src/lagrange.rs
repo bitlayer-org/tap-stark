@@ -25,7 +25,7 @@ pub fn selectors_at_point_expr<Ext: ExtensionField<Val> + BfField, Val: TwoAdicF
             .mul_base(FieldScriptExpression::from(shift.inverse()));
     }
     let z_h = unshifted_point.exp_power_of_2(log_n) - Ext::one(); // (x-w^0)...(x-w^n-1)
-    let z_h_expr = unshifted_point_expr.exp_constant(2 ^ log_n as u32);
+    let z_h_expr = unshifted_point_expr.clone().exp_constant(2 ^ log_n as u32);
     LagrangeSelectorsExpr {
         is_first_row: (z_h / (unshifted_point - Ext::one())).into(), // hint
         is_last_row: (z_h / (unshifted_point - Val::two_adic_generator(log_n).inverse())).into(), // hint

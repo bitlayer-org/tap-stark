@@ -30,7 +30,6 @@ pub fn verify<SC, A>(
     challenger: &mut SC::Challenger,
     proof: &Proof<SC>,
     public_values: &Vec<Val<SC>>,
-    script_managers: &mut Vec<ScriptInfo>,
 ) -> Result<(), VerificationError<PcsError<SC>>>
 where
     SC: StarkGenericConfig,
@@ -108,7 +107,6 @@ where
         ],
         opening_proof,
         challenger,
-        script_managers,
     )
     .map_err(VerificationError::InvalidOpeningArgument)?;
 

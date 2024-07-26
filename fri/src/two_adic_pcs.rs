@@ -3,14 +3,16 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::marker::PhantomData;
+use std::cell::Cell;
 
+use bitcoin_script_stack::stack::StackTracker;
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::{OpenedValues, PolynomialSpace, TwoAdicMultiplicativeCoset};
 use p3_dft::TwoAdicSubgroupDft;
 use p3_field::{
-    batch_multiplicative_inverse, cyclic_subgroup_coset_known_order, dot_product, ExtensionField,
-    Field, TwoAdicField,
+    batch_multiplicative_inverse, cyclic_subgroup_coset_known_order, dot_product, AbstractField,
+    ExtensionField, Field, TwoAdicField,
 };
 use p3_interpolation::interpolate_coset;
 use p3_matrix::bitrev::{BitReversableMatrix, BitReversalPerm};
@@ -19,24 +21,28 @@ use p3_matrix::{Dimensions, Matrix};
 use p3_maybe_rayon::prelude::*;
 use p3_util::linear_map::LinearMap;
 use p3_util::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits, VecExt};
-use primitives::bf_pcs::Pcs;
+use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
+use script_expr::{assert_field_expr, Expression, FieldScriptExpression, NumScriptExpression};
 use script_manager::script_info::ScriptInfo;
-use serde::{Deserialize, Serialize};
-use tracing::{info_span, instrument};
+use tracing::{debug_span, info_span, instrument};
 
 use crate::error::{self, FriError};
 use crate::fri_scripts::pcs::{accmulator_script, ro_mul_x_minus_z_script};
-use crate::{prover, verifier, FriConfig, FriGenericConfig, FriProof};
-
+use crate::{
+    prover, script_verifier, verifier, FriConfig, FriGenericConfig, FriGenericConfigWithExpr,
+    FriProof,
+};
 #[derive(Debug)]
 pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     dft: Dft,
     mmcs: InputMmcs,
     fri: FriConfig<FriMmcs>,
+    with_sript: bool,
+    // expr: Cell<Expr>,
     _phantom: PhantomData<Val>,
 }
 
@@ -46,8 +52,13 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
             dft,
             mmcs,
             fri,
+            with_sript: false,
             _phantom: PhantomData,
         }
+    }
+
+    fn with_script(&self) -> bool {
+        self.with_sript
     }
 }
 
@@ -95,7 +106,9 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
             .shifted_powers(subgroup_start)
             .take(arity)
             .collect_vec();
+
         reverse_slice_index_bits(&mut xs);
+        assert!(!(xs[1] - xs[0]).is_zero());
         assert_eq!(log_arity, 1, "can only interpolate two points for now");
         // interpolate and evaluate at beta
         e0 + (beta - xs[0]) * (e1 - e0) / (xs[1] - xs[0])
@@ -132,6 +145,65 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
                 (one_half + power) * lo + (one_half - power) * hi
             })
             .collect()
+    }
+}
+
+impl<F: BfField, InputProof, InputError: Debug>
+    FriGenericConfigWithExpr<F, FieldScriptExpression<F>>
+    for TwoAdicFriGenericConfig<InputProof, InputError>
+{
+    fn fold_row_with_expr(
+        &self,
+        folded_eval: FieldScriptExpression<F>,
+        sibling_eval: FieldScriptExpression<F>,
+        x: FieldScriptExpression<F>, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
+        x_hint: F,
+        _point_index: usize,
+        index_sibling: usize,
+        beta: FieldScriptExpression<F>,
+    ) -> (FieldScriptExpression<F>, FieldScriptExpression<F>) {
+        let arity = 2;
+        let log_arity = 1;
+        // If performance critical, make this API stateful to avoid this
+        // This is a bit more math than is necessary, but leaving it here
+        // in case we want higher arity in the future
+
+        let rev_x_hint = x_hint * F::two_adic_generator(log_arity);
+        let mut xs_hint = vec![x_hint; 2];
+        xs_hint[index_sibling % 2] = rev_x_hint;
+        let xs1_minus_xs0_inverse_hint = F::one() / (xs_hint[1] - xs_hint[0]);
+        let expect_res = xs1_minus_xs0_inverse_hint * (xs_hint[1] - xs_hint[0]);
+        assert_eq!(expect_res, F::one());
+        println!("xs1_minus_xs0_inverse {}", xs1_minus_xs0_inverse_hint);
+        println!("x minius {}", xs_hint[1] - xs_hint[0]);
+
+        let mut xs = vec![x.clone(), x.clone()];
+        let rev_x = x.clone() * F::two_adic_generator(log_arity);
+        // let rev_x = FieldScriptExpression::from(x_hint) * F::two_adic_generator(log_arity);
+        xs[index_sibling % 2] = rev_x;
+        assert_field_expr(xs[0].clone().debug(), xs_hint[0]);
+        assert_field_expr(xs[1].clone().debug(), xs_hint[1]);
+        println!("xs_hint[0] {}", xs_hint[0]);
+        println!("xs_hint[1] {}", xs_hint[1]);
+
+        let mut evals = vec![folded_eval.clone(), folded_eval.clone()];
+        evals[index_sibling % 2] = sibling_eval;
+        assert_eq!(log_arity, 1, "can only interpolate two points for now");
+        // interpolate and evaluate at betawo
+        let next_folded = evals[0].clone()
+            + (beta - xs[0].clone())
+                * (evals[1].clone() - evals[0].clone())
+                * xs1_minus_xs0_inverse_hint;
+
+        // let xs_minus = FieldScriptExpression::from(xs_hint[1]) - xs[0].clone().debug();
+        // let xs_minus = xs[1].clone().debug() - FieldScriptExpression::from(xs_hint[0]).debug();
+        let xs_minus = -xs[0].clone().debug() + xs[1].clone().debug();
+        assert_field_expr(xs_minus.clone().debug(), xs_hint[1] - xs_hint[0]);
+        let verify_hint = xs_minus * FieldScriptExpression::<F>::from(xs1_minus_xs0_inverse_hint);
+
+        verify_hint.set_debug();
+        assert_field_expr(verify_hint.clone(), F::one());
+        (next_folded, verify_hint)
     }
 }
 
@@ -366,7 +438,6 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-        script_manager: &mut Vec<ScriptInfo>,
     ) -> Result<(), Self::Error> {
         // Batch combination challenge
         let alpha: Challenge = challenger.sample();
@@ -385,8 +456,7 @@ where
             &self.fri,
             proof,
             &fri_challenges,
-            script_manager,
-            |index, input_proof, sm| {
+            |index, input_proof| {
                 // TODO: separate this out into functions
 
                 // log_height -> (alpha_pow, reduced_opening)
@@ -430,7 +500,6 @@ where
 
                         for (z, ps_at_z) in mat_points_and_values {
                             let mut acc = Challenge::zero();
-                            let prev_alpha_pow = *alpha_pow;
                             for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
                                 //
                                 // Compute the value of ro:
@@ -444,23 +513,8 @@ where
                                 acc += *alpha_pow * (-p_at_z + p_at_x);
                                 *alpha_pow *= alpha;
                             }
-                            let final_alpha_pow = *alpha_pow;
-                            let prev_ro = *ro;
-                            let final_ro = prev_ro + acc / (-*z + x);
+                            let final_ro = *ro + acc / (-*z + x);
                             *ro = final_ro;
-
-                            let compute_acc = accmulator_script(
-                                alpha,
-                                prev_alpha_pow,
-                                mat_opening.clone(),
-                                ps_at_z.clone(),
-                                final_alpha_pow,
-                                acc.clone(),
-                            );
-                            let compute_ro =
-                                ro_mul_x_minus_z_script(prev_ro, final_ro, x.clone(), *z, acc);
-                            sm.push(compute_acc);
-                            sm.push(compute_ro);
                         }
                     }
                 }
@@ -476,6 +530,141 @@ where
         .expect("fri err");
 
         Ok(())
+    }
+}
+
+impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger>
+    PcsExpr<Challenge, Challenger, FieldScriptExpression<Challenge>>
+    for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
+where
+    Val: BfField,
+    Dft: TwoAdicSubgroupDft<Val>,
+    InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>,
+    FriMmcs: BFMmcs<Challenge, Proof = CommitProof<Challenge>>,
+    Challenge: BfField + ExtensionField<Val>,
+    Challenger: CanObserve<FriMmcs::Commitment> + CanSample<Challenge> + BfGrindingChallenger,
+{
+    fn gererate_verify_expr(
+        &self,
+        // For each round:
+        rounds: Vec<(
+            Self::Commitment,
+            // for each matrix:
+            Vec<(
+                // its domain,
+                Self::Domain,
+                // for each point:
+                Vec<(
+                    // the point,
+                    Challenge,
+                    // values at the point
+                    Vec<Challenge>,
+                )>,
+            )>,
+        )>,
+        proof: &Self::Proof,
+        challenger: &mut Challenger,
+    ) -> Result<Vec<FieldScriptExpression<Challenge>>, Self::Error> {
+        // Batch combination challenge
+        let alpha: Challenge = challenger.sample();
+
+        let log_global_max_height = proof.commit_phase_commits.len() + self.fri.log_blowup;
+
+        let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
+            TwoAdicFriGenericConfig(PhantomData);
+
+        let fri_challenges =
+            verifier::verify_shape_and_sample_challenges(&g, &self.fri, proof, challenger)
+                .expect("failed verify shape and sample");
+
+        let fri_exprs = script_verifier::bf_verify_challenges(
+            &g,
+            &self.fri,
+            proof,
+            &fri_challenges,
+            |index, input_proof| {
+                // TODO: separate this out into functions
+
+                let mut reduced_openings_expr = BTreeMap::<
+                    usize,
+                    (
+                        FieldScriptExpression<Challenge>,
+                        FieldScriptExpression<Challenge>,
+                    ),
+                >::new();
+
+                for (batch_opening, (batch_commit, mats)) in izip!(input_proof, &rounds) {
+                    let batch_heights = mats
+                        .iter()
+                        .map(|(domain, _)| domain.size() << self.fri.log_blowup)
+                        .collect_vec();
+
+                    let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
+                    let log_batch_max_height = log2_strict_usize(*batch_max_height);
+                    let bits_reduced = log_global_max_height - log_batch_max_height;
+                    let reduced_index = index >> bits_reduced;
+
+                    self.mmcs.verify_batch(
+                        &batch_opening.opened_values,
+                        &batch_opening.opening_proof,
+                        batch_commit,
+                    )?;
+
+                    // mat_opening  places vec![p_1(k),p_2(k)]
+                    // mat_points_and_values places vec![  vec![(z_1,p_1(z_1)),(z_2,p_1(z_2))],  vec![(z_3,p_2(z_3))]]
+                    for (mat_opening, (mat_domain, mat_points_and_values)) in
+                        izip!(&batch_opening.opened_values, mats)
+                    {
+                        let log_height = log2_strict_usize(mat_domain.size()) + self.fri.log_blowup;
+
+                        let bits_reduced = log_global_max_height - log_height;
+                        let rev_reduced_index = reverse_bits_len(index >> bits_reduced, log_height);
+
+                        // todo: this should be field script expression
+                        let x: Val = Val::generator()
+                            * Val::two_adic_generator(log_height).exp_u64(rev_reduced_index as u64); // calculate k
+
+                        let (alpha_pow_expr, ro_expr) =
+                            reduced_openings_expr.entry(log_height).or_insert((
+                                FieldScriptExpression::<Challenge>::one(),
+                                FieldScriptExpression::<Challenge>::zero(),
+                            ));
+                        for (z, ps_at_z) in mat_points_and_values {
+                            let mut acc = FieldScriptExpression::from(Challenge::zero());
+                            // let prev_alpha_pow = *alpha_pow_expr;
+                            for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
+                                //
+                                // Compute the value of ro:
+                                //
+                                // Original formula:
+                                //    ro = alpha^0 * (p(x)_{0} - p(z)_{0}) / (x - z) + alpha^1 * (p(x)_{1} -p(z)_{1}) / (x - z) + ... + alpha^i * (p(x)_{i} -p(z)_{i}) / (x - z)
+                                //
+                                //  Optimized formula:
+                                //    ro = (alpha^0 * (p(x)_{0} - p(z)_{0}) + alpha^1 * (p(x)_{1} -p(z)_{1}) + ... + alpha^i * (p(x)_{i} -p(z)_{i})) / (x - z)
+                                //
+                                acc += alpha_pow_expr.clone()
+                                    * (FieldScriptExpression::<Challenge>::from(-p_at_z)
+                                        .add_base(FieldScriptExpression::<Val>::from(p_at_x)));
+                                *alpha_pow_expr *= alpha;
+                            }
+                            *ro_expr = ro_expr.clone()
+                                + acc * FieldScriptExpression::from((-*z + x).inverse());
+                            // using 1/x-z as hint
+                        }
+                    }
+                }
+
+                // Return reduced openings descending by log_height.
+                Ok(reduced_openings_expr
+                    .into_iter()
+                    .rev()
+                    .map(|(log_height, (_alpha_pow, ro))| (log_height, ro))
+                    .collect())
+            },
+        )
+        .expect("fri err");
+
+        Ok(fri_exprs)
     }
 }
 
@@ -522,4 +711,11 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_for_pcs_expr() {}
 }

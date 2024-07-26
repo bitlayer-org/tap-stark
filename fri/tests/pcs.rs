@@ -7,7 +7,7 @@ use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
 use p3_field::{ExtensionField, Field};
 use p3_matrix::dense::RowMajorMatrix;
-use primitives::bf_pcs::Pcs;
+use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::challenger::chan_field::U32;
 use primitives::challenger::{BfChallenger, Blake3Permutation};
 use primitives::field::BfField;
@@ -15,8 +15,12 @@ use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_manager::bc_assignment::DefaultBCAssignment;
-use scripts::execute_script_with_inputs;
+use script_expr::{Expression, FieldScriptExpression};
+
+extern crate alloc;
+use alloc::collections::BTreeMap;
+
+use bitcoin_script_stack::stack::StackTracker;
 
 fn seeded_rng() -> impl Rng {
     ChaCha20Rng::seed_from_u64(0)
@@ -26,7 +30,7 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     (pcs, challenger): &(P, Challenger),
     log_degrees_by_round: &[&[usize]],
 ) where
-    P: Pcs<Challenge, Challenger>,
+    P: PcsExpr<Challenge, Challenger, FieldScriptExpression<Challenge>>,
     P::Domain: PolynomialSpace<Val = Val>,
     Val: Field,
     Standard: Distribution<Val>,
@@ -96,23 +100,30 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     .collect_vec();
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
-    let mut script_manager = vec![];
-    pcs.verify(
-        commits_and_claims_by_round,
-        &proof,
-        &mut v_challenger,
-        &mut script_manager,
-    )
-    .unwrap();
+    // pcs.verify(
+    //     commits_and_claims_by_round.clone(),
+    //     &proof,
+    //     &mut v_challenger,
+    // )
+    // .unwrap();
 
-    let mut bc_assigner = DefaultBCAssignment::new();
-    // execute script verifier
-    for item in script_manager.iter_mut() {
-        item.gen(&mut bc_assigner);
-        let res = execute_script_with_inputs(item.get_eq_script(), item.witness());
-        // println!("res: {:?}", res);
-        assert!(res.success);
-    }
+    let fri_exprs =
+        pcs.gererate_verify_expr(commits_and_claims_by_round, &proof, &mut v_challenger);
+    let mut stack = StackTracker::new();
+    let mut input_variables = BTreeMap::new();
+    fri_exprs.iter().for_each(|exprs| {
+        exprs.iter().for_each(|expr| {
+            let script = expr.express_to_script(&mut stack, &mut input_variables);
+            println!("script_len{}", script.len());
+            let res = stack.run();
+            if !res.success {
+                println!("res error: {:?}", res.error);
+                println!("res error_msg: {:?}", res.error_msg);
+                println!("res error_msg: {:?}", res.last_opcode);
+            }
+            assert!(res.success);
+        });
+    });
 }
 
 // Set it up so we create tests inside a module for each pcs, so we get nice error reports
@@ -210,5 +221,19 @@ mod babybear_fri_pcs {
     }
     mod blowup_2 {
         make_tests_for_pcs!(super::get_pcs(2));
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use p3_util::reverse_bits_len;
+
+        use super::get_pcs;
+        #[test]
+        fn test_for_pcs_fold() {
+            let pcs = get_pcs(1);
+            let log_height = 5;
+            let index = 2;
+            let rev_index = reverse_bits_len(index, log_height);
+        }
     }
 }

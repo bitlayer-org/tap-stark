@@ -7,6 +7,7 @@ use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::sync::RwLock;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use primitives::field::BfField;
@@ -14,7 +15,7 @@ use scripts::treepp::*;
 
 use super::variable::{ValueVariable, Variable};
 use super::{Expression, FieldScriptExpression};
-use crate::script_helper::value_to_bits_format;
+use crate::script_helper::{reverse_bits_len_script_with_input, value_to_bits_format};
 
 pub enum NumScriptExpression {
     InputVariable {
@@ -146,9 +147,22 @@ impl NumScriptExpression {
             var: StackVariable::null(),
         }
     }
+
+    pub fn index_to_rou<F: BfField>(self, sub_group_bits: u32) -> FieldScriptExpression<F> {
+        FieldScriptExpression::<F>::num_index_to_rou(self, sub_group_bits)
+    }
+
+    pub fn debug(self) -> Self {
+        self.set_debug();
+        self
+    }
 }
 
 impl Expression for NumScriptExpression {
+    fn as_expr_ptr(self) -> Arc<RwLock<Box<dyn Expression>>> {
+        Arc::new(RwLock::new(Box::new(self)))
+    }
+
     fn set_debug(&self) {
         match self {
             NumScriptExpression::InputVariable { debug, .. } => {
@@ -192,7 +206,7 @@ impl Expression for NumScriptExpression {
         &self,
         stack: &mut StackTracker,
         input_variables: &BTreeMap<Variable, StackVariable>,
-    ) -> Script {
+    ) -> Vec<StackVariable> {
         match self {
             NumScriptExpression::InputVariable { sv, debug, mut var } => {
                 let intput_var = input_variables.get(sv).unwrap();
@@ -203,6 +217,7 @@ impl Expression for NumScriptExpression {
                 if sv.get_var_size().is_some() {
                     assert_eq!(var.size(), sv.get_var_size().unwrap());
                 }
+                vec![var]
             }
             NumScriptExpression::Constant {
                 values,
@@ -213,6 +228,7 @@ impl Expression for NumScriptExpression {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![var]
             }
             NumScriptExpression::Add {
                 x,
@@ -230,6 +246,7 @@ impl Expression for NumScriptExpression {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![var]
             }
             NumScriptExpression::Sub {
                 x,
@@ -247,6 +264,7 @@ impl Expression for NumScriptExpression {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![var]
             }
             NumScriptExpression::Neg { x, debug, mut var } => {
                 x.express_to_script(stack, input_variables); // F
@@ -257,6 +275,7 @@ impl Expression for NumScriptExpression {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![var]
             }
             NumScriptExpression::Mul {
                 x,
@@ -266,6 +285,7 @@ impl Expression for NumScriptExpression {
             } => {
                 // todo: support mul
                 assert_eq!(0, 1);
+                vec![]
             }
             NumScriptExpression::EqualVerify { x, y, debug } => {
                 x.express_to_script(stack, input_variables); // F
@@ -278,6 +298,7 @@ impl Expression for NumScriptExpression {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![]
             }
             NumScriptExpression::Equal {
                 x,
@@ -295,16 +316,18 @@ impl Expression for NumScriptExpression {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![var]
             }
             NumScriptExpression::Double { x, debug, mut var } => {
                 assert_eq!(x.var_size(), 1);
-                x.express_to_script(stack, input_variables); // F
-                stack.copy_var(x.get_var().unwrap()[0].clone());
-                stack.op_add();
+                let vars = x.express_to_script(stack, input_variables); // F
+                stack.copy_var(vars[0]);
+                let var = stack.op_add();
 
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![var]
             }
             NumScriptExpression::Square { x, debug, mut var } => {
                 x.express_to_script(stack, input_variables); // F
@@ -316,6 +339,7 @@ impl Expression for NumScriptExpression {
                 if debug.get() == true {
                     stack.debug();
                 }
+                vec![]
             }
             NumScriptExpression::ToBits {
                 x,
@@ -335,19 +359,19 @@ impl Expression for NumScriptExpression {
                         "NumExpr::ToBits",
                     )
                     .unwrap();
-                var = vars[0];
 
                 if debug.get() == true {
                     stack.debug();
                 }
+                vars
             }
             NumScriptExpression::ToBitsVec { x, debug, .. } => {
                 // todo: support ToBitsVec
                 assert_eq!(1, 2);
                 // var = stack.custom1(value_to_bits_format(*bits_len), x.var_size(), *bits_len, 0, 1, "NumExpr::ToBitsVec").unwrap();
+                vec![]
             }
-        };
-        stack.get_script()
+        }
     }
 
     fn var_size(&self) -> u32 {
@@ -355,26 +379,6 @@ impl Expression for NumScriptExpression {
             NumScriptExpression::ToBits { bits_len, .. } => *bits_len,
             NumScriptExpression::ToBitsVec { .. } => 1,
             _ => 1,
-        }
-    }
-
-    fn get_var(&self) -> Option<Vec<&StackVariable>> {
-        match self {
-            NumScriptExpression::InputVariable { var, .. } => Some(vec![var]),
-            NumScriptExpression::Constant { var, .. } => Some(vec![var]),
-            NumScriptExpression::Add { var, .. } => Some(vec![var]),
-            NumScriptExpression::Sub { var, .. } => Some(vec![var]),
-            NumScriptExpression::Neg { var, .. } => Some(vec![var]),
-            NumScriptExpression::Mul { var, .. } => Some(vec![var]),
-            NumScriptExpression::EqualVerify { .. } => None,
-            NumScriptExpression::Equal { var, .. } => Some(vec![var]),
-            NumScriptExpression::Double { var, .. } => Some(vec![var]),
-            NumScriptExpression::Square { var, .. } => Some(vec![var]),
-            NumScriptExpression::ToBits { var, .. } => Some(vec![var]),
-            NumScriptExpression::ToBitsVec { var, .. } => {
-                let vec = var.iter().map(|item| item).collect();
-                Some(vec)
-            }
         }
     }
 }
