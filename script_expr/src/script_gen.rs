@@ -28,12 +28,6 @@ pub(crate) enum StandardOpcodeId {
     EqualVerify,
 }
 
-// #[derive(Debug, Clone, Copy)]
-// pub(crate) enum ValueOpcodeId {
-//     Constant,
-//     Table,
-// }
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum CustomOpcodeId {
     Constant,

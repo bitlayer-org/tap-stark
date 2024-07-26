@@ -271,8 +271,11 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Mul(op) => op.to_copy(),
             FieldScriptExpression::Sub(op) => op.to_copy(),
             FieldScriptExpression::Neg(op) => op.to_copy(),
+            FieldScriptExpression::Constant(op) => op.to_copy(),
+            FieldScriptExpression::ExpConstant(op) => op.to_copy(),
+            FieldScriptExpression::IndexToROU(op) => op.to_copy(),
             FieldScriptExpression::Equal(op) => op.to_copy(),
-            _ => panic!("to_copy is only for Mul"),
+            _ => panic!("no support to_copy()"),
         }
     }
 
@@ -1378,6 +1381,98 @@ mod tests2 {
 
     #[test]
     fn test_field_compiler_optimize() {
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a_value = BabyBear::two();
+            let b_value = BabyBear::one();
+            let c_value = BabyBear::from_canonical_u32(13232);
+            let d_value = a_value + b_value;
+            let e_value = d_value * c_value;
+            let f_value = e_value * d_value;
+            let g_value = f_value * e_value;
+            let h_value = g_value * e_value;
+
+            let a = FieldScriptExpression::from(a_value);
+            let b = FieldScriptExpression::from(b_value);
+
+            let c = FieldScriptExpression::from(c_value);
+            let d = a + b;
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                d_share.clone(),
+                c.as_expr_ptr(),
+            );
+
+            let e_share = e.as_expr_ptr();
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_share.clone(),
+                d_share.clone(),
+            );
+            let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_share.clone(),
+                f.as_expr_ptr(),
+            );
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                g.as_expr_ptr(),
+                e_share.clone(),
+            );
+
+            let equal = h.equal_for_f(h_value);
+            equal.express_to_script(&mut stack, &bmap);
+            let res = stack.run();
+            // println!("{:?}", e_share.clone().read().unwrap().get_var());
+            println!("script len {:?}", stack.get_script().len());
+            assert!(res.success);
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a_value = BabyBear::two();
+            let b_value = BabyBear::one();
+            let c_value = BabyBear::from_canonical_u32(13232);
+            let d_value = a_value + b_value;
+            let e_value = d_value * c_value;
+            let f_value = e_value * d_value;
+            let g_value = f_value * e_value;
+            let h_value = g_value * e_value;
+
+            let a = FieldScriptExpression::from(a_value);
+            let b = FieldScriptExpression::from(b_value);
+
+            let c = FieldScriptExpression::from(c_value);
+            let d = a + b;
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                d_share.clone(),
+                c.as_expr_ptr(),
+            );
+            let e_copy = e.to_copy().unwrap();
+            let e_copy_copy = e_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_copy_copy.clone(),
+                d_share.clone(),
+            );
+            let g =
+                FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(e_copy, f.as_expr_ptr());
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e.as_expr_ptr(),
+                g.as_expr_ptr(),
+            );
+
+            let equal = h.equal_for_f(h_value);
+            equal.express_to_script(&mut stack, &bmap);
+            let res = stack.run();
+            println!("script len {:?}", stack.get_script().len());
+            assert!(res.success);
+        }
+    }
+
+
+
+    #[test]
+    fn test_constant_copy() {
         {
             let bmap = BTreeMap::new();
             let mut stack = StackTracker::new();
