@@ -171,13 +171,13 @@ impl<F: BfField, InputProof, InputError: Debug>
         let rev_x_hint = x_hint * F::two_adic_generator(log_arity);
         let mut xs_hint = vec![x_hint; 2];
         xs_hint[index_sibling % 2] = rev_x_hint;
-        let xs1_minus_xs0_inverse_hint = F::one()/(xs_hint[1] - xs_hint[0]);
+        let xs1_minus_xs0_inverse_hint = F::one() / (xs_hint[1] - xs_hint[0]);
         let expect_res = xs1_minus_xs0_inverse_hint * (xs_hint[1] - xs_hint[0]);
-        assert_eq!(expect_res,F::one());
+        assert_eq!(expect_res, F::one());
         println!("xs1_minus_xs0_inverse {}", xs1_minus_xs0_inverse_hint);
         println!("x minius {}", xs_hint[1] - xs_hint[0]);
 
-        let mut xs = vec![x.clone(),x.clone()];
+        let mut xs = vec![x.clone(), x.clone()];
         let rev_x = x.clone() * F::two_adic_generator(log_arity);
         // let rev_x = FieldScriptExpression::from(x_hint) * F::two_adic_generator(log_arity);
         xs[index_sibling % 2] = rev_x;
@@ -186,7 +186,7 @@ impl<F: BfField, InputProof, InputError: Debug>
         println!("xs_hint[0] {}", xs_hint[0]);
         println!("xs_hint[1] {}", xs_hint[1]);
 
-        let mut evals = vec![folded_eval.clone(),folded_eval.clone()];
+        let mut evals = vec![folded_eval.clone(), folded_eval.clone()];
         evals[index_sibling % 2] = sibling_eval;
         assert_eq!(log_arity, 1, "can only interpolate two points for now");
         // interpolate and evaluate at betawo
@@ -197,10 +197,9 @@ impl<F: BfField, InputProof, InputError: Debug>
 
         // let xs_minus = FieldScriptExpression::from(xs_hint[1]) - xs[0].clone().debug();
         // let xs_minus = xs[1].clone().debug() - FieldScriptExpression::from(xs_hint[0]).debug();
-        let xs_minus =  -xs[0].clone().debug() + xs[1].clone().debug();
-        assert_field_expr(xs_minus.clone().debug(),xs_hint[1] - xs_hint[0] );
-        let verify_hint =xs_minus
-            * FieldScriptExpression::<F>::from(xs1_minus_xs0_inverse_hint);
+        let xs_minus = -xs[0].clone().debug() + xs[1].clone().debug();
+        assert_field_expr(xs_minus.clone().debug(), xs_hint[1] - xs_hint[0]);
+        let verify_hint = xs_minus * FieldScriptExpression::<F>::from(xs1_minus_xs0_inverse_hint);
 
         verify_hint.set_debug();
         assert_field_expr(verify_hint.clone(), F::one());
@@ -714,13 +713,9 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
         .collect()
 }
 
-
 #[cfg(test)]
-mod tests{
+mod tests {
 
     #[test]
-    fn test_for_pcs_expr(){
-
-        
-    }
+    fn test_for_pcs_expr() {}
 }

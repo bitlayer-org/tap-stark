@@ -13,7 +13,9 @@ use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
-use script_expr::{assert_field_expr, run_expr, Expression, FieldScriptExpression, NumScriptExpression};
+use script_expr::{
+    assert_field_expr, run_expr, Expression, FieldScriptExpression, NumScriptExpression,
+};
 use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
 use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
@@ -105,7 +107,7 @@ where
         let challenge_point: Point<F> = poins_leaf.get_point_by_index(point_index).unwrap().clone();
 
         if log_folded_height < log_max_height - 1 {
-            assert_field_expr(folded_eval.clone(),challenge_point.y);
+            assert_field_expr(folded_eval.clone(), challenge_point.y);
         }
         let sibling_point: Point<F> = poins_leaf
             .get_point_by_index(index_sibling)
@@ -144,8 +146,14 @@ where
             .verify_taptree(step, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
-        println!("=================log_folded_height:{} ====index:{}======rev_index:{}=====", log_folded_height,index,rev_index);
-        println!("=================index_sibling:{} ====point_index:{}", index_sibling,point_index);
+        println!(
+            "=================log_folded_height:{} ====index:{}======rev_index:{}=====",
+            log_folded_height, index, rev_index
+        );
+        println!(
+            "=================index_sibling:{} ====point_index:{}",
+            index_sibling, point_index
+        );
         (folded_eval, _) = g.fold_row_with_expr(
             folded_eval.clone(),
             sibling_point.y.into(),

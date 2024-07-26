@@ -224,12 +224,12 @@ mod babybear_fri_pcs {
     }
 
     #[cfg(test)]
-    mod tests{
+    mod tests {
         use p3_util::reverse_bits_len;
 
         use super::get_pcs;
         #[test]
-        fn test_for_pcs_fold(){
+        fn test_for_pcs_fold() {
             let pcs = get_pcs(1);
             let log_height = 5;
             let index = 2;
@@ -237,5 +237,3 @@ mod babybear_fri_pcs {
         }
     }
 }
-
-
