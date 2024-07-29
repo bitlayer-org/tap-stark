@@ -83,11 +83,7 @@ pub enum FieldScriptExpression<F: BfField> {
         var: StackVariable,
         debug: Cell<bool>,
     },
-    Add16 {
-        x: Vec<Arc<Box<dyn Expression>>>,
-        var: StackVariable,
-        debug: Cell<bool>,
-    } 
+    Add16 (CustomOpcode<16, 1, F>)
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
@@ -112,7 +108,18 @@ impl<F: BfField> FieldScriptExpression<F> {
             StandardOpcodeId::Mul,
         ))
     }
-
+    pub(crate) fn new_add_from_expr_ptr(x: ExprPtr, y: ExprPtr) -> Self {
+        let var_size = x
+            .read()
+            .unwrap()
+            .var_size()
+            .max(y.read().unwrap().var_size());
+        Self::Add(StandardOpcode::new(
+            vec![x, y],
+            var_size,
+            StandardOpcodeId::Add,
+        ))
+    }
     pub(crate) fn new_add(x: Self, y: Self) -> Self {
         let var_size = x.var_size().max(y.var_size());
         Self::Add(StandardOpcode::new(
@@ -166,6 +173,16 @@ impl<F: BfField> FieldScriptExpression<F> {
             vec![],
             F::U32_SIZE as u32,
             CustomOpcodeId::Constant,
+        ))
+    }
+
+    pub(crate) fn new_add_16(xs: Vec<ExprPtr>) -> Self {
+        let var_size = xs[0].read().unwrap().var_size();
+        Self::Add16(CustomOpcode::new(
+            vec![16 as u32],
+            xs,
+            var_size,
+            CustomOpcodeId::Add16,
         ))
     }
 
@@ -286,6 +303,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
     fn to_copy(&self) -> Result<ExprPtr, ScriptExprError> {
         match self {
             FieldScriptExpression::Add(op) => op.to_copy(),
+            FieldScriptExpression::Add16(op) => op.to_copy(),
             FieldScriptExpression::Mul(op) => op.to_copy(),
             FieldScriptExpression::Sub(op) => op.to_copy(),
             FieldScriptExpression::Neg(op) => op.to_copy(),
@@ -333,9 +351,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Exp7 { debug, .. } => {
                 debug.set(true);
             }
-            FieldScriptExpression::Add16 { debug, .. } => {
-                debug.set(true);
-            }
+            FieldScriptExpression::Add16(op) => op.set_debug(),
         };
     }
 
@@ -392,6 +408,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Equal(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::ExpConstant(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::IndexToROU(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::Add16(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::NumToField { x, var, debug } => {
                 x.express_to_script(stack, input_variables);
                 let vars = stack
@@ -487,36 +504,36 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 }
                 vec![var]
             }
-            FieldScriptExpression::Add16 { 
-                x,
-                debug,
-                mut var,
-            } => {
-                let len = x.len();
-                for expr in x {
-                    expr.express_to_script(stack, input_variables);
-                }
-                let vars = stack
-                .custom1(
-                    script! {
-                        for _ in 0..len - 1 {
-                            if F::U32_SIZE == 1{
-                                {u31_add::<BabyBearU31>()}
-                            }else{
-                                {u31ext_add::<BabyBear4>()}
-                            }
-                        }
-                    },
-                    len as u32,
-                    1,
-                    0,
-                    F::U32_SIZE as u32,
-                    "ExprADD_Result",
-                )
-                .unwrap();
-                var = vars[0];
-                vec![var]
-            }
+            // FieldScriptExpression::Add16 { 
+            //     x,
+            //     debug,
+            //     mut var,
+            // } => {
+            //     let len = x.len();
+            //     for expr in x {
+            //         expr.express_to_script(stack, input_variables);
+            //     }
+            //     let vars = stack
+            //     .custom1(
+            //         script! {
+            //             for _ in 0..len - 1 {
+            //                 if F::U32_SIZE == 1{
+            //                     {u31_add::<BabyBearU31>()}
+            //                 }else{
+            //                     {u31ext_add::<BabyBear4>()}
+            //                 }
+            //             }
+            //         },
+            //         len as u32,
+            //         1,
+            //         0,
+            //         F::U32_SIZE as u32,
+            //         "ExprADD_Result",
+            //     )
+            //     .unwrap();
+            //     var = vars[0];
+            //     vec![var]
+            // }
         }
     }
 
@@ -561,6 +578,7 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
             FieldScriptExpression::Equal(op) => op.fmt(fm),
             FieldScriptExpression::ExpConstant(op) => op.fmt(fm),
             FieldScriptExpression::IndexToROU(op) => op.fmt(fm),
+            FieldScriptExpression::Add16(op) => op.fmt(fm),
             FieldScriptExpression::NumToField { debug, var, .. } => fm
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
@@ -588,10 +606,10 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 .debug_struct("ScriptExpression::Exp7")
                 .field("variable", var)
                 .finish(),
-            FieldScriptExpression::Add16 { x, debug, var } => fm
-                .debug_struct("ScriptExpression::Add16")
-                .field("variable", var)
-                .finish(),
+            // FieldScriptExpression::Add16 { x, debug, var } => fm
+            //     .debug_struct("ScriptExpression::Add16")
+            //     .field("variable", var)
+            //     .finish(),
         }
     }
 }
@@ -631,6 +649,7 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                 FieldScriptExpression::ExpConstant(op.clone())
             }
             FieldScriptExpression::IndexToROU(op) => FieldScriptExpression::IndexToROU(op.clone()),
+            FieldScriptExpression::Add16(op) => FieldScriptExpression::Add16(op.clone()),
             FieldScriptExpression::NumToField { x, debug, var } => {
                 FieldScriptExpression::NumToField {
                     x: x.clone(),
@@ -669,13 +688,13 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                     var: var.clone(),
                 }
             },
-            FieldScriptExpression::Add16 { x, debug, var } => {
-                FieldScriptExpression::Add16 {
-                    x: x.clone(),
-                    debug: debug.clone(),
-                    var: var.clone(),
-                }
-            }
+            // FieldScriptExpression::Add16 { x, debug, var } => {
+            //     FieldScriptExpression::Add16 {
+            //         x: x.clone(),
+            //         debug: debug.clone(),
+            //         var: var.clone(),
+            //     }
+            // }
         }
     }
 }
@@ -905,12 +924,8 @@ impl<F: BfField> FieldScriptExpression<F> {
          }
     }
     pub fn add_long(rhs: &[Self]) -> Self {
-        let vec = rhs.iter().map(|x| Arc::new(Box::new(x.clone()) as Box<_>)).collect::<Vec<_>>();
-        Self::Add16 { 
-            x: vec, 
-            debug: Cell::new(false),
-            var: StackVariable::null() 
-        }
+        let vec = rhs.iter().map(|x| x.clone().as_expr_ptr()).collect::<Vec<_>>();
+        Self::new_add_16(vec)
     }
 }
 
@@ -1567,6 +1582,24 @@ mod tests {
     }
 
     #[test]
+    fn test_add_16() {
+        let mut vec = vec![];
+        for _ in 0..16 {
+            vec.push(FieldScriptExpression::from(BabyBear::one()));
+        }
+        let sum = FieldScriptExpression::add_long(&vec);
+        let mut stack = StackTracker::new();
+        let bmap = BTreeMap::new();
+        let script = sum.express_to_script(&mut stack, &bmap);
+        stack.number(16 as u32);
+
+        stack.custom(u31_equalverify(), 2, false, 0, "u31_equalverify");
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
     fn test_blake3_perm() {
         let mut vec = vec![];
         for _ in 0..16 {
@@ -1616,7 +1649,7 @@ mod tests {
     fn test_poseidon2_perm() {
         let t = 16;
         let rounds_f_beginning = 1;
-        let rounds_p = 3;
+        let rounds_p = 4;
         let rounds = 3;
 
         let mut current_state = vec![];
@@ -1649,8 +1682,14 @@ mod tests {
 
         println!("begin express_to_script");
         current_state[0].express_to_script(&mut stack, &bmap);
+        // current_state[1].express_to_script(&mut stack, &bmap);
+
         println!("finish express_to_script");
         stack.debug();
+        let res = stack.run();
+        // println!("{:?}", e_share.clone().read().unwrap().get_var());
+        println!("script len {:?}", stack.get_script().len());
+        // assert!(res.success);
         
     }
 
@@ -1661,6 +1700,8 @@ mod tests {
     
     fn matmul_internal(input: &mut[FieldScriptExpression<F>]) {
         let sum = FieldScriptExpression::add_long(input);
+        let sum_copy = sum.to_copy().unwrap();
+        //let sum_copy_copy = sum_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
         // let mut sum = input[0].clone();
         // input
         //     .iter()
@@ -1668,15 +1709,33 @@ mod tests {
         //     .take(t-1)
         //     .for_each(|el| sum.add_assign(el.clone()));
         // Add sum + diag entry * element to each element
-        for i in 0..input.len() {
-            input[i].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[i]));
-            input[i].add_assign(sum.clone());
-        }
+
+        input[1].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[1]));
+        input[1] = FieldScriptExpression::new_add_from_expr_ptr(input[1].clone().as_expr_ptr(), sum_copy);
+
+        input[0].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[0]));  
+        input[0] = FieldScriptExpression::<F>::new_add_from_expr_ptr(input[0].clone().as_expr_ptr(), sum.as_expr_ptr());
+
+        // let var_size = input[1].var_size().max(sum.var_size());
+
+        // input[1].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[1]));
+
+        // input[1] = FieldScriptExpression::<F>::Add(StandardOpcode::new(
+        //     vec![input[1].clone().as_expr_ptr(), sum_copy_copy],
+        //     var_size,
+        //     StandardOpcodeId::Add,
+        // ));
+        // input[1].add_assign(sum.clone());
+
+        // for i in 0..2 {
+        //     input[i].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[i]));
+        //     input[i].add_assign(sum.clone());
+        // }
     }
 
     fn matmul_external(input: &mut[FieldScriptExpression<F>]) {
         let t = 16;
-        matmul_m4(input);
+        p3_matmul_m4(input);
 
         // Applying second cheap matrix for t > 4
         let t4 = t / 4;
@@ -1692,39 +1751,39 @@ mod tests {
         }
     }
 
-    fn matmul_m4(input: &mut[FieldScriptExpression<F>]) {
-        let t = 16;
-        let t4 = t / 4;
-        for i in 0..t4 {
-            let start_index = i * 4;
-            let mut t_0 = input[start_index].clone();
-            t_0.add_assign(input[start_index + 1].clone());
-            let mut t_1 = input[start_index + 2].clone();
-            t_1.add_assign(input[start_index + 3].clone());
-            let mut t_2 = input[start_index + 1].clone();
-            t_2 = t_2.clone() + t_2.clone();
-            t_2.add_assign(t_1.clone());
-            let mut t_3 = input[start_index + 3].clone();
-            t_3 = t_3.clone() + t_3.clone();
-            t_3.add_assign(t_0.clone());
-            let mut t_4 = t_1.clone();
-            t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
-            t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
-            t_4.add_assign(t_3.clone());
-            let mut t_5 = t_0.clone();
-            t_5 = t_5.clone() + t_5.clone();
-            t_5 = t_5.clone() + t_5.clone();
-            t_5.add_assign(t_2.clone());
-            let mut t_6 = t_3.clone();
-            t_6.add_assign(t_5.clone());
-            let mut t_7 = t_2.clone();
-            t_7.add_assign(t_4.clone());
-            input[start_index] = t_6.clone();
-            input[start_index + 1] = t_5.clone();
-            input[start_index + 2] = t_7.clone();
-            input[start_index + 3] = t_4.clone();
-        }
-    }
+    // fn matmul_m4(input: &mut[FieldScriptExpression<F>]) {
+    //     let t = 16;
+    //     let t4 = t / 4;
+    //     for i in 0..t4 {
+    //         let start_index = i * 4;
+    //         let mut t_0 = input[start_index].clone();
+    //         t_0.add_assign(input[start_index + 1].clone());
+    //         let mut t_1 = input[start_index + 2].clone();
+    //         t_1.add_assign(input[start_index + 3].clone());
+    //         let mut t_2 = input[start_index + 1].clone();
+    //         t_2 = t_2.clone() + t_2.clone();
+    //         t_2.add_assign(t_1.clone());
+    //         let mut t_3 = input[start_index + 3].clone();
+    //         t_3 = t_3.clone() + t_3.clone();
+    //         t_3.add_assign(t_0.clone());
+    //         let mut t_4 = t_1.clone();
+    //         t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
+    //         t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
+    //         t_4.add_assign(t_3.clone());
+    //         let mut t_5 = t_0.clone();
+    //         t_5 = t_5.clone() + t_5.clone();
+    //         t_5 = t_5.clone() + t_5.clone();
+    //         t_5.add_assign(t_2.clone());
+    //         let mut t_6 = t_3.clone();
+    //         t_6.add_assign(t_5.clone());
+    //         let mut t_7 = t_2.clone();
+    //         t_7.add_assign(t_4.clone());
+    //         input[start_index] = t_6.clone();
+    //         input[start_index + 1] = t_5.clone();
+    //         input[start_index + 2] = t_7.clone();
+    //         input[start_index + 3] = t_4.clone();
+    //     }
+    // }
 
 // plonky3 optimize:
 // Multiply a 4-element vector x by:
@@ -1754,6 +1813,7 @@ mod tests {
         let t4 = t / 4;
         for i in 0..t4 {
             let start_index = i * 4;
+            // let t1_copy = input[start_index + 1].to_copy().unwrap();
             let t01 = input[start_index].clone() + input[start_index + 1].clone();
             let t23 = input[start_index + 2].clone() + input[start_index + 3].clone();
             let t0123 = t01.clone() + t23.clone();

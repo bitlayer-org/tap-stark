@@ -34,6 +34,7 @@ pub(crate) enum CustomOpcodeId {
     ExpConst,
     IndexToRou,
     Lookup,
+    Add16,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -74,6 +75,7 @@ pub(crate) fn custom_script_generator<F: BfField>(opid: CustomOpcodeId) -> Box<C
         CustomOpcodeId::IndexToRou => Box::new(op_indextorou::<F>),
         CustomOpcodeId::Constant => Box::new(op_constant),
         CustomOpcodeId::Lookup => Box::new(op_lookup::<F>),
+        CustomOpcodeId::Add16 => Box::new(op_add_16::<F>),
     }
 }
 
@@ -121,6 +123,33 @@ pub(crate) fn op_indextorou<F: BfField>(
         )
         .unwrap();
 
+    vars
+}
+
+pub(crate) fn op_add_16<F: BfField>(
+    len: Vec<u32>,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
+) -> Vec<StackVariable> {
+    let vars = stack
+        .custom1(
+            script! {
+                for _ in 0..15 {
+                    if F::U32_SIZE == 1{
+                        {u31_add::<BabyBearU31>()}
+                    }else{
+                        {u31ext_add::<BabyBear4>()}
+                    }
+                }
+            },
+            16 as u32,
+            1,
+            0,
+            F::U32_SIZE as u32,
+            "ExprADD16_Result",
+        )
+        .unwrap();
     vars
 }
 
