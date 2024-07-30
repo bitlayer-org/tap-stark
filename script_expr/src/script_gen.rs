@@ -150,6 +150,7 @@ pub(crate) fn op_add_16<F: BfField>(
             "ExprADD16_Result",
         )
         .unwrap();
+    assert_eq!(vars[0].size(), vars_size[0]);
     vars
 }
 
@@ -275,7 +276,7 @@ pub(crate) fn op_sub(
                 1,
                 0,
                 vars_size[0],
-                "ExprMUL_Result",
+                "ExprSub_Result",
             )
             .unwrap()
     } else {
@@ -334,7 +335,7 @@ pub(crate) fn op_add(
                 1,
                 0,
                 vars_size[0],
-                "ExprMUL_Result",
+                "ExprAdd_Result",
             )
             .unwrap()
     } else {

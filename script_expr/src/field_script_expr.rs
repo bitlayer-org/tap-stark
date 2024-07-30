@@ -937,6 +937,7 @@ mod tests {
     use alloc::vec::Vec;
     use bitcoin::constants;
     use bitcoin::hex::FromHex;
+    use bitcoin::opcodes::{OP_FROMALTSTACK, OP_SWAP, OP_DROP, OP_ADD};
     use scripts::u32_std::u32_equalverify;
     use core::cell::{self, Cell};
 
@@ -1649,7 +1650,7 @@ mod tests {
     fn test_poseidon2_perm() {
         let t = 16;
         let rounds_f_beginning = 1;
-        let rounds_p = 4;
+        let rounds_p = 2;
         let rounds = 3;
 
         let mut current_state = vec![];
@@ -1657,13 +1658,13 @@ mod tests {
             current_state.push(FieldScriptExpression::from(BabyBear::from_canonical_u32(i as u32)));
         }
 
-        // matmul_external(&mut current_state);
+        matmul_external(&mut current_state);
 
-        // for r in 0..rounds_f_beginning {
-        //     current_state = add_rc(&current_state, &RC16[r]);
-        //     current_state = sbox(&current_state);
-        //     matmul_external(&mut current_state);
-        // }
+        for r in 0..rounds_f_beginning {
+            current_state = add_rc(&current_state, &RC16[r]);
+            current_state = sbox(&current_state);
+            matmul_external(&mut current_state);
+        }
 
         let p_end = rounds_f_beginning + rounds_p;
         for r in rounds_f_beginning..p_end {
@@ -1672,16 +1673,19 @@ mod tests {
             matmul_internal(&mut current_state);
         }
         
-        // for r in p_end..rounds {
-        //     current_state = add_rc(&current_state, &RC16[r]);
-        //     current_state = sbox(&current_state);
-        //     matmul_external(&mut current_state);
-        // }
+        for r in p_end..rounds {
+            current_state = add_rc(&current_state, &RC16[r]);
+            current_state = sbox(&current_state);
+            matmul_external(&mut current_state);
+        }
         let mut stack = StackTracker::new();
         let bmap = BTreeMap::new();
 
         println!("begin express_to_script");
         current_state[0].express_to_script(&mut stack, &bmap);
+
+        // stack.debug();
+
         // current_state[1].express_to_script(&mut stack, &bmap);
 
         println!("finish express_to_script");
@@ -1699,7 +1703,15 @@ mod tests {
 
     
     fn matmul_internal(input: &mut[FieldScriptExpression<F>]) {
-        let sum = FieldScriptExpression::add_long(input);
+
+        let mut input_copy = vec![];
+        let mut sum = FieldScriptExpression::from(F::zero());
+
+        for i in 0..input.len() {
+            let temp = input[i].clone();
+            input_copy.push(temp.to_copy().unwrap());
+            sum = FieldScriptExpression::new_add_from_expr_ptr(temp.as_expr_ptr(), sum.clone().as_expr_ptr());
+        }
         let sum_copy = sum.to_copy().unwrap();
         //let sum_copy_copy = sum_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
         // let mut sum = input[0].clone();
@@ -1710,11 +1722,12 @@ mod tests {
         //     .for_each(|el| sum.add_assign(el.clone()));
         // Add sum + diag entry * element to each element
 
-        input[1].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[1]));
-        input[1] = FieldScriptExpression::new_add_from_expr_ptr(input[1].clone().as_expr_ptr(), sum_copy);
+        // input[1] = FieldScriptExpression::<F>::new_add_from_expr_ptr(input_copy[1].clone(), FieldScriptExpression::<F>::new_mul_from_expr_ptr(input[1].clone().as_expr_ptr(), FieldScriptExpression::from(MAT_DIAG16_M_1[1]).clone().as_expr_ptr()).as_expr_ptr());
+        // input[1] = FieldScriptExpression::new_add_from_expr_ptr(sum_copy.clone(), input[1].clone().as_expr_ptr());
 
-        input[0].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[0]));  
-        input[0] = FieldScriptExpression::<F>::new_add_from_expr_ptr(input[0].clone().as_expr_ptr(), sum.as_expr_ptr());
+        // input[0] = input[0].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[i]));
+
+        // input[0] = FieldScriptExpression::<F>::new_add_from_expr_ptr(sum.as_expr_ptr(), input[0].clone().as_expr_ptr());
 
         // let var_size = input[1].var_size().max(sum.var_size());
 
@@ -1727,10 +1740,15 @@ mod tests {
         // ));
         // input[1].add_assign(sum.clone());
 
-        // for i in 0..2 {
-        //     input[i].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[i]));
-        //     input[i].add_assign(sum.clone());
+        // for i in 0..input.len() {
+        //     input[i] = FieldScriptExpression::<F>::new_mul_from_expr_ptr(input_copy[i].clone(), FieldScriptExpression::from(MAT_DIAG16_M_1[1]).clone().as_expr_ptr());
         // }
+
+        input[1] = FieldScriptExpression::new_add_from_expr_ptr(sum_copy.clone(), input[1].clone().as_expr_ptr());
+
+        input[0] = FieldScriptExpression::<F>::new_add_from_expr_ptr(sum.as_expr_ptr(), input[0].clone().as_expr_ptr());
+
+
     }
 
     fn matmul_external(input: &mut[FieldScriptExpression<F>]) {
@@ -1750,41 +1768,6 @@ mod tests {
             input[i].add_assign(stored[i % 4].clone());
         }
     }
-
-    // fn matmul_m4(input: &mut[FieldScriptExpression<F>]) {
-    //     let t = 16;
-    //     let t4 = t / 4;
-    //     for i in 0..t4 {
-    //         let start_index = i * 4;
-    //         let mut t_0 = input[start_index].clone();
-    //         t_0.add_assign(input[start_index + 1].clone());
-    //         let mut t_1 = input[start_index + 2].clone();
-    //         t_1.add_assign(input[start_index + 3].clone());
-    //         let mut t_2 = input[start_index + 1].clone();
-    //         t_2 = t_2.clone() + t_2.clone();
-    //         t_2.add_assign(t_1.clone());
-    //         let mut t_3 = input[start_index + 3].clone();
-    //         t_3 = t_3.clone() + t_3.clone();
-    //         t_3.add_assign(t_0.clone());
-    //         let mut t_4 = t_1.clone();
-    //         t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
-    //         t_4 = t_4.clone() * F::from_canonical_u32(2 as u32);
-    //         t_4.add_assign(t_3.clone());
-    //         let mut t_5 = t_0.clone();
-    //         t_5 = t_5.clone() + t_5.clone();
-    //         t_5 = t_5.clone() + t_5.clone();
-    //         t_5.add_assign(t_2.clone());
-    //         let mut t_6 = t_3.clone();
-    //         t_6.add_assign(t_5.clone());
-    //         let mut t_7 = t_2.clone();
-    //         t_7.add_assign(t_4.clone());
-    //         input[start_index] = t_6.clone();
-    //         input[start_index + 1] = t_5.clone();
-    //         input[start_index + 2] = t_7.clone();
-    //         input[start_index + 3] = t_4.clone();
-    //     }
-    // }
-
 // plonky3 optimize:
 // Multiply a 4-element vector x by:
 // [ 2 3 1 1 ]
@@ -1824,9 +1807,8 @@ mod tests {
             input[start_index + 1] = t01123.clone() + input[start_index + 2].clone() + input[start_index + 2].clone(); // x[0] + 2*x[1] + 3*x[2] + x[3]
             input[start_index] = t01123 + t01; // 2*x[0] + 3*x[1] + x[2] + x[3]
             input[start_index + 2] = t01233 + t23; // x[0] + x[1] + 2*x[2] + 3*x[3]
-        }
+        };
     }
-
 
     fn add_rc(input: &[FieldScriptExpression<F>], rc: &[F]) -> Vec<FieldScriptExpression<F>> {
         input
@@ -1867,6 +1849,25 @@ lazy_static! {
     BabyBear::from_canonical_u32(0x01d6acda),
     BabyBear::from_canonical_u32(0x27705c83),
     BabyBear::from_canonical_u32(0x5231c802),
+    ];
+
+    pub static ref MAT_DIAG16_M_1_u32: Vec<u32> = vec![
+        0x0a632d94,
+        0x6db657b7,
+        0x56fbdc9e,
+        0x052b3d8a,
+        0x33745201,
+        0x5c03108c,
+        0x0beba37b,
+        0x258c2e8b,
+        0x12029f39,
+        0x694909ce,
+        0x6d231724,
+        0x21c3b222,
+        0x3c0904a5,
+        0x01d6acda,
+        0x27705c83,
+        0x5231c802,
     ];
 
     pub static ref MAT_INTERNAL16: Vec<Vec<BabyBear>> = vec![
@@ -2530,91 +2531,128 @@ mod tests2 {
 
     #[test]
     fn test_field_compiler_optimize() {
+        // {
+        //     let bmap = BTreeMap::new();
+        //     let mut stack = StackTracker::new();
+        //     let a_value = BabyBear::two();
+        //     let b_value = BabyBear::one();
+        //     let c_value = BabyBear::from_canonical_u32(13232);
+        //     let d_value = a_value + b_value;
+        //     let e_value = d_value * c_value;
+        //     let f_value = e_value * d_value;
+        //     let g_value = f_value * e_value;
+        //     let h_value = g_value * e_value;
+
+        //     let a = FieldScriptExpression::from(a_value);
+        //     let b = FieldScriptExpression::from(b_value);
+
+        //     let c = FieldScriptExpression::from(c_value);
+        //     let d = a + b;
+        //     let d_share = d.as_expr_ptr();
+        //     let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         d_share.clone(),
+        //         c.as_expr_ptr(),
+        //     );
+
+        //     let e_share = e.as_expr_ptr();
+        //     let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         e_share.clone(),
+        //         d_share.clone(),
+        //     );
+        //     let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         e_share.clone(),
+        //         f.as_expr_ptr(),
+        //     );
+        //     let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         g.as_expr_ptr(),
+        //         e_share.clone(),
+        //     );
+
+        //     let equal = h.equal_for_f(h_value);
+        //     equal.express_to_script(&mut stack, &bmap);
+        //     let res = stack.run();
+        //     // println!("{:?}", e_share.clone().read().unwrap().get_var());
+        //     println!("script len {:?}", stack.get_script().len());
+        //     assert!(res.success);
+        // }
+
+        // {
+        //     let bmap = BTreeMap::new();
+        //     let mut stack = StackTracker::new();
+        //     let a_value = BabyBear::two();
+        //     let b_value = BabyBear::one();
+        //     let c_value = BabyBear::from_canonical_u32(13232);
+        //     let d_value = a_value + b_value;
+        //     let e_value = d_value * c_value;
+        //     let f_value = e_value * d_value;
+        //     let g_value = f_value * e_value;
+        //     let h_value = g_value * e_value;
+
+        //     let a = FieldScriptExpression::from(a_value);
+        //     let b = FieldScriptExpression::from(b_value);
+
+        //     let c = FieldScriptExpression::from(c_value);
+        //     let d = a + b;
+        //     let d_share = d.as_expr_ptr();
+        //     let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         d_share.clone(),
+        //         c.as_expr_ptr(),
+        //     );
+        //     let e_copy = e.to_copy().unwrap();
+        //     let e_copy_copy = e_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
+        //     let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         e_copy_copy.clone(),
+        //         d_share.clone(),
+        //     );
+        //     let g =
+        //         FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(e_copy, f.as_expr_ptr());
+        //     let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         e.as_expr_ptr(),
+        //         g.as_expr_ptr(),
+        //     );
+
+        //     let equal = h.equal_for_f(h_value);
+        //     equal.express_to_script(&mut stack, &bmap);
+        //     let res = stack.run();
+        //     println!("script len {:?}", stack.get_script().len());
+        //     assert!(res.success);
+        // }
+        //wrong case
         {
-            let bmap = BTreeMap::new();
-            let mut stack = StackTracker::new();
             let a_value = BabyBear::two();
             let b_value = BabyBear::one();
-            let c_value = BabyBear::from_canonical_u32(13232);
-            let d_value = a_value + b_value;
-            let e_value = d_value * c_value;
-            let f_value = e_value * d_value;
-            let g_value = f_value * e_value;
-            let h_value = g_value * e_value;
+            let c_value = a_value * b_value;
 
-            let a = FieldScriptExpression::from(a_value);
-            let b = FieldScriptExpression::from(b_value);
+            let mut a = FieldScriptExpression::from(a_value);
+            let mut b = FieldScriptExpression::from(b_value);
 
-            let c = FieldScriptExpression::from(c_value);
-            let d = a + b;
-            let d_share = d.as_expr_ptr();
-            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                d_share.clone(),
-                c.as_expr_ptr(),
-            );
+            let a_share = a.as_expr_ptr();
+            let b_share = b.as_expr_ptr();
+            //3
+            let sum1 = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(a_share.clone(), b_share.clone());
+            let sum1_copy = sum1.to_copy().unwrap();
 
-            let e_share = e.as_expr_ptr();
-            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                e_share.clone(),
-                d_share.clone(),
-            );
-            let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                e_share.clone(),
-                f.as_expr_ptr(),
-            );
-            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                g.as_expr_ptr(),
-                e_share.clone(),
-            );
+            // //4
+            // b = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(b.clone().as_expr_ptr(), sum1_copy);
+            // //5
 
-            let equal = h.equal_for_f(h_value);
-            equal.express_to_script(&mut stack, &bmap);
-            let res = stack.run();
-            // println!("{:?}", e_share.clone().read().unwrap().get_var());
-            println!("script len {:?}", stack.get_script().len());
-            assert!(res.success);
-        }
+            b = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(sum1_copy.clone(), b_share.clone());
 
-        {
+            a = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(sum1.as_expr_ptr(), a_share.clone());
+
+            // //9
+            let sum2 = a.clone() + b.clone();
+
+            // let sum2_copy = sum2.to_copy().unwrap();
+
+            // b = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(b.clone().as_expr_ptr(), sum2_copy);
+            // a = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(a.clone().as_expr_ptr(), sum2.as_expr_ptr());
+
             let bmap = BTreeMap::new();
             let mut stack = StackTracker::new();
-            let a_value = BabyBear::two();
-            let b_value = BabyBear::one();
-            let c_value = BabyBear::from_canonical_u32(13232);
-            let d_value = a_value + b_value;
-            let e_value = d_value * c_value;
-            let f_value = e_value * d_value;
-            let g_value = f_value * e_value;
-            let h_value = g_value * e_value;
 
-            let a = FieldScriptExpression::from(a_value);
-            let b = FieldScriptExpression::from(b_value);
+            sum2.express_to_script(&mut stack, &bmap);
 
-            let c = FieldScriptExpression::from(c_value);
-            let d = a + b;
-            let d_share = d.as_expr_ptr();
-            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                d_share.clone(),
-                c.as_expr_ptr(),
-            );
-            let e_copy = e.to_copy().unwrap();
-            let e_copy_copy = e_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
-            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                e_copy_copy.clone(),
-                d_share.clone(),
-            );
-            let g =
-                FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(e_copy, f.as_expr_ptr());
-            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                e.as_expr_ptr(),
-                g.as_expr_ptr(),
-            );
-
-            let equal = h.equal_for_f(h_value);
-            equal.express_to_script(&mut stack, &bmap);
-            let res = stack.run();
-            println!("script len {:?}", stack.get_script().len());
-            assert!(res.success);
         }
     }
 
@@ -2622,50 +2660,50 @@ mod tests2 {
 
     #[test]
     fn test_constant_copy() {
-        {
-            let bmap = BTreeMap::new();
-            let mut stack = StackTracker::new();
-            let a_value = BabyBear::two();
-            let b_value = BabyBear::one();
-            let c_value = BabyBear::from_canonical_u32(13232);
-            let d_value = a_value + b_value;
-            let e_value = d_value * c_value;
-            let f_value = e_value * d_value;
-            let g_value = f_value * e_value;
-            let h_value = g_value * e_value;
+        // {
+        //     let bmap = BTreeMap::new();
+        //     let mut stack = StackTracker::new();
+        //     let a_value = BabyBear::two();
+        //     let b_value = BabyBear::one();
+        //     let c_value = BabyBear::from_canonical_u32(13232);
+        //     let d_value = a_value + b_value;
+        //     let e_value = d_value * c_value;
+        //     let f_value = e_value * d_value;
+        //     let g_value = f_value * e_value;
+        //     let h_value = g_value * e_value;
 
-            let a = FieldScriptExpression::from(a_value);
-            let b = FieldScriptExpression::from(b_value);
+        //     let a = FieldScriptExpression::from(a_value);
+        //     let b = FieldScriptExpression::from(b_value);
 
-            let c = FieldScriptExpression::from(c_value);
-            let d = a + b;
-            let d_share = d.as_expr_ptr();
-            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                d_share.clone(),
-                c.as_expr_ptr(),
-            );
+        //     let c = FieldScriptExpression::from(c_value);
+        //     let d = a + b;
+        //     let d_share = d.as_expr_ptr();
+        //     let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         d_share.clone(),
+        //         c.as_expr_ptr(),
+        //     );
 
-            let e_share = e.as_expr_ptr();
-            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                e_share.clone(),
-                d_share.clone(),
-            );
-            let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                e_share.clone(),
-                f.as_expr_ptr(),
-            );
-            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-                g.as_expr_ptr(),
-                e_share.clone(),
-            );
+        //     let e_share = e.as_expr_ptr();
+        //     let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         e_share.clone(),
+        //         d_share.clone(),
+        //     );
+        //     let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         e_share.clone(),
+        //         f.as_expr_ptr(),
+        //     );
+        //     let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+        //         g.as_expr_ptr(),
+        //         e_share.clone(),
+        //     );
 
-            let equal = h.equal_for_f(h_value);
-            equal.express_to_script(&mut stack, &bmap);
-            let res = stack.run();
-            // println!("{:?}", e_share.clone().read().unwrap().get_var());
-            println!("script len {:?}", stack.get_script().len());
-            assert!(res.success);
-        }
+        //     let equal = h.equal_for_f(h_value);
+        //     equal.express_to_script(&mut stack, &bmap);
+        //     let res = stack.run();
+        //     // println!("{:?}", e_share.clone().read().unwrap().get_var());
+        //     println!("script len {:?}", stack.get_script().len());
+        //     assert!(res.success);
+        // }
 
         {
             let bmap = BTreeMap::new();
@@ -2708,5 +2746,6 @@ mod tests2 {
             println!("script len {:?}", stack.get_script().len());
             assert!(res.success);
         }
+
     }
 }

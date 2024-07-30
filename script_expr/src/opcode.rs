@@ -186,10 +186,11 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Expression
         if OUTPUT_NUM == 1 {
             let copy_var = to_copy(vars[0], stack, self.opcode.to_copy_expr.borrow());
             if copy_var.is_some() {
+                println!("copy case custom");
                 vars = vec![copy_var.unwrap()];
             }
         }
-
+        stack.debug();
         if self.opcode.debug.get() == true {
             stack.debug();
         }
@@ -320,7 +321,7 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize, F: BfField> Expression
                 vars = vec![copy_var.unwrap()];
             }
         }
-
+        stack.debug();
         if self.opcode.debug.get() == true {
             stack.debug();
         }
