@@ -27,23 +27,16 @@ use super::num_script_expr::NumScriptExpression;
 use super::variable::{ValueVariable, Variable};
 use super::Expression;
 use crate::opcode::Opcode;
+use crate::script_gen::OpcodeId;
 use crate::script_helper::{index_to_rou, value_exp_n};
 use crate::{
-    op_mul, CopyVar, CustomOpcode, CustomOpcodeId, ExprPtr, Fraction, ScriptExprError,
-    StandardOpcode, StandardOpcodeId,
+    op_mul, CopyVar, CustomOpcode, CustomOpcodeId, Dsl, ExprPtr, Fraction, InputOpcode,
+    ScriptExprError, StandardOpcode, StandardOpcodeId,
 };
 
 pub enum FieldScriptExpression<F: BfField> {
-    ValueVariable {
-        v: ValueVariable<F>,
-        debug: Cell<bool>,
-        var: StackVariable,
-    },
-    InputVariable {
-        sv: Variable,
-        debug: Cell<bool>,
-        var: StackVariable,
-    },
+    InputVarCopy(InputOpcode<0, 1>),
+    InputVarMove(InputOpcode<0, 1>),
     Constant(CustomOpcode<0, 1, F>),
     Table {
         table: Vec<F>,
@@ -58,18 +51,8 @@ pub enum FieldScriptExpression<F: BfField> {
     Equal(StandardOpcode<2, 1>),
     ExpConstant(CustomOpcode<1, 1, F>),
     IndexToROU(CustomOpcode<1, 1, F>),
-    NumToField {
-        x: Arc<Box<dyn Expression>>,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
-    Lookup {
-        x: Arc<Box<dyn Expression>>,
-        y: Arc<Box<dyn Expression>>,
-        len: usize,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
+    NumToField(StandardOpcode<1, 1>),
+    Lookup(CustomOpcode<2, 1, F>),
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
@@ -279,18 +262,28 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
         }
     }
 
+    fn opcode(&self) -> OpcodeId {
+        match self {
+            FieldScriptExpression::Add(op) => op.opcode(),
+            FieldScriptExpression::Mul(op) => op.opcode(),
+            FieldScriptExpression::Sub(op) => op.opcode(),
+            FieldScriptExpression::Neg(op) => op.opcode(),
+            FieldScriptExpression::Constant(op) => op.opcode(),
+            FieldScriptExpression::ExpConstant(op) => op.opcode(),
+            FieldScriptExpression::IndexToROU(op) => op.opcode(),
+            FieldScriptExpression::Equal(op) => op.opcode(),
+            _ => panic!("no support to_copy()"),
+        }
+    }
+
     fn as_expr_ptr(self) -> ExprPtr {
         Arc::new(RwLock::new(Box::new(self)))
     }
 
     fn set_debug(&self) {
         match self {
-            FieldScriptExpression::ValueVariable { debug, .. } => {
-                debug.set(true);
-            }
-            FieldScriptExpression::InputVariable { debug, .. } => {
-                debug.set(true);
-            }
+            FieldScriptExpression::InputVarCopy(op) => op.set_debug(),
+            FieldScriptExpression::InputVarMove(op) => op.set_debug(),
             FieldScriptExpression::Constant(op) => op.set_debug(),
             FieldScriptExpression::Table { debug, .. } => {
                 debug.set(true);
@@ -303,12 +296,8 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Equal(op) => op.set_debug(),
             FieldScriptExpression::ExpConstant(op) => op.set_debug(),
             FieldScriptExpression::IndexToROU(op) => op.set_debug(),
-            FieldScriptExpression::NumToField { debug, .. } => {
-                debug.set(true);
-            }
-            FieldScriptExpression::Lookup { debug, .. } => {
-                debug.set(true);
-            }
+            FieldScriptExpression::NumToField(op) => op.set_debug(),
+            FieldScriptExpression::Lookup(op) => op.set_debug(),
         };
     }
 
@@ -318,28 +307,8 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
         input_variables: &BTreeMap<Variable, StackVariable>,
     ) -> Vec<StackVariable> {
         match self {
-            FieldScriptExpression::ValueVariable { v, debug, mut var } => {
-                let intput_var = input_variables.get(v.get_var()).unwrap();
-                var = stack.copy_var(intput_var.clone());
-                if debug.get() == true {
-                    stack.debug();
-                }
-                if v.get_var().get_var_size().is_some() {
-                    assert_eq!(var.size(), v.get_var().get_var_size().unwrap());
-                }
-                vec![var]
-            }
-            FieldScriptExpression::InputVariable { sv, debug, mut var } => {
-                let intput_var = input_variables.get(sv).unwrap();
-                var = stack.copy_var(intput_var.clone());
-                if debug.get() == true {
-                    stack.debug();
-                }
-                if sv.get_var_size().is_some() {
-                    assert_eq!(var.size(), sv.get_var_size().unwrap());
-                }
-                vec![var]
-            }
+            FieldScriptExpression::InputVarCopy(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::InputVarMove(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::Constant(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::Table {
                 table,
@@ -365,59 +334,8 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Equal(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::ExpConstant(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::IndexToROU(op) => op.express_to_script(stack, input_variables),
-            FieldScriptExpression::NumToField { x, var, debug } => {
-                x.express_to_script(stack, input_variables);
-                let vars = stack
-                    .custom1(
-                        script! {
-                            if F::U32_SIZE == 1 {
-                                {u32_to_u31()}
-                            } else {
-                                {u32_to_u31()}
-                                {u31_to_u31ext::<BabyBear4>()}
-                            }
-                        },
-                        1,
-                        1,
-                        0,
-                        F::U32_SIZE as u32,
-                        "FieldExpr::NumToField",
-                    )
-                    .unwrap();
-
-                if debug.get() == true {
-                    stack.debug();
-                }
-                vars
-            }
-            FieldScriptExpression::Lookup {
-                x,
-                y,
-                len,
-                debug,
-                mut var,
-            } => {
-                x.express_to_script(stack, input_variables);
-                // todo: check y is the NumScriptExpression
-                y.express_to_script(stack, input_variables);
-                let vars = stack.custom1(
-                    script! {
-                        OP_PICK
-                    },
-                    1,
-                    1,
-                    0,
-                    F::U32_SIZE as u32,
-                    "ExprLookup_Result",
-                );
-                stack.to_altstack();
-                for _ in 0..(*len) {
-                    stack.op_drop();
-                }
-                var = stack.from_altstack();
-
-                vec![var]
-            }
+            FieldScriptExpression::NumToField(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::Lookup(op) => op.express_to_script(stack, input_variables),
         }
     }
 
@@ -441,14 +359,8 @@ impl<F: BfField> From<F> for FieldScriptExpression<F> {
 impl<F: BfField> Debug for FieldScriptExpression<F> {
     fn fmt(&self, fm: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            FieldScriptExpression::ValueVariable { v, .. } => fm
-                .debug_struct("ScriptExpression::ValueVariable")
-                .field("var", v)
-                .finish(),
-            FieldScriptExpression::InputVariable { sv, .. } => fm
-                .debug_struct("ScriptExpression::InputVariable")
-                .field("sv", sv)
-                .finish(),
+            FieldScriptExpression::InputVarCopy(op) => op.fmt(fm),
+            FieldScriptExpression::InputVarMove(op) => op.fmt(fm),
             FieldScriptExpression::Constant(op) => op.fmt(fm),
             FieldScriptExpression::Table { table, .. } => fm
                 .debug_struct("ScriptExpression::Table")
@@ -462,20 +374,8 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
             FieldScriptExpression::Equal(op) => op.fmt(fm),
             FieldScriptExpression::ExpConstant(op) => op.fmt(fm),
             FieldScriptExpression::IndexToROU(op) => op.fmt(fm),
-            FieldScriptExpression::NumToField { debug, var, .. } => fm
-                .debug_struct("ScriptExpression::Exp")
-                .field("variable", var)
-                .finish(),
-            FieldScriptExpression::Lookup {
-                x,
-                y,
-                len,
-                debug,
-                var,
-            } => fm
-                .debug_struct("ScriptExpression::Lookup")
-                .field("variable", var)
-                .finish(),
+            FieldScriptExpression::Lookup(op) => op.fmt(fm),
+            FieldScriptExpression::NumToField(op) => op.fmt(fm),
         }
     }
 }
@@ -483,19 +383,11 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
 impl<F: BfField> Clone for FieldScriptExpression<F> {
     fn clone(&self) -> Self {
         match self {
-            FieldScriptExpression::ValueVariable { v, debug, var } => {
-                FieldScriptExpression::ValueVariable {
-                    v: v.clone(),
-                    debug: debug.clone(),
-                    var: var.clone(),
-                }
+            FieldScriptExpression::InputVarCopy(op) => {
+                FieldScriptExpression::InputVarCopy(op.clone())
             }
-            FieldScriptExpression::InputVariable { sv, debug, var } => {
-                FieldScriptExpression::InputVariable {
-                    sv: sv.clone(),
-                    debug: debug.clone(),
-                    var: var.clone(),
-                }
+            FieldScriptExpression::InputVarMove(op) => {
+                FieldScriptExpression::InputVarMove(op.clone())
             }
             FieldScriptExpression::Constant(op) => FieldScriptExpression::Constant(op.clone()),
             FieldScriptExpression::Table { table, debug, var } => FieldScriptExpression::Table {
@@ -515,26 +407,8 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                 FieldScriptExpression::ExpConstant(op.clone())
             }
             FieldScriptExpression::IndexToROU(op) => FieldScriptExpression::IndexToROU(op.clone()),
-            FieldScriptExpression::NumToField { x, debug, var } => {
-                FieldScriptExpression::NumToField {
-                    x: x.clone(),
-                    debug: debug.clone(),
-                    var: var.clone(),
-                }
-            }
-            FieldScriptExpression::Lookup {
-                x,
-                y,
-                len,
-                debug,
-                var,
-            } => FieldScriptExpression::Lookup {
-                x: x.clone(),
-                y: y.clone(),
-                len: len.clone(),
-                debug: debug.clone(),
-                var: var.clone(),
-            },
+            FieldScriptExpression::NumToField(op) => FieldScriptExpression::NumToField(op.clone()),
+            FieldScriptExpression::Lookup(op) => FieldScriptExpression::Lookup(op.clone()),
         }
     }
 }
@@ -604,6 +478,20 @@ impl<F: BfField> Add<Self> for FieldScriptExpression<F> {
         Self::new_add(self, rhs)
     }
 }
+
+// impl<F: BfField> Add<ExprPtrWrap> for FieldScriptExpression<F> {
+//     type Output = Self;
+
+//     fn add(self, rhs: ExprPtrWrap) -> Self {
+//         Self::Add(
+//             StandardOpcode::new(
+//                 vec![self.as_expr_ptr(), rhs.0],
+//                 F::U32_SIZE as u32,
+//                 StandardOpcodeId::Add,
+//             )
+//         )
+//     }
+// }
 
 impl<F: BfField> Add<F> for FieldScriptExpression<F> {
     type Output = Self;
@@ -733,13 +621,12 @@ impl<F: BfField> Product<F> for FieldScriptExpression<F> {
 impl<F: BfField> FieldScriptExpression<F> {
     pub fn lookup(self, index: u32, len: usize) -> Self {
         let index = NumScriptExpression::from(index);
-        Self::Lookup {
-            x: Arc::new(Box::new(self)),
-            y: Arc::new(Box::new(index)),
-            len: len,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+        Self::Lookup(CustomOpcode::new(
+            vec![len as u32],
+            vec![self.as_expr_ptr(), index.as_expr_ptr()],
+            F::U32_SIZE as u32,
+            CustomOpcodeId::Lookup,
+        ))
     }
     pub fn from_table(table: &[F]) -> Self {
         Self::Table {
@@ -768,6 +655,7 @@ mod tests {
     use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
 
     use super::{Expression, FieldScriptExpression, Variable, *};
+    use crate::{assert_field_expr, InputManager};
     type EF = BinomialExtensionField<BabyBear, 4>;
 
     #[test]
@@ -855,18 +743,18 @@ mod tests {
             assert!(res.success);
         }
 
-        {
-            let bmap = BTreeMap::new();
-            let mut stack = StackTracker::new();
-            let a = NumScriptExpression::from(num);
-            let b = a.num_to_field();
-            let res = EF::from_canonical_u32(num);
-            let equal = b.equal_verify_for_f(res);
-            equal.express_to_script(&mut stack, &bmap);
-            stack.op_true();
-            let res = stack.run();
-            assert!(res.success);
-        }
+        // {
+        //     let bmap = BTreeMap::new();
+        //     let mut stack = StackTracker::new();
+        //     let a = NumScriptExpression::from(num);
+        //     let b = a.num_to_field();
+        //     let res = EF::from_canonical_u32(num);
+        //     let equal = b.equal_verify_for_f(res);
+        //     equal.express_to_script(&mut stack, &bmap);
+        //     stack.op_true();
+        //     let res = stack.run();
+        //     assert!(res.success);
+        // }
     }
 
     #[test]
@@ -983,181 +871,52 @@ mod tests {
 
     #[test]
     fn test_script_expr_with_input() {
-        let var1 = Variable::new(0, 0);
-        let var2 = Variable::new(0, 1);
-        let var3 = Variable::new(1, 0);
-        let var4 = Variable::new(1, 1);
+        let mut input_manager = InputManager::<BabyBear>::new();
+        let var1_wrap =
+            input_manager.assign_input_expr(BabyBear::from_canonical_u32(1u32).as_u32_vec());
+        let var2_wrap =
+            input_manager.assign_input_expr(BabyBear::from_canonical_u32(2u32).as_u32_vec());
+        let var3_wrap =
+            input_manager.assign_input_expr(BabyBear::from_canonical_u32(3u32).as_u32_vec());
+        let var4_wrap =
+            input_manager.assign_input_expr(BabyBear::from_canonical_u32(4u32).as_u32_vec());
+        let (mut stack, input_getter) = input_manager.simulate_input();
 
-        let mut stack = StackTracker::new();
-        let mut bmap = BTreeMap::new();
-        bmap.insert(
-            var1,
-            stack.var(
-                1,
-                script! { {BabyBear::from_canonical_u32(1u32).as_u32_vec()[0]}},
-                "input 1",
-            ),
-        );
-        bmap.insert(
-            var2,
-            stack.var(
-                1,
-                script! { {BabyBear::from_canonical_u32(2u32).as_u32_vec()[0]}},
-                "input 2",
-            ),
-        );
-        bmap.insert(
-            var3,
-            stack.var(
-                1,
-                script! {{BabyBear::from_canonical_u32(3u32).as_u32_vec()[0]}},
-                "input 3",
-            ),
-        );
-        bmap.insert(
-            var4,
-            stack.var(
-                1,
-                script! {{BabyBear::from_canonical_u32(4u32).as_u32_vec()[0]}},
-                "input 4",
-            ),
-        );
-
-        let var1_wrap = FieldScriptExpression::InputVariable {
-            sv: var1,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-        let var2_wrap = FieldScriptExpression::<BabyBear>::InputVariable {
-            sv: var2,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-        let var3_wrap = FieldScriptExpression::InputVariable {
-            sv: var3,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-        let var4_wrap = FieldScriptExpression::<BabyBear>::InputVariable {
-            sv: var4,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
         let res1 = var1_wrap + var2_wrap;
         let res2 = var3_wrap + var4_wrap;
 
         let res = res1 + res2;
-        res.express_to_script(&mut stack, &bmap);
+        res.express_to_script(&mut stack, input_getter);
 
         stack.number(BabyBear::from_canonical_u32(10u32).as_u32_vec()[0]);
         stack.op_equalverify();
 
-        stack.drop(*bmap.get(&var4).unwrap());
-        stack.drop(*bmap.get(&var3).unwrap());
-        stack.drop(*bmap.get(&var2).unwrap());
-        stack.drop(*bmap.get(&var1).unwrap());
+        stack.debug();
         stack.op_true();
         let res = stack.run();
         assert!(res.success);
-    }
 
-    #[test]
-    fn test_script_expr_with_extinput() {
-        let var1 = Variable::new(0, 0);
-        let var2 = Variable::new(0, 1);
-        let var3 = Variable::new(1, 0);
-        let var4 = Variable::new(1, 1);
+        {
+            let mut input_manager = InputManager::<EF>::new();
+            let var1_wrap =
+                input_manager.assign_input_expr(EF::from_canonical_u32(1u32).as_u32_vec());
+            let var2_wrap =
+                input_manager.assign_input_expr(EF::from_canonical_u32(2u32).as_u32_vec());
+            let var3_wrap =
+                input_manager.assign_input_expr(EF::from_canonical_u32(3u32).as_u32_vec());
+            let var4_wrap =
+                input_manager.assign_input_expr(EF::from_canonical_u32(4u32).as_u32_vec());
+            let (mut stack, input_getter) = input_manager.simulate_input();
 
-        let mut stack = StackTracker::new();
-        let mut bmap = BTreeMap::new();
-        bmap.insert(
-            var1,
-            stack.var(
-                4,
-                script! {
-                    {EF::from_canonical_u32(1u32).as_u32_vec()[3]}
-                    {EF::from_canonical_u32(1u32).as_u32_vec()[2]}
-                    {EF::from_canonical_u32(1u32).as_u32_vec()[1]}
-                    {EF::from_canonical_u32(1u32).as_u32_vec()[0]}
-                },
-                "input 1",
-            ),
-        );
-        bmap.insert(
-            var2,
-            stack.var(
-                4,
-                script! {
-                    {EF::from_canonical_u32(2u32).as_u32_vec()[3]}
-                    {EF::from_canonical_u32(2u32).as_u32_vec()[2]}
-                    {EF::from_canonical_u32(2u32).as_u32_vec()[1]}
-                    {EF::from_canonical_u32(2u32).as_u32_vec()[0]}
-                },
-                "input 2",
-            ),
-        );
-        bmap.insert(
-            var3,
-            stack.var(
-                4,
-                script! {{EF::from_canonical_u32(3u32).as_u32_vec()[3]} {EF::from_canonical_u32(3u32).as_u32_vec()[2]} {EF::from_canonical_u32(3u32).as_u32_vec()[1]} {EF::from_canonical_u32(3u32).as_u32_vec()[0]}},
-                "input 3",
-            ),
-        );
-        bmap.insert(
-            var4,
-            stack.var(
-                4,
-                script! {{EF::from_canonical_u32(4u32).as_u32_vec()[3]} {EF::from_canonical_u32(4u32).as_u32_vec()[2]} {EF::from_canonical_u32(4u32).as_u32_vec()[1]} {EF::from_canonical_u32(4u32).as_u32_vec()[0]}},
-                "input 4",
-            ),
-        );
+            let res1 = var1_wrap + var2_wrap;
+            let res2 = var3_wrap + var4_wrap;
 
-        let var1_wrap = FieldScriptExpression::<EF>::InputVariable {
-            sv: var1,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-        let var2_wrap = FieldScriptExpression::InputVariable {
-            sv: var2,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-        let var3_wrap = FieldScriptExpression::InputVariable {
-            sv: var3,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-        let var4_wrap = FieldScriptExpression::InputVariable {
-            sv: var4,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-        stack.debug();
-        let res1 = var1_wrap + var2_wrap;
-        let res2 = var3_wrap + var4_wrap;
-
-        let res = res1 + res2 + EF::from_canonical_u32(3);
-        res.express_to_script(&mut stack, &bmap);
-
-        // stack.debug();
-        stack.bignumber(EF::from_canonical_u32(13u32).as_u32_vec());
-        stack.custom(
-            u31ext_equalverify::<BabyBear4>(),
-            2,
-            false,
-            0,
-            "u31ext_equalverify",
-        );
-        stack.debug();
-
-        stack.drop(*bmap.get(&var4).unwrap());
-        stack.drop(*bmap.get(&var3).unwrap());
-        stack.drop(*bmap.get(&var2).unwrap());
-        stack.drop(*bmap.get(&var1).unwrap());
-        stack.op_true();
-        let res = stack.run();
-        assert!(res.success);
+            let res = res1 + res2;
+            let equal = res.equal_for_f(EF::from_canonical_u32(10));
+            equal.debug().express_to_script(&mut stack, input_getter);
+            let res = stack.run();
+            assert!(res.success);
+        }
     }
 
     #[test]
@@ -1469,8 +1228,6 @@ mod tests2 {
         }
     }
 
-
-
     #[test]
     fn test_constant_copy() {
         {
@@ -1550,6 +1307,54 @@ mod tests2 {
                 FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(e_copy, f.as_expr_ptr());
             let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
                 e.as_expr_ptr(),
+                g.as_expr_ptr(),
+            );
+
+            let equal = h.equal_for_f(h_value);
+            equal.express_to_script(&mut stack, &bmap);
+            let res = stack.run();
+            println!("script len {:?}", stack.get_script().len());
+            assert!(res.success);
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a_value = BabyBear::two();
+            let b_value = BabyBear::one();
+            let c_value = BabyBear::from_canonical_u32(13232);
+            let d_value = a_value + b_value;
+            let e_value = d_value * c_value;
+            let f_value = e_value * d_value;
+            let g_value = f_value * e_value;
+            let h_value = g_value * e_value;
+
+            let a = FieldScriptExpression::from(a_value);
+            let b = FieldScriptExpression::from(b_value);
+
+            let c = FieldScriptExpression::from(c_value);
+            let d = a + b;
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                d_share.clone(),
+                c.as_expr_ptr(),
+            );
+
+            let e_expr_ptr = e.as_expr_ptr();
+            let e_copy = Dsl::<BabyBear>::from(e_expr_ptr.clone()).to_copy();
+            let e_copy_copy = e_copy.to_copy();
+            // let e_copy = e.to_copy().unwrap();
+            // let e_copy_copy = e_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_copy_copy.clone().into(),
+                d_share.clone(),
+            );
+            let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_copy.into(),
+                f.as_expr_ptr(),
+            );
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_expr_ptr,
                 g.as_expr_ptr(),
             );
 

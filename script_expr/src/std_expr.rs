@@ -23,12 +23,29 @@ use scripts::u31_lib::{
     u32_to_u31, BabyBear4, BabyBearU31,
 };
 
-use super::num_script_expr::NumScriptExpression;
 use super::variable::{ValueVariable, Variable};
 use super::Expression;
-use crate::opcode::Opcode;
+use crate::script_gen::OpcodeId;
 use crate::script_helper::{index_to_rou, value_exp_n};
 use crate::{op_mul, Fraction, ScriptExprError, StandardOpcodeId};
+
+pub(crate) struct ToCopy{
+    to_copy_var: Cell<Option<StackVariable>>,
+}
+
+impl ToCopy{
+    fn is_exist(&self) -> bool{
+        self.to_copy_var.get().is_some()
+    }
+
+    fn get_var(&self) -> StackVariable{
+        self.to_copy_var.get().unwrap()
+    }
+
+    fn set_var(&self,stack_var: StackVariable){
+        self.to_copy_var.set(Some(stack_var))
+    }
+}
 
 pub(crate) struct CopyVar {
     to_copy_var: Cell<StackVariable>,
@@ -74,6 +91,10 @@ impl Debug for CopyVar {
 }
 
 impl Expression for CopyVar {
+    fn opcode(&self) -> OpcodeId {
+        OpcodeId::Copy
+    }
+
     fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
         if self.to_copy.borrow().is_some() {
             return Err(ScriptExprError::DoubleCopy);

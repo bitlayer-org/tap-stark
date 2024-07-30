@@ -19,6 +19,31 @@ use crate::script_helper::{index_to_rou, value_exp_n};
 use crate::{CopyVar, Expression, ScriptExprError, StackVariable, Variable};
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) enum OpcodeId {
+    StandardOp(StandardOpcodeId),
+    CustomOp(CustomOpcodeId),
+    InputOp(InputOpcodeId),
+    Copy,
+}
+
+impl From<StandardOpcodeId> for OpcodeId {
+    fn from(value: StandardOpcodeId) -> Self {
+        OpcodeId::StandardOp(value)
+    }
+}
+
+impl From<CustomOpcodeId> for OpcodeId {
+    fn from(value: CustomOpcodeId) -> Self {
+        OpcodeId::CustomOp(value)
+    }
+}
+
+impl From<InputOpcodeId> for OpcodeId {
+    fn from(value: InputOpcodeId) -> Self {
+        OpcodeId::InputOp(value)
+    }
+}
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum StandardOpcodeId {
     Add,
     Mul,
@@ -26,6 +51,7 @@ pub(crate) enum StandardOpcodeId {
     Neg,
     Equal,
     EqualVerify,
+    NumToField,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -37,23 +63,25 @@ pub(crate) enum CustomOpcodeId {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) enum StdOpcodeId {}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum InputOpcodeId {
-    InputVariable,
-    ValueVariable,
+    InputVarMove,
+    InputVarCopy,
 }
 
-pub(crate) type CustomOpScriptGen = dyn Fn(
-        Vec<u32>,
-        Vec<u32>,
-        &mut StackTracker,
-        Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-    ) -> Vec<StackVariable>
-    + 'static;
+pub(crate) type CustomOpScriptGen =
+    dyn Fn(Vec<u32>, Vec<u32>, &mut StackTracker) -> Vec<StackVariable> + 'static;
 
-pub(crate) type StandardOpScriptGen = dyn Fn(
+pub(crate) type StandardOpScriptGen =
+    dyn Fn(Vec<u32>, &mut StackTracker) -> Vec<StackVariable> + 'static;
+
+pub(crate) type InputOpScriptGen = dyn Fn(
+        Variable,
         Vec<u32>,
         &mut StackTracker,
-        Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
+        &BTreeMap<Variable, StackVariable>,
     ) -> Vec<StackVariable>
     + 'static;
 
@@ -65,6 +93,7 @@ pub(crate) fn standard_script_genreator(opid: StandardOpcodeId) -> Box<StandardO
         StandardOpcodeId::Neg => Box::new(op_neg),
         StandardOpcodeId::EqualVerify => Box::new(op_euqalverify),
         StandardOpcodeId::Equal => Box::new(op_euqal),
+        StandardOpcodeId::NumToField => Box::new(op_num_to_field),
     }
 }
 
@@ -77,13 +106,72 @@ pub(crate) fn custom_script_generator<F: BfField>(opid: CustomOpcodeId) -> Box<C
     }
 }
 
+pub(crate) fn input_script_generator(opid: InputOpcodeId) -> Box<InputOpScriptGen> {
+    match opid {
+        InputOpcodeId::InputVarMove => Box::new(op_inputvar_move),
+        InputOpcodeId::InputVarCopy => Box::new(op_inputvar_copy),
+    }
+}
+
+pub(crate) fn op_inputvar_copy(
+    input_var: Variable,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    println!("op_inputvar {:?}", input_var);
+    let stack_var = var_getter.get(&input_var).unwrap();
+    // let var = stack.copy_var(stack_var.clone());
+
+    let var = stack.copy_var(stack_var.clone());
+    vec![var]
+}
+
+pub(crate) fn op_inputvar_move(
+    input_var: Variable,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    println!("op_inputvar {:?}", input_var);
+    let stack_var = var_getter.get(&input_var).unwrap();
+    // let var = stack.copy_var(stack_var.clone());
+
+    let var = stack.move_var(stack_var.clone());
+    vec![var]
+}
+
+pub(crate) fn op_num_to_field(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 1);
+    let vars = stack
+        .custom1(
+            script! {
+                if vars_size[0] == 1 {
+                    {u32_to_u31()}
+                } else {
+                    {u32_to_u31()}
+                    {u31_to_u31ext::<BabyBear4>()}
+                }
+            },
+            1,
+            1,
+            0,
+            vars_size[0],
+            "FieldExpr::NumToField",
+        )
+        .unwrap();
+
+    vars
+}
+
 pub(crate) fn op_lookup<F: BfField>(
     len: Vec<u32>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
 ) -> Vec<StackVariable> {
     assert_eq!(len.len(), 1);
+    assert_eq!(vars_size[0], 1); // the size of index is must 1
+    assert!(F::U32_SIZE != 4); // no support extension
     let vars = stack.custom1(
         script! {
             OP_PICK
@@ -105,9 +193,8 @@ pub(crate) fn op_lookup<F: BfField>(
 
 pub(crate) fn op_indextorou<F: BfField>(
     sub_group_bits: Vec<u32>,
-    vars_size: Vec<u32>,
+    _vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
 ) -> Vec<StackVariable> {
     assert_eq!(sub_group_bits.len(), 1);
     let vars = stack
@@ -128,7 +215,6 @@ pub(crate) fn op_expconst<F: BfField>(
     const_exp_power: Vec<u32>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
 ) -> Vec<StackVariable> {
     assert_eq!(const_exp_power.len(), 1);
     let vars = stack
@@ -150,17 +236,12 @@ pub(crate) fn op_constant(
     value: Vec<u32>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
 ) -> Vec<StackVariable> {
     let var = stack.bignumber(value);
     vec![var]
 }
 
-pub(crate) fn op_euqal(
-    vars_size: Vec<u32>,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Vec<StackVariable> {
+pub(crate) fn op_euqal(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], vars_size[1]);
     assert_eq!(vars_size.len(), 2);
 
@@ -180,11 +261,7 @@ pub(crate) fn op_euqal(
     }
 }
 
-pub(crate) fn op_euqalverify(
-    vars_size: Vec<u32>,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Vec<StackVariable> {
+pub(crate) fn op_euqalverify(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], vars_size[1]);
     assert_eq!(vars_size.len(), 2);
     if vars_size[0] == 1 {
@@ -200,11 +277,7 @@ pub(crate) fn op_euqalverify(
     }
     vec![]
 }
-pub(crate) fn op_neg(
-    vars_size: Vec<u32>,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Vec<StackVariable> {
+pub(crate) fn op_neg(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let vars = stack
         .custom1(
@@ -225,11 +298,7 @@ pub(crate) fn op_neg(
     vars
 }
 
-pub(crate) fn op_sub(
-    vars_size: Vec<u32>,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Vec<StackVariable> {
+pub(crate) fn op_sub(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
     if vars_size[0] == vars_size[1] {
@@ -275,20 +344,9 @@ pub(crate) fn op_sub(
     }
 
     vars
-
-    // let copy_var = to_copy(vars[0], stack, copy_ref);
-    // if copy_var.is_some() {
-    //     vec![copy_var.unwrap()]
-    // } else {
-    //     vars
-    // }
 }
 
-pub(crate) fn op_add(
-    vars_size: Vec<u32>,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Vec<StackVariable> {
+pub(crate) fn op_add(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
     if vars_size[0] == vars_size[1] {
@@ -334,20 +392,9 @@ pub(crate) fn op_add(
     }
 
     vars
-
-    // let copy_var = to_copy(vars[0], stack, copy_ref);
-    // if copy_var.is_some() {
-    //     vec![copy_var.unwrap()]
-    // } else {
-    //     vars
-    // }
 }
 
-pub(crate) fn op_mul(
-    vars_size: Vec<u32>,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Vec<StackVariable> {
+pub(crate) fn op_mul(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
 
@@ -393,11 +440,4 @@ pub(crate) fn op_mul(
             .unwrap();
     }
     vars
-
-    // let copy_var = to_copy(vars[0], stack, copy_ref);
-    // if copy_var.is_some() {
-    //     vec![copy_var.unwrap()]
-    // } else {
-    //     vars
-    // }
 }

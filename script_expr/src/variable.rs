@@ -2,10 +2,12 @@ use core::cell::Cell;
 use core::fmt::Debug;
 use core::ops::{Add, Mul, Sub};
 
+use bitcoin::psbt::Input;
 use bitcoin_script_stack::stack::StackVariable;
 use primitives::field::BfField;
 
 use super::FieldScriptExpression;
+use crate::{InputOpcode, InputOpcodeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValueVariable<F: BfField> {
@@ -30,13 +32,25 @@ impl<F: BfField> ValueVariable<F> {
     }
 }
 
+// impl<F: BfField> From<ValueVariable<F>> for FieldScriptExpression<F> {
+//     fn from(var: ValueVariable<F>) -> Self {
+//         Self::InputVarMove(InputOpcode::new(
+//             var.into(),
+//             vec![],
+//             F::U32_SIZE as u32,
+//             InputOpcodeId::InputVarMove,
+//         ))
+//     }
+// }
+
 impl<F: BfField> From<ValueVariable<F>> for FieldScriptExpression<F> {
     fn from(var: ValueVariable<F>) -> Self {
-        Self::ValueVariable {
-            v: var,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+        Self::InputVarMove(InputOpcode::new(
+            var.into(),
+            vec![],
+            F::U32_SIZE as u32,
+            InputOpcodeId::InputVarCopy,
+        ))
     }
 }
 
@@ -137,10 +151,51 @@ impl<F: BfField> Mul<ValueVariable<F>> for FieldScriptExpression<F> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+// Assume the trace matrix height is k, the row 0~k uses to record Matrix open
+// the u32::Max row use to record public inputs
+// the u32::Max-1 row uses to record other inputs
 pub struct Variable {
     pub row_index: usize,
     pub column_index: usize,
     pub expect_var_size: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VarWithValue {
+    pub var: Variable,
+    pub value: Vec<u32>,
+}
+
+impl VarWithValue {
+    pub fn new(value: Vec<u32>, row_index: usize, column_index: usize) -> Self {
+        VarWithValue {
+            var: Variable::new(row_index, column_index),
+            value: value,
+        }
+    }
+}
+
+impl<F: BfField> From<ValueVariable<F>> for VarWithValue {
+    fn from(value: ValueVariable<F>) -> Self {
+        Self::new(
+            value.value.unwrap().as_u32_vec(),
+            value.var.row_index,
+            value.var.column_index,
+        )
+    }
+}
+
+impl<F: BfField> From<ValueVariable<F>> for Variable {
+    fn from(value: ValueVariable<F>) -> Self {
+        let var = Self::new_with_size(
+            value.var.row_index,
+            value.var.column_index,
+            F::U32_SIZE as u32,
+        );
+
+        println!("===ValueVariable {:?} ==> Variable  {:?}====", value, var);
+        var
+    }
 }
 
 impl Variable {
@@ -183,11 +238,15 @@ impl Variable {
 
 impl<F: BfField> From<Variable> for FieldScriptExpression<F> {
     fn from(var: Variable) -> Self {
-        Self::InputVariable {
-            sv: var,
-            debug: Cell::new(false),
-            var: StackVariable::null(),
+        if let Some(size) = var.expect_var_size {
+            assert_eq!(size, F::U32_SIZE as u32);
         }
+        Self::InputVarMove(InputOpcode::new(
+            var,
+            vec![],
+            F::U32_SIZE as u32,
+            InputOpcodeId::InputVarMove,
+        ))
     }
 }
 

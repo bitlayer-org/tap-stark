@@ -116,7 +116,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
                     F::U32_SIZE as u32,
                     script! { {u32_vec[3]} {u32_vec[2]}  {u32_vec[1]} {u32_vec[0]} },
                     &format!(
-                        "main_trace row index={} column_value={}",
+                        "main_trace row_index={} column_index={}",
                         i / self.main().width,
                         i % self.main().width
                     ),

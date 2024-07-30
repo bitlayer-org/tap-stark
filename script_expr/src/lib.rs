@@ -5,13 +5,15 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::Cell;
+use std::fmt::Debug;
+use std::ops::{Add, Mul, Neg, Sub};
 use std::sync::RwLock;
 
 use bitcoin_script_stack::debugger::StepResult;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use primitives::field::BfField;
+use script_gen::OpcodeId;
 use scripts::treepp::*;
-
 mod script_builder;
 mod variable;
 pub use variable::{ValueVariable, Variable};
@@ -38,6 +40,8 @@ pub use std_expr::*;
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptExprError {
     DoubleCopy,
+    ReadLockError,
+    WriteLockError,
     InvalidExpression,
     InvalidScript,
 }
@@ -47,7 +51,7 @@ pub struct Executor<F: BfField> {
     stack: StackTracker,
 }
 
-pub trait Expression {
+pub trait Expression: Debug {
     fn to_copy(&self) -> Result<ExprPtr, ScriptExprError> {
         unimplemented!()
     }
@@ -67,10 +71,12 @@ pub trait Expression {
     #[allow(unused)]
     fn set_debug(&self);
 
-    // fn get_var(&self) -> Option<Vec<StackVariable>> {
-    //     unimplemented!()
-    // }
+    fn opcode(&self) -> OpcodeId;
 }
+
+// pub trait Dsl: Expression + Add<ExprPtr> + Sub<ExprPtr> + Mul<ExprPtr> + Neg {
+
+// }
 
 pub fn run_expr<F: BfField>(expr: FieldScriptExpression<F>, value: F) -> StepResult {
     let assert_expr = expr.equal_for_f(value);

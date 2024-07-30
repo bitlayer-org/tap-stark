@@ -15,7 +15,9 @@ use scripts::treepp::*;
 
 use super::variable::{ValueVariable, Variable};
 use super::{Expression, FieldScriptExpression};
+use crate::script_gen::{CustomOpcodeId, OpcodeId, StandardOpcodeId};
 use crate::script_helper::{reverse_bits_len_script_with_input, value_to_bits_format};
+use crate::StandardOpcode;
 
 pub enum NumScriptExpression {
     InputVariable {
@@ -140,12 +142,14 @@ impl NumScriptExpression {
         }
     }
 
-    pub fn num_to_field<F: BfField>(&self) -> FieldScriptExpression<F> {
-        FieldScriptExpression::NumToField {
-            x: Arc::new(Box::new(self.clone())),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        }
+    pub fn num_to_field<F: BfField>(self) -> FieldScriptExpression<F> {
+        let var_size = self.var_size();
+        assert_eq!(var_size, F::U32_SIZE as u32);
+        FieldScriptExpression::NumToField(StandardOpcode::new(
+            vec![self.as_expr_ptr()],
+            var_size,
+            StandardOpcodeId::NumToField,
+        ))
     }
 
     pub fn index_to_rou<F: BfField>(self, sub_group_bits: u32) -> FieldScriptExpression<F> {
@@ -161,6 +165,23 @@ impl NumScriptExpression {
 impl Expression for NumScriptExpression {
     fn as_expr_ptr(self) -> Arc<RwLock<Box<dyn Expression>>> {
         Arc::new(RwLock::new(Box::new(self)))
+    }
+
+    fn opcode(&self) -> OpcodeId {
+        match self {
+            // NumScriptExpression::InputVariable { .. } => OpcodeId::InputVariable,
+            NumScriptExpression::Constant { .. } => CustomOpcodeId::Constant.into(),
+            _ => panic!("no support opcode"), // NumScriptExpression::Add { .. } => OpcodeId::Add,
+                                              // NumScriptExpression::Sub { .. } => OpcodeId::Sub,
+                                              // NumScriptExpression::Neg { .. } => OpcodeId::Neg,
+                                              // NumScriptExpression::Mul { .. } => OpcodeId::Mul,
+                                              // NumScriptExpression::EqualVerify { .. } => OpcodeId::EqualVerify,
+                                              // NumScriptExpression::Equal { .. } => OpcodeId::Equal,
+                                              // NumScriptExpression::Double { .. } => OpcodeId::Double,
+                                              // NumScriptExpression::Square { .. } => OpcodeId::Square,
+                                              // NumScriptExpression::ToBits { .. } => OpcodeId::ToBits,
+                                              // NumScriptExpression::ToBitsVec { .. } => OpcodeId::ToBitsVec,
+        }
     }
 
     fn set_debug(&self) {
