@@ -8,6 +8,7 @@ use bitcoin_script::script;
 use bitcoin_script_stack::stack::StackTracker;
 use p3_util::log2_strict_usize;
 use primitives::field::BfField;
+use scripts::blake3::blake3_var_length;
 use scripts::treepp::*;
 use scripts::u31_lib::{
     u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add, u31ext_add_u31,
@@ -35,6 +36,7 @@ pub(crate) enum CustomOpcodeId {
     IndexToRou,
     Lookup,
     Add16,
+    Blake3Perm,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,6 +78,7 @@ pub(crate) fn custom_script_generator<F: BfField>(opid: CustomOpcodeId) -> Box<C
         CustomOpcodeId::Constant => Box::new(op_constant),
         CustomOpcodeId::Lookup => Box::new(op_lookup::<F>),
         CustomOpcodeId::Add16 => Box::new(op_add_16::<F>),
+        CustomOpcodeId::Blake3Perm => Box::new(op_blake3::<F>),
     }
 }
 
@@ -148,6 +151,28 @@ pub(crate) fn op_add_16<F: BfField>(
             0,
             F::U32_SIZE as u32,
             "ExprADD16_Result",
+        )
+        .unwrap();
+    assert_eq!(vars[0].size(), vars_size[0]);
+    vars
+}
+
+pub(crate) fn op_blake3<F: BfField>(
+    num_bytes: Vec<u32>,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
+) -> Vec<StackVariable> {
+    assert_eq!(num_bytes.len(), 1);
+    let bytes = num_bytes[0];
+    let vars = stack
+        .custom1(
+            blake3_var_length(bytes as usize),
+            bytes,
+            32,
+            0,
+            F::U32_SIZE as u32,
+            "ExprBlake3Perm_Result",
         )
         .unwrap();
     assert_eq!(vars[0].size(), vars_size[0]);

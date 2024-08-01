@@ -3,8 +3,6 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use bitcoin::opcodes::OP_TOALTSTACK;
-use scripts::blake3::blake3_var_length;
 use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
@@ -14,10 +12,12 @@ use std::ops::Div;
 use std::sync::{Mutex, RwLock};
 
 use bitcoin::consensus::serde::hex::Case;
+use bitcoin::opcodes::OP_TOALTSTACK;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use common::AbstractField;
 use p3_util::log2_strict_usize;
 use primitives::field::BfField;
+use scripts::blake3::blake3_var_length;
 use scripts::treepp::*;
 use scripts::u31_lib::{
     u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add, u31ext_add_u31,
@@ -29,7 +29,7 @@ use super::num_script_expr::NumScriptExpression;
 use super::variable::{ValueVariable, Variable};
 use super::Expression;
 use crate::opcode::Opcode;
-use crate::script_helper::{index_to_rou, value_exp_n, value_exp_7};
+use crate::script_helper::{index_to_rou, value_exp_7, value_exp_n};
 use crate::{
     op_mul, CopyVar, CustomOpcode, CustomOpcodeId, ExprPtr, Fraction, ScriptExprError,
     StandardOpcode, StandardOpcodeId,
@@ -60,6 +60,8 @@ pub enum FieldScriptExpression<F: BfField> {
     Equal(StandardOpcode<2, 1>),
     ExpConstant(CustomOpcode<1, 1, F>),
     IndexToROU(CustomOpcode<1, 1, F>),
+    Blake3Perm(CustomOpcode<64, 32, F>),
+    Add16(CustomOpcode<16, 1, F>),
     NumToField {
         x: Arc<Box<dyn Expression>>,
         var: StackVariable,
@@ -72,18 +74,11 @@ pub enum FieldScriptExpression<F: BfField> {
         var: StackVariable,
         debug: Cell<bool>,
     },
-    Blake3Perm {
-        x: Arc<Box<dyn Expression>>,
-        num_bytes: usize,
-        var: StackVariable,
-        debug: Cell<bool>,
-    },
     Exp7 {
         x: Arc<Box<dyn Expression>>,
         var: StackVariable,
         debug: Cell<bool>,
     },
-    Add16 (CustomOpcode<16, 1, F>)
 }
 
 impl<F: BfField> FieldScriptExpression<F> {
@@ -183,6 +178,16 @@ impl<F: BfField> FieldScriptExpression<F> {
             xs,
             var_size,
             CustomOpcodeId::Add16,
+        ))
+    }
+
+    pub(crate) fn new_blake3(xs: Vec<ExprPtr>, num_bytes: usize) -> Self {
+        let var_size = xs[0].read().unwrap().var_size();
+        Self::Blake3Perm(CustomOpcode::new(
+            vec![num_bytes as u32],
+            xs,
+            var_size,
+            CustomOpcodeId::Blake3Perm,
         ))
     }
 
@@ -293,6 +298,21 @@ impl<F: BfField> FieldScriptExpression<F> {
         Self::new_indextorou(index.as_expr_ptr(), sub_group_bits)
     }
 
+    pub fn blake3(rhs: &[Self], num_bytes: usize) -> Self {
+        let vec = rhs
+            .iter()
+            .map(|x| x.clone().as_expr_ptr())
+            .collect::<Vec<_>>();
+        Self::new_blake3(vec, num_bytes)
+    }
+    pub fn add_16(rhs: &[Self]) -> Self {
+        let vec = rhs
+            .iter()
+            .map(|x| x.clone().as_expr_ptr())
+            .collect::<Vec<_>>();
+        Self::new_add_16(vec)
+    }
+
     pub fn debug(self) -> Self {
         self.set_debug();
         self
@@ -345,13 +365,11 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::Lookup { debug, .. } => {
                 debug.set(true);
             }
-            FieldScriptExpression::Blake3Perm { debug, .. } => {
-                debug.set(true);
-            }
             FieldScriptExpression::Exp7 { debug, .. } => {
                 debug.set(true);
             }
             FieldScriptExpression::Add16(op) => op.set_debug(),
+            FieldScriptExpression::Blake3Perm(op) => op.set_debug(),
         };
     }
 
@@ -409,6 +427,7 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
             FieldScriptExpression::ExpConstant(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::IndexToROU(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::Add16(op) => op.express_to_script(stack, input_variables),
+            FieldScriptExpression::Blake3Perm(op) => op.express_to_script(stack, input_variables),
             FieldScriptExpression::NumToField { x, var, debug } => {
                 x.express_to_script(stack, input_variables);
                 let vars = stack
@@ -462,40 +481,11 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
 
                 vec![var]
             }
-            FieldScriptExpression::Blake3Perm {
-                x,
-                num_bytes,
-                debug,
-                mut var,
-            } => {
-                x.express_to_script(stack, input_variables);
-                let vars = stack.custom1(
-                    blake3_var_length(*num_bytes),
-                    *num_bytes as u32,
-                    //TODO:
-                    32,
-                    0,
-                    F::U32_SIZE as u32,
-                    "ExprBlake3Perm_Result",
-                ).unwrap();
-                vars
-            }
-            FieldScriptExpression::Exp7 {
-                x,
-                debug,
-                mut var,
-            } => {
+            FieldScriptExpression::Exp7 { x, debug, mut var } => {
                 x.express_to_script(stack, input_variables);
 
                 let vars = stack
-                    .custom1(
-                        value_exp_7::<F>(),
-                        1,
-                        1,
-                        0,
-                        x.var_size(),
-                        "FieldExpr::Exp7",
-                    )
+                    .custom1(value_exp_7::<F>(), 1, 1, 0, x.var_size(), "FieldExpr::Exp7")
                     .unwrap();
                 var = vars[0];
 
@@ -504,36 +494,6 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                 }
                 vec![var]
             }
-            // FieldScriptExpression::Add16 { 
-            //     x,
-            //     debug,
-            //     mut var,
-            // } => {
-            //     let len = x.len();
-            //     for expr in x {
-            //         expr.express_to_script(stack, input_variables);
-            //     }
-            //     let vars = stack
-            //     .custom1(
-            //         script! {
-            //             for _ in 0..len - 1 {
-            //                 if F::U32_SIZE == 1{
-            //                     {u31_add::<BabyBearU31>()}
-            //                 }else{
-            //                     {u31ext_add::<BabyBear4>()}
-            //                 }
-            //             }
-            //         },
-            //         len as u32,
-            //         1,
-            //         0,
-            //         F::U32_SIZE as u32,
-            //         "ExprADD_Result",
-            //     )
-            //     .unwrap();
-            //     var = vars[0];
-            //     vec![var]
-            // }
         }
     }
 
@@ -579,6 +539,7 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
             FieldScriptExpression::ExpConstant(op) => op.fmt(fm),
             FieldScriptExpression::IndexToROU(op) => op.fmt(fm),
             FieldScriptExpression::Add16(op) => op.fmt(fm),
+            FieldScriptExpression::Blake3Perm(op) => op.fmt(fm),
             FieldScriptExpression::NumToField { debug, var, .. } => fm
                 .debug_struct("ScriptExpression::Exp")
                 .field("variable", var)
@@ -591,15 +552,6 @@ impl<F: BfField> Debug for FieldScriptExpression<F> {
                 var,
             } => fm
                 .debug_struct("ScriptExpression::Lookup")
-                .field("variable", var)
-                .finish(),
-            FieldScriptExpression::Blake3Perm {
-                x,
-                num_bytes,
-                debug,
-                var,
-            } => fm
-                .debug_struct("ScriptExpression::Blake3Perm")
                 .field("variable", var)
                 .finish(),
             FieldScriptExpression::Exp7 { x, debug, var } => fm
@@ -650,6 +602,7 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
             }
             FieldScriptExpression::IndexToROU(op) => FieldScriptExpression::IndexToROU(op.clone()),
             FieldScriptExpression::Add16(op) => FieldScriptExpression::Add16(op.clone()),
+            FieldScriptExpression::Blake3Perm(op) => FieldScriptExpression::Blake3Perm(op.clone()),
             FieldScriptExpression::NumToField { x, debug, var } => {
                 FieldScriptExpression::NumToField {
                     x: x.clone(),
@@ -670,31 +623,11 @@ impl<F: BfField> Clone for FieldScriptExpression<F> {
                 debug: debug.clone(),
                 var: var.clone(),
             },
-            FieldScriptExpression::Blake3Perm { 
-                x, 
-                num_bytes, 
-                var, 
-                debug 
-            } => FieldScriptExpression::Blake3Perm {
+            FieldScriptExpression::Exp7 { x, debug, var } => FieldScriptExpression::Exp7 {
                 x: x.clone(),
-                num_bytes: num_bytes.clone(),
+                debug: debug.clone(),
                 var: var.clone(),
-                debug: debug.clone(), 
             },
-            FieldScriptExpression::Exp7 { x, debug, var } => {
-                FieldScriptExpression::Exp7 {
-                    x: x.clone(),
-                    debug: debug.clone(),
-                    var: var.clone(),
-                }
-            },
-            // FieldScriptExpression::Add16 { x, debug, var } => {
-            //     FieldScriptExpression::Add16 {
-            //         x: x.clone(),
-            //         debug: debug.clone(),
-            //         var: var.clone(),
-            //     }
-            // }
         }
     }
 }
@@ -908,24 +841,12 @@ impl<F: BfField> FieldScriptExpression<F> {
             var: StackVariable::null(),
         }
     }
-    pub fn blake3(&self, num_bytes: usize) -> Self {
-        Self::Blake3Perm { 
+    pub fn exp7(&self) -> Self {
+        Self::Exp7 {
             x: Arc::new(Box::new(self.clone())),
-            num_bytes, 
             debug: Cell::new(false),
             var: StackVariable::null(),
         }
-    }
-    pub fn exp7(&self) -> Self {
-        Self::Exp7 { 
-            x: Arc::new(Box::new(self.clone())),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-         }
-    }
-    pub fn add_long(rhs: &[Self]) -> Self {
-        let vec = rhs.iter().map(|x| x.clone().as_expr_ptr()).collect::<Vec<_>>();
-        Self::new_add_16(vec)
     }
 }
 
@@ -935,22 +856,23 @@ mod tests {
     use alloc::collections::BTreeMap;
     use alloc::sync::Arc;
     use alloc::vec::Vec;
-    use bitcoin::constants;
-    use bitcoin::hex::FromHex;
-    use bitcoin::opcodes::{OP_FROMALTSTACK, OP_SWAP, OP_DROP, OP_ADD};
-    use scripts::u32_std::u32_equalverify;
     use core::cell::{self, Cell};
 
+    use bitcoin::constants;
+    use bitcoin::hex::FromHex;
+    use bitcoin::opcodes::{OP_ADD, OP_DROP, OP_FROMALTSTACK, OP_SWAP, OP_TRUE};
     use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
     use common::{AbstractField, BabyBear, BinomialExtensionField};
     use p3_air::AirBuilder;
-    use p3_field::{TwoAdicField, PrimeField};
+    use p3_field::{PrimeField, TwoAdicField};
     use p3_matrix::Matrix;
     use primitives::field::BfField;
     use scripts::treepp::*;
     use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
+    use scripts::u32_std::u32_equalverify;
 
     use super::{Expression, FieldScriptExpression, Variable, *};
+    use crate::script_helper::{poseidon2_mat_external, poseidon2_mat_internal, poseidon2_perm};
     type EF = BinomialExtensionField<BabyBear, 4>;
     type F = BabyBear;
 
@@ -1371,13 +1293,13 @@ mod tests {
     }
 
     #[test]
-    fn test_base_addlong(){
+    fn test_base_add16() {
         let bmap = BTreeMap::new();
         let mut stack = StackTracker::new();
         let a = FieldScriptExpression::from(F::one());
         let b1 = FieldScriptExpression::from(F::two());
         let b2 = FieldScriptExpression::from(F::two());
-        let c = FieldScriptExpression::add_long(&vec![a,b1,b2]);
+        let c = FieldScriptExpression::add_16(&vec![a, b1, b2]);
 
         let script = c.express_to_script(&mut stack, &bmap);
         stack.debug();
@@ -1385,13 +1307,7 @@ mod tests {
 
         stack.bignumber(res.as_u32_vec());
         stack.debug();
-        stack.custom(
-            u31_equalverify(),
-            2,
-            false,
-            0,
-            "u31ext_equalverify",
-        );
+        stack.custom(u31_equalverify(), 2, false, 0, "u31ext_equalverify");
         stack.op_true();
         let res = stack.run();
         assert!(res.success);
@@ -1588,7 +1504,7 @@ mod tests {
         for _ in 0..16 {
             vec.push(FieldScriptExpression::from(BabyBear::one()));
         }
-        let sum = FieldScriptExpression::add_long(&vec);
+        let sum = FieldScriptExpression::add_16(&vec);
         let mut stack = StackTracker::new();
         let bmap = BTreeMap::new();
         let script = sum.express_to_script(&mut stack, &bmap);
@@ -1602,23 +1518,17 @@ mod tests {
 
     #[test]
     fn test_blake3_perm() {
-        let mut vec = vec![];
+        let mut prestate = vec![];
         for _ in 0..16 {
-            vec.push(BabyBear::one());
-            vec.push(BabyBear::zero());
-            vec.push(BabyBear::zero());
-            vec.push(BabyBear::zero());
+            prestate.push(FieldScriptExpression::from(BabyBear::zero()));
+            prestate.push(FieldScriptExpression::from(BabyBear::zero()));
+            prestate.push(FieldScriptExpression::from(BabyBear::zero()));
+            prestate.push(FieldScriptExpression::from(BabyBear::one()));
         }
         let mut stack = StackTracker::new();
         let bmap = BTreeMap::new();
 
-        let preimage = FieldScriptExpression::Table {
-            table: vec.clone(),
-            debug: Cell::new(false),
-            var: StackVariable::null(),
-        };
-
-        let m = preimage.blake3(64);
+        let m = FieldScriptExpression::blake3(&prestate, 64);
 
         let script = m.express_to_script(&mut stack, &bmap);
 
@@ -1633,11 +1543,11 @@ mod tests {
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
             .collect::<Vec<u8>>();
 
-        for i in (0 .. bytes.len()).rev().step_by(4) {
+        for i in (0..bytes.len()).rev().step_by(4) {
             stack.number(bytes[i] as u32);
-            stack.number(bytes[i-1] as u32);
-            stack.number(bytes[i-2] as u32);
-            stack.number(bytes[i-3] as u32);
+            stack.number(bytes[i - 1] as u32);
+            stack.number(bytes[i - 2] as u32);
+            stack.number(bytes[i - 3] as u32);
             stack.custom(u32_equalverify(), 8, false, 0, "u32_equalverify");
         }
 
@@ -1645,866 +1555,6 @@ mod tests {
         let res = stack.run();
         assert!(res.success);
     }
-
-    #[test]
-    fn test_poseidon2_perm() {
-        let t = 16;
-        let rounds_f_beginning = 1;
-        let rounds_p = 2;
-        let rounds = 3;
-
-        let mut current_state = vec![];
-        for i in 0..t {
-            current_state.push(FieldScriptExpression::from(BabyBear::from_canonical_u32(i as u32)));
-        }
-
-        matmul_external(&mut current_state);
-
-        for r in 0..rounds_f_beginning {
-            current_state = add_rc(&current_state, &RC16[r]);
-            current_state = sbox(&current_state);
-            matmul_external(&mut current_state);
-        }
-
-        let p_end = rounds_f_beginning + rounds_p;
-        for r in rounds_f_beginning..p_end {
-            current_state[0].add_assign(RC16[r][0]);
-            current_state[0] = current_state[0].exp7();
-            matmul_internal(&mut current_state);
-        }
-        
-        for r in p_end..rounds {
-            current_state = add_rc(&current_state, &RC16[r]);
-            current_state = sbox(&current_state);
-            matmul_external(&mut current_state);
-        }
-        let mut stack = StackTracker::new();
-        let bmap = BTreeMap::new();
-
-        println!("begin express_to_script");
-        current_state[0].express_to_script(&mut stack, &bmap);
-
-        // stack.debug();
-
-        // current_state[1].express_to_script(&mut stack, &bmap);
-
-        println!("finish express_to_script");
-        stack.debug();
-        let res = stack.run();
-        // println!("{:?}", e_share.clone().read().unwrap().get_var());
-        println!("script len {:?}", stack.get_script().len());
-        // assert!(res.success);
-        
-    }
-
-    fn sbox(input: &[FieldScriptExpression<F>]) -> Vec<FieldScriptExpression<F>> {
-        input.iter().map(|el| el.exp7()).collect()
-    }
-
-    
-    fn matmul_internal(input: &mut[FieldScriptExpression<F>]) {
-
-        let mut input_copy = vec![];
-        let mut sum = FieldScriptExpression::from(F::zero());
-
-        for i in 0..input.len() {
-            let temp = input[i].clone();
-            input_copy.push(temp.to_copy().unwrap());
-            sum = FieldScriptExpression::new_add_from_expr_ptr(temp.as_expr_ptr(), sum.clone().as_expr_ptr());
-        }
-        let sum_copy = sum.to_copy().unwrap();
-        //let sum_copy_copy = sum_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
-        // let mut sum = input[0].clone();
-        // input
-        //     .iter()
-        //     .skip(1)
-        //     .take(t-1)
-        //     .for_each(|el| sum.add_assign(el.clone()));
-        // Add sum + diag entry * element to each element
-
-        // input[1] = FieldScriptExpression::<F>::new_add_from_expr_ptr(input_copy[1].clone(), FieldScriptExpression::<F>::new_mul_from_expr_ptr(input[1].clone().as_expr_ptr(), FieldScriptExpression::from(MAT_DIAG16_M_1[1]).clone().as_expr_ptr()).as_expr_ptr());
-        // input[1] = FieldScriptExpression::new_add_from_expr_ptr(sum_copy.clone(), input[1].clone().as_expr_ptr());
-
-        // input[0] = input[0].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[i]));
-
-        // input[0] = FieldScriptExpression::<F>::new_add_from_expr_ptr(sum.as_expr_ptr(), input[0].clone().as_expr_ptr());
-
-        // let var_size = input[1].var_size().max(sum.var_size());
-
-        // input[1].mul_assign(FieldScriptExpression::from(MAT_DIAG16_M_1[1]));
-
-        // input[1] = FieldScriptExpression::<F>::Add(StandardOpcode::new(
-        //     vec![input[1].clone().as_expr_ptr(), sum_copy_copy],
-        //     var_size,
-        //     StandardOpcodeId::Add,
-        // ));
-        // input[1].add_assign(sum.clone());
-
-        // for i in 0..input.len() {
-        //     input[i] = FieldScriptExpression::<F>::new_mul_from_expr_ptr(input_copy[i].clone(), FieldScriptExpression::from(MAT_DIAG16_M_1[1]).clone().as_expr_ptr());
-        // }
-
-        input[1] = FieldScriptExpression::new_add_from_expr_ptr(sum_copy.clone(), input[1].clone().as_expr_ptr());
-
-        input[0] = FieldScriptExpression::<F>::new_add_from_expr_ptr(sum.as_expr_ptr(), input[0].clone().as_expr_ptr());
-
-
-    }
-
-    fn matmul_external(input: &mut[FieldScriptExpression<F>]) {
-        let t = 16;
-        p3_matmul_m4(input);
-
-        // Applying second cheap matrix for t > 4
-        let t4 = t / 4;
-        let mut stored = vec![FieldScriptExpression::from(F::zero()); 4];
-        for l in 0..4 {
-            stored[l] = input[l].clone();
-            for j in 1..t4 {
-                stored[l].add_assign(input[4 * j + l].clone());
-            }
-        }
-        for i in 0..input.len() {
-            input[i].add_assign(stored[i % 4].clone());
-        }
-    }
-// plonky3 optimize:
-// Multiply a 4-element vector x by:
-// [ 2 3 1 1 ]
-// [ 1 2 3 1 ]
-// [ 1 1 2 3 ]
-// [ 3 1 1 2 ].
-// This is more efficient than the previous matrix.
-// fn apply_mat4<AF>(x: &mut [AF; 4])
-// where
-//     AF: AbstractField,
-// {
-//     let t01 = x[0].clone() + x[1].clone();
-//     let t23 = x[2].clone() + x[3].clone();
-//     let t0123 = t01.clone() + t23.clone();
-//     let t01123 = t0123.clone() + x[1].clone();
-//     let t01233 = t0123.clone() + x[3].clone();
-//     // The order here is important. Need to overwrite x[0] and x[2] after x[1] and x[3].
-//     x[3] = t01233.clone() + x[0].double(); // 3*x[0] + x[1] + x[2] + 2*x[3]
-//     x[1] = t01123.clone() + x[2].double(); // x[0] + 2*x[1] + 3*x[2] + x[3]
-//     x[0] = t01123 + t01; // 2*x[0] + 3*x[1] + x[2] + x[3]
-//     x[2] = t01233 + t23; // x[0] + x[1] + 2*x[2] + 3*x[3]
-// }
-
-    fn p3_matmul_m4(input: &mut[FieldScriptExpression<F>]) {
-        let t = 16;
-        let t4 = t / 4;
-        for i in 0..t4 {
-            let start_index = i * 4;
-            // let t1_copy = input[start_index + 1].to_copy().unwrap();
-            let t01 = input[start_index].clone() + input[start_index + 1].clone();
-            let t23 = input[start_index + 2].clone() + input[start_index + 3].clone();
-            let t0123 = t01.clone() + t23.clone();
-            let t01123 = t0123.clone() + input[start_index + 1].clone();
-            let t01233 = t0123.clone() + input[start_index + 3].clone();
-            // The order here is important. Need to overwrite x[0] and x[2] after x[1] and x[3].
-            input[start_index + 3] = t01233.clone() + input[start_index].clone() + input[start_index].clone(); // 3*x[0] + x[1] + x[2] + 2*x[3]
-            input[start_index + 1] = t01123.clone() + input[start_index + 2].clone() + input[start_index + 2].clone(); // x[0] + 2*x[1] + 3*x[2] + x[3]
-            input[start_index] = t01123 + t01; // 2*x[0] + 3*x[1] + x[2] + x[3]
-            input[start_index + 2] = t01233 + t23; // x[0] + x[1] + 2*x[2] + 3*x[3]
-        };
-    }
-
-    fn add_rc(input: &[FieldScriptExpression<F>], rc: &[F]) -> Vec<FieldScriptExpression<F>> {
-        input
-            .iter()
-            .zip(rc.iter())
-            .map(|(a, b)| {
-                let mut r = a.clone();
-                r.add_assign(FieldScriptExpression::from(*b));
-                r
-            })
-            .collect()
-    }
-
-    use lazy_static::lazy_static;
-
-lazy_static! {
-
-//p3 opt
-// See poseidon2\src\diffusion.rs for information on how to double check these matrices in Sage.
-// Optimized diffusion matrices for Babybear16:
-// Small entries: [-2, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16]
-// Power of 2 entries: [-2,   1,   2,   4,   8,  16,  32,  64, 128, 256, 512, 1024, 2048, 4096, 8192, 32768]
-//                   = [ ?, 2^0, 2^1, 2^2, 2^3, 2^4, 2^5, 2^6, 2^7, 2^8, 2^9, 2^10, 2^11, 2^12, 2^13, 2^15]
-    pub static ref MAT_DIAG16_M_1: Vec<BabyBear> = vec![
-    BabyBear::from_canonical_u32(0x0a632d94),
-    BabyBear::from_canonical_u32(0x6db657b7),
-    BabyBear::from_canonical_u32(0x56fbdc9e),
-    BabyBear::from_canonical_u32(0x052b3d8a),
-    BabyBear::from_canonical_u32(0x33745201),
-    BabyBear::from_canonical_u32(0x5c03108c),
-    BabyBear::from_canonical_u32(0x0beba37b),
-    BabyBear::from_canonical_u32(0x258c2e8b),
-    BabyBear::from_canonical_u32(0x12029f39),
-    BabyBear::from_canonical_u32(0x694909ce),
-    BabyBear::from_canonical_u32(0x6d231724),
-    BabyBear::from_canonical_u32(0x21c3b222),
-    BabyBear::from_canonical_u32(0x3c0904a5),
-    BabyBear::from_canonical_u32(0x01d6acda),
-    BabyBear::from_canonical_u32(0x27705c83),
-    BabyBear::from_canonical_u32(0x5231c802),
-    ];
-
-    pub static ref MAT_DIAG16_M_1_u32: Vec<u32> = vec![
-        0x0a632d94,
-        0x6db657b7,
-        0x56fbdc9e,
-        0x052b3d8a,
-        0x33745201,
-        0x5c03108c,
-        0x0beba37b,
-        0x258c2e8b,
-        0x12029f39,
-        0x694909ce,
-        0x6d231724,
-        0x21c3b222,
-        0x3c0904a5,
-        0x01d6acda,
-        0x27705c83,
-        0x5231c802,
-    ];
-
-    pub static ref MAT_INTERNAL16: Vec<Vec<BabyBear>> = vec![
-    vec![BabyBear::from_canonical_u32(0x0a632d95),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x6db657b8),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x56fbdc9f),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x052b3d8b),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x33745202),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x5c03108d),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x0beba37c),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x258c2e8c),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x12029f3a),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x694909cf),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x6d231725),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x21c3b223),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x3c0904a6),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x01d6acdb),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x27705c84),
-    BabyBear::from_canonical_u32(0x00000001),
-    ],
-    vec![BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x00000001),
-    BabyBear::from_canonical_u32(0x5231c803),
-    ],
-    ];
-
-    pub static ref RC16: Vec<Vec<BabyBear>> = vec![
-    vec![BabyBear::from_canonical_u32(0x69cbb6af),
-    BabyBear::from_canonical_u32(0x46ad93f9),
-    BabyBear::from_canonical_u32(0x60a00f4e),
-    BabyBear::from_canonical_u32(0x6b1297cd),
-    BabyBear::from_canonical_u32(0x23189afe),
-    BabyBear::from_canonical_u32(0x732e7bef),
-    BabyBear::from_canonical_u32(0x72c246de),
-    BabyBear::from_canonical_u32(0x2c941900),
-    BabyBear::from_canonical_u32(0x0557eede),
-    BabyBear::from_canonical_u32(0x1580496f),
-    BabyBear::from_canonical_u32(0x3a3ea77b),
-    BabyBear::from_canonical_u32(0x54f3f271),
-    BabyBear::from_canonical_u32(0x0f49b029),
-    BabyBear::from_canonical_u32(0x47872fe1),
-    BabyBear::from_canonical_u32(0x221e2e36),
-    BabyBear::from_canonical_u32(0x1ab7202e),
-    ],
-    vec![BabyBear::from_canonical_u32(0x487779a6),
-    BabyBear::from_canonical_u32(0x3851c9d8),
-    BabyBear::from_canonical_u32(0x38dc17c0),
-    BabyBear::from_canonical_u32(0x209f8849),
-    BabyBear::from_canonical_u32(0x268dcee8),
-    BabyBear::from_canonical_u32(0x350c48da),
-    BabyBear::from_canonical_u32(0x5b9ad32e),
-    BabyBear::from_canonical_u32(0x0523272b),
-    BabyBear::from_canonical_u32(0x3f89055b),
-    BabyBear::from_canonical_u32(0x01e894b2),
-    BabyBear::from_canonical_u32(0x13ddedde),
-    BabyBear::from_canonical_u32(0x1b2ef334),
-    BabyBear::from_canonical_u32(0x7507d8b4),
-    BabyBear::from_canonical_u32(0x6ceeb94e),
-    BabyBear::from_canonical_u32(0x52eb6ba2),
-    BabyBear::from_canonical_u32(0x50642905),
-    ],
-    vec![BabyBear::from_canonical_u32(0x05453f3f),
-    BabyBear::from_canonical_u32(0x06349efc),
-    BabyBear::from_canonical_u32(0x6922787c),
-    BabyBear::from_canonical_u32(0x04bfff9c),
-    BabyBear::from_canonical_u32(0x768c714a),
-    BabyBear::from_canonical_u32(0x3e9ff21a),
-    BabyBear::from_canonical_u32(0x15737c9c),
-    BabyBear::from_canonical_u32(0x2229c807),
-    BabyBear::from_canonical_u32(0x0d47f88c),
-    BabyBear::from_canonical_u32(0x097e0ecc),
-    BabyBear::from_canonical_u32(0x27eadba0),
-    BabyBear::from_canonical_u32(0x2d7d29e4),
-    BabyBear::from_canonical_u32(0x3502aaa0),
-    BabyBear::from_canonical_u32(0x0f475fd7),
-    BabyBear::from_canonical_u32(0x29fbda49),
-    BabyBear::from_canonical_u32(0x018afffd),
-    ],
-    vec![BabyBear::from_canonical_u32(0x0315b618),
-    BabyBear::from_canonical_u32(0x6d4497d1),
-    BabyBear::from_canonical_u32(0x1b171d9e),
-    BabyBear::from_canonical_u32(0x52861abd),
-    BabyBear::from_canonical_u32(0x2e5d0501),
-    BabyBear::from_canonical_u32(0x3ec8646c),
-    BabyBear::from_canonical_u32(0x6e5f250a),
-    BabyBear::from_canonical_u32(0x148ae8e6),
-    BabyBear::from_canonical_u32(0x17f5fa4a),
-    BabyBear::from_canonical_u32(0x3e66d284),
-    BabyBear::from_canonical_u32(0x0051aa3b),
-    BabyBear::from_canonical_u32(0x483f7913),
-    BabyBear::from_canonical_u32(0x2cfe5f15),
-    BabyBear::from_canonical_u32(0x023427ca),
-    BabyBear::from_canonical_u32(0x2cc78315),
-    BabyBear::from_canonical_u32(0x1e36ea47),
-    ],
-    vec![BabyBear::from_canonical_u32(0x5a8053c0),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x693be639),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x3858867d),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x19334f6b),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x128f0fd8),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x4e2b1ccb),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x61210ce0),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x3c318939),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x0b5b2f22),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x2edb11d5),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x213effdf),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x0cac4606),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x241af16d),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    BabyBear::from_canonical_u32(0x00000000),
-    ],
-    vec![BabyBear::from_canonical_u32(0x7290a80d),
-    BabyBear::from_canonical_u32(0x6f7e5329),
-    BabyBear::from_canonical_u32(0x598ec8a8),
-    BabyBear::from_canonical_u32(0x76a859a0),
-    BabyBear::from_canonical_u32(0x6559e868),
-    BabyBear::from_canonical_u32(0x657b83af),
-    BabyBear::from_canonical_u32(0x13271d3f),
-    BabyBear::from_canonical_u32(0x1f876063),
-    BabyBear::from_canonical_u32(0x0aeeae37),
-    BabyBear::from_canonical_u32(0x706e9ca6),
-    BabyBear::from_canonical_u32(0x46400cee),
-    BabyBear::from_canonical_u32(0x72a05c26),
-    BabyBear::from_canonical_u32(0x2c589c9e),
-    BabyBear::from_canonical_u32(0x20bd37a7),
-    BabyBear::from_canonical_u32(0x6a2d3d10),
-    BabyBear::from_canonical_u32(0x20523767),
-    ],
-    vec![BabyBear::from_canonical_u32(0x5b8fe9c4),
-    BabyBear::from_canonical_u32(0x2aa501d6),
-    BabyBear::from_canonical_u32(0x1e01ac3e),
-    BabyBear::from_canonical_u32(0x1448bc54),
-    BabyBear::from_canonical_u32(0x5ce5ad1c),
-    BabyBear::from_canonical_u32(0x4918a14d),
-    BabyBear::from_canonical_u32(0x2c46a83f),
-    BabyBear::from_canonical_u32(0x4fcf6876),
-    BabyBear::from_canonical_u32(0x61d8d5c8),
-    BabyBear::from_canonical_u32(0x6ddf4ff9),
-    BabyBear::from_canonical_u32(0x11fda4d3),
-    BabyBear::from_canonical_u32(0x02933a8f),
-    BabyBear::from_canonical_u32(0x170eaf81),
-    BabyBear::from_canonical_u32(0x5a9c314f),
-    BabyBear::from_canonical_u32(0x49a12590),
-    BabyBear::from_canonical_u32(0x35ec52a1),
-    ],
-    vec![BabyBear::from_canonical_u32(0x58eb1611),
-    BabyBear::from_canonical_u32(0x5e481e65),
-    BabyBear::from_canonical_u32(0x367125c9),
-    BabyBear::from_canonical_u32(0x0eba33ba),
-    BabyBear::from_canonical_u32(0x1fc28ded),
-    BabyBear::from_canonical_u32(0x066399ad),
-    BabyBear::from_canonical_u32(0x0cbec0ea),
-    BabyBear::from_canonical_u32(0x75fd1af0),
-    BabyBear::from_canonical_u32(0x50f5bf4e),
-    BabyBear::from_canonical_u32(0x643d5f41),
-    BabyBear::from_canonical_u32(0x6f4fe718),
-    BabyBear::from_canonical_u32(0x5b3cbbde),
-    BabyBear::from_canonical_u32(0x1e3afb3e),
-    BabyBear::from_canonical_u32(0x296fb027),
-    BabyBear::from_canonical_u32(0x45e1547b),
-    BabyBear::from_canonical_u32(0x4a8db2ab),
-    ],
-    vec![BabyBear::from_canonical_u32(0x59986d19),
-    BabyBear::from_canonical_u32(0x30bcdfa3),
-    BabyBear::from_canonical_u32(0x1db63932),
-    BabyBear::from_canonical_u32(0x1d7c2824),
-    BabyBear::from_canonical_u32(0x53b33681),
-    BabyBear::from_canonical_u32(0x0673b747),
-    BabyBear::from_canonical_u32(0x038a98a3),
-    BabyBear::from_canonical_u32(0x2c5bce60),
-    BabyBear::from_canonical_u32(0x351979cd),
-    BabyBear::from_canonical_u32(0x5008fb73),
-    BabyBear::from_canonical_u32(0x547bca78),
-    BabyBear::from_canonical_u32(0x711af481),
-    BabyBear::from_canonical_u32(0x3f93bf64),
-    BabyBear::from_canonical_u32(0x644d987b),
-    BabyBear::from_canonical_u32(0x3c8bcd87),
-    BabyBear::from_canonical_u32(0x608758b8),
-    ],
-    ];
-}
 }
 
 #[cfg(test)]
@@ -2531,179 +1581,50 @@ mod tests2 {
 
     #[test]
     fn test_field_compiler_optimize() {
-        // {
-        //     let bmap = BTreeMap::new();
-        //     let mut stack = StackTracker::new();
-        //     let a_value = BabyBear::two();
-        //     let b_value = BabyBear::one();
-        //     let c_value = BabyBear::from_canonical_u32(13232);
-        //     let d_value = a_value + b_value;
-        //     let e_value = d_value * c_value;
-        //     let f_value = e_value * d_value;
-        //     let g_value = f_value * e_value;
-        //     let h_value = g_value * e_value;
-
-        //     let a = FieldScriptExpression::from(a_value);
-        //     let b = FieldScriptExpression::from(b_value);
-
-        //     let c = FieldScriptExpression::from(c_value);
-        //     let d = a + b;
-        //     let d_share = d.as_expr_ptr();
-        //     let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         d_share.clone(),
-        //         c.as_expr_ptr(),
-        //     );
-
-        //     let e_share = e.as_expr_ptr();
-        //     let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         e_share.clone(),
-        //         d_share.clone(),
-        //     );
-        //     let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         e_share.clone(),
-        //         f.as_expr_ptr(),
-        //     );
-        //     let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         g.as_expr_ptr(),
-        //         e_share.clone(),
-        //     );
-
-        //     let equal = h.equal_for_f(h_value);
-        //     equal.express_to_script(&mut stack, &bmap);
-        //     let res = stack.run();
-        //     // println!("{:?}", e_share.clone().read().unwrap().get_var());
-        //     println!("script len {:?}", stack.get_script().len());
-        //     assert!(res.success);
-        // }
-
-        // {
-        //     let bmap = BTreeMap::new();
-        //     let mut stack = StackTracker::new();
-        //     let a_value = BabyBear::two();
-        //     let b_value = BabyBear::one();
-        //     let c_value = BabyBear::from_canonical_u32(13232);
-        //     let d_value = a_value + b_value;
-        //     let e_value = d_value * c_value;
-        //     let f_value = e_value * d_value;
-        //     let g_value = f_value * e_value;
-        //     let h_value = g_value * e_value;
-
-        //     let a = FieldScriptExpression::from(a_value);
-        //     let b = FieldScriptExpression::from(b_value);
-
-        //     let c = FieldScriptExpression::from(c_value);
-        //     let d = a + b;
-        //     let d_share = d.as_expr_ptr();
-        //     let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         d_share.clone(),
-        //         c.as_expr_ptr(),
-        //     );
-        //     let e_copy = e.to_copy().unwrap();
-        //     let e_copy_copy = e_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
-        //     let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         e_copy_copy.clone(),
-        //         d_share.clone(),
-        //     );
-        //     let g =
-        //         FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(e_copy, f.as_expr_ptr());
-        //     let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         e.as_expr_ptr(),
-        //         g.as_expr_ptr(),
-        //     );
-
-        //     let equal = h.equal_for_f(h_value);
-        //     equal.express_to_script(&mut stack, &bmap);
-        //     let res = stack.run();
-        //     println!("script len {:?}", stack.get_script().len());
-        //     assert!(res.success);
-        // }
-        //wrong case
         {
-            let a_value = BabyBear::two();
-            let b_value = BabyBear::one();
-            let c_value = a_value * b_value;
-
-            let mut a = FieldScriptExpression::from(a_value);
-            let mut b = FieldScriptExpression::from(b_value);
-
-            let a_share = a.as_expr_ptr();
-            let b_share = b.as_expr_ptr();
-            //3
-            let sum1 = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(a_share.clone(), b_share.clone());
-            let sum1_copy = sum1.to_copy().unwrap();
-
-            // //4
-            // b = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(b.clone().as_expr_ptr(), sum1_copy);
-            // //5
-
-            b = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(sum1_copy.clone(), b_share.clone());
-
-            a = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(sum1.as_expr_ptr(), a_share.clone());
-
-            // //9
-            let sum2 = a.clone() + b.clone();
-
-            // let sum2_copy = sum2.to_copy().unwrap();
-
-            // b = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(b.clone().as_expr_ptr(), sum2_copy);
-            // a = FieldScriptExpression::<BabyBear>::new_add_from_expr_ptr(a.clone().as_expr_ptr(), sum2.as_expr_ptr());
-
             let bmap = BTreeMap::new();
             let mut stack = StackTracker::new();
+            let a_value = BabyBear::two();
+            let b_value = BabyBear::one();
+            let c_value = BabyBear::from_canonical_u32(13232);
+            let d_value = a_value + b_value;
+            let e_value = d_value * c_value;
+            let f_value = e_value * d_value;
+            let g_value = f_value * e_value;
+            let h_value = g_value * e_value;
 
-            sum2.express_to_script(&mut stack, &bmap);
+            let a = FieldScriptExpression::from(a_value);
+            let b = FieldScriptExpression::from(b_value);
 
+            let c = FieldScriptExpression::from(c_value);
+            let d = a + b;
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                d_share.clone(),
+                c.as_expr_ptr(),
+            );
+
+            let e_share = e.as_expr_ptr();
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_share.clone(),
+                d_share.clone(),
+            );
+            let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_share.clone(),
+                f.as_expr_ptr(),
+            );
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                g.as_expr_ptr(),
+                e_share.clone(),
+            );
+
+            let equal = h.equal_for_f(h_value);
+            equal.express_to_script(&mut stack, &bmap);
+            let res = stack.run();
+            // println!("{:?}", e_share.clone().read().unwrap().get_var());
+            println!("script len {:?}", stack.get_script().len());
+            assert!(res.success);
         }
-    }
-
-
-
-    #[test]
-    fn test_constant_copy() {
-        // {
-        //     let bmap = BTreeMap::new();
-        //     let mut stack = StackTracker::new();
-        //     let a_value = BabyBear::two();
-        //     let b_value = BabyBear::one();
-        //     let c_value = BabyBear::from_canonical_u32(13232);
-        //     let d_value = a_value + b_value;
-        //     let e_value = d_value * c_value;
-        //     let f_value = e_value * d_value;
-        //     let g_value = f_value * e_value;
-        //     let h_value = g_value * e_value;
-
-        //     let a = FieldScriptExpression::from(a_value);
-        //     let b = FieldScriptExpression::from(b_value);
-
-        //     let c = FieldScriptExpression::from(c_value);
-        //     let d = a + b;
-        //     let d_share = d.as_expr_ptr();
-        //     let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         d_share.clone(),
-        //         c.as_expr_ptr(),
-        //     );
-
-        //     let e_share = e.as_expr_ptr();
-        //     let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         e_share.clone(),
-        //         d_share.clone(),
-        //     );
-        //     let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         e_share.clone(),
-        //         f.as_expr_ptr(),
-        //     );
-        //     let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
-        //         g.as_expr_ptr(),
-        //         e_share.clone(),
-        //     );
-
-        //     let equal = h.equal_for_f(h_value);
-        //     equal.express_to_script(&mut stack, &bmap);
-        //     let res = stack.run();
-        //     // println!("{:?}", e_share.clone().read().unwrap().get_var());
-        //     println!("script len {:?}", stack.get_script().len());
-        //     assert!(res.success);
-        // }
 
         {
             let bmap = BTreeMap::new();
@@ -2746,6 +1667,95 @@ mod tests2 {
             println!("script len {:?}", stack.get_script().len());
             assert!(res.success);
         }
+    }
 
+    #[test]
+    fn test_constant_copy() {
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a_value = BabyBear::two();
+            let b_value = BabyBear::one();
+            let c_value = BabyBear::from_canonical_u32(13232);
+            let d_value = a_value + b_value;
+            let e_value = d_value * c_value;
+            let f_value = e_value * d_value;
+            let g_value = f_value * e_value;
+            let h_value = g_value * e_value;
+
+            let a = FieldScriptExpression::from(a_value);
+            let b = FieldScriptExpression::from(b_value);
+
+            let c = FieldScriptExpression::from(c_value);
+            let d = a + b;
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                d_share.clone(),
+                c.as_expr_ptr(),
+            );
+
+            let e_share = e.as_expr_ptr();
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_share.clone(),
+                d_share.clone(),
+            );
+            let g = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_share.clone(),
+                f.as_expr_ptr(),
+            );
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                g.as_expr_ptr(),
+                e_share.clone(),
+            );
+
+            let equal = h.equal_for_f(h_value);
+            equal.express_to_script(&mut stack, &bmap);
+            let res = stack.run();
+            // println!("{:?}", e_share.clone().read().unwrap().get_var());
+            println!("script len {:?}", stack.get_script().len());
+            assert!(res.success);
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a_value = BabyBear::two();
+            let b_value = BabyBear::one();
+            let c_value = BabyBear::from_canonical_u32(13232);
+            let d_value = a_value + b_value;
+            let e_value = d_value * c_value;
+            let f_value = e_value * d_value;
+            let g_value = f_value * e_value;
+            let h_value = g_value * e_value;
+
+            let a = FieldScriptExpression::from(a_value);
+            let b = FieldScriptExpression::from(b_value);
+
+            let c = FieldScriptExpression::from(c_value);
+            let d = a + b;
+            let d_share = d.as_expr_ptr();
+            let e = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                d_share.clone(),
+                c.as_expr_ptr(),
+            );
+            let e_copy = e.to_copy().unwrap();
+            let e_copy_copy = e_copy.clone().as_ref().read().unwrap().to_copy().unwrap();
+            let f = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e_copy_copy.clone(),
+                d_share.clone(),
+            );
+            let g =
+                FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(e_copy, f.as_expr_ptr());
+            let h = FieldScriptExpression::<BabyBear>::new_mul_from_expr_ptr(
+                e.as_expr_ptr(),
+                g.as_expr_ptr(),
+            );
+
+            let equal = h.equal_for_f(h_value);
+            equal.express_to_script(&mut stack, &bmap);
+            let res = stack.run();
+            println!("script len {:?}", stack.get_script().len());
+            assert!(res.success);
+        }
     }
 }
