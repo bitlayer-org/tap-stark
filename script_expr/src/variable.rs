@@ -1,13 +1,11 @@
-use core::cell::Cell;
 use core::fmt::Debug;
 use core::ops::{Add, Mul, Sub};
+use std::sync::{Arc, RwLock};
 
-use bitcoin::psbt::Input;
-use bitcoin_script_stack::stack::StackVariable;
 use primitives::field::BfField;
 
-use super::FieldScriptExpression;
-use crate::{InputOpcode, InputOpcodeId};
+use super::Dsl;
+use crate::{get_opid, InputOpcode, StandardOpcodeId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValueVariable<F: BfField> {
@@ -17,6 +15,7 @@ pub struct ValueVariable<F: BfField> {
 
 impl<F: BfField> ValueVariable<F> {
     pub fn new(var: Variable, value: F) -> Self {
+        assert_eq!(var.expect_var_size.unwrap(), F::U32_SIZE as u32);
         Self {
             var,
             value: Some(value),
@@ -32,53 +31,43 @@ impl<F: BfField> ValueVariable<F> {
     }
 }
 
-// impl<F: BfField> From<ValueVariable<F>> for FieldScriptExpression<F> {
-//     fn from(var: ValueVariable<F>) -> Self {
-//         Self::InputVarMove(InputOpcode::new(
-//             var.into(),
-//             vec![],
-//             F::U32_SIZE as u32,
-//             InputOpcodeId::InputVarMove,
-//         ))
-//     }
-// }
-
-impl<F: BfField> From<ValueVariable<F>> for FieldScriptExpression<F> {
+impl<F: BfField> From<ValueVariable<F>> for Dsl<F> {
     fn from(var: ValueVariable<F>) -> Self {
-        Self::InputVarMove(InputOpcode::new(
+        Dsl::new(Arc::new(RwLock::new(Box::new(InputOpcode::<0, 1>::new(
+            get_opid(),
             var.into(),
             vec![],
             F::U32_SIZE as u32,
-            InputOpcodeId::InputVarCopy,
-        ))
+            StandardOpcodeId::InputVarCopy,
+        )))))
     }
 }
 
 impl<F: BfField> Add for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) + FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) + Dsl::<F>::from(rhs)
     }
 }
 
 impl<F: BfField> Add<F> for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn add(self, rhs: F) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) + FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) + Dsl::<F>::constant_f(rhs)
     }
 }
 
-impl<F: BfField> Add<FieldScriptExpression<F>> for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+impl<F: BfField> Add<Dsl<F>> for ValueVariable<F> {
+    type Output = Dsl<F>;
 
-    fn add(self, rhs: FieldScriptExpression<F>) -> Self::Output {
-        FieldScriptExpression::from(self) + rhs
+    fn add(self, rhs: Dsl<F>) -> Self::Output {
+        Dsl::from(self) + rhs
     }
 }
 
-impl<F: BfField> Add<ValueVariable<F>> for FieldScriptExpression<F> {
+impl<F: BfField> Add<ValueVariable<F>> for Dsl<F> {
     type Output = Self;
 
     fn add(self, rhs: ValueVariable<F>) -> Self::Output {
@@ -87,30 +76,30 @@ impl<F: BfField> Add<ValueVariable<F>> for FieldScriptExpression<F> {
 }
 
 impl<F: BfField> Sub for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) - FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) - Dsl::<F>::from(rhs)
     }
 }
 
 impl<F: BfField> Sub<F> for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn sub(self, rhs: F) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) - FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) - Dsl::<F>::constant_f(rhs)
     }
 }
 
-impl<F: BfField> Sub<FieldScriptExpression<F>> for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+impl<F: BfField> Sub<Dsl<F>> for ValueVariable<F> {
+    type Output = Dsl<F>;
 
-    fn sub(self, rhs: FieldScriptExpression<F>) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) - rhs
+    fn sub(self, rhs: Dsl<F>) -> Self::Output {
+        Dsl::<F>::from(self) - rhs
     }
 }
 
-impl<F: BfField> Sub<ValueVariable<F>> for FieldScriptExpression<F> {
+impl<F: BfField> Sub<ValueVariable<F>> for Dsl<F> {
     type Output = Self;
 
     fn sub(self, rhs: ValueVariable<F>) -> Self::Output {
@@ -119,30 +108,30 @@ impl<F: BfField> Sub<ValueVariable<F>> for FieldScriptExpression<F> {
 }
 
 impl<F: BfField> Mul for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) * FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) * Dsl::<F>::from(rhs)
     }
 }
 
 impl<F: BfField> Mul<F> for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn mul(self, rhs: F) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) * FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) * Dsl::<F>::constant_f(rhs)
     }
 }
 
-impl<F: BfField> Mul<FieldScriptExpression<F>> for ValueVariable<F> {
-    type Output = FieldScriptExpression<F>;
+impl<F: BfField> Mul<Dsl<F>> for ValueVariable<F> {
+    type Output = Dsl<F>;
 
-    fn mul(self, rhs: FieldScriptExpression<F>) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) * rhs
+    fn mul(self, rhs: Dsl<F>) -> Self::Output {
+        Dsl::<F>::from(self) * rhs
     }
 }
 
-impl<F: BfField> Mul<ValueVariable<F>> for FieldScriptExpression<F> {
+impl<F: BfField> Mul<ValueVariable<F>> for Dsl<F> {
     type Output = Self;
 
     fn mul(self, rhs: ValueVariable<F>) -> Self::Output {
@@ -192,8 +181,6 @@ impl<F: BfField> From<ValueVariable<F>> for Variable {
             value.var.column_index,
             F::U32_SIZE as u32,
         );
-
-        println!("===ValueVariable {:?} ==> Variable  {:?}====", value, var);
         var
     }
 }
@@ -236,37 +223,38 @@ impl Variable {
     }
 }
 
-impl<F: BfField> From<Variable> for FieldScriptExpression<F> {
+impl<F: BfField> From<Variable> for Dsl<F> {
     fn from(var: Variable) -> Self {
         if let Some(size) = var.expect_var_size {
             assert_eq!(size, F::U32_SIZE as u32);
         }
-        Self::InputVarMove(InputOpcode::new(
+        Self::new(Arc::new(RwLock::new(Box::new(InputOpcode::<0, 1>::new(
+            get_opid(),
             var,
             vec![],
             F::U32_SIZE as u32,
-            InputOpcodeId::InputVarMove,
-        ))
+            StandardOpcodeId::InputVarCopy,
+        )))))
     }
 }
 
 impl<F: BfField> Add<F> for Variable {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn add(self, rhs: F) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) + FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) + Dsl::<F>::constant_f(rhs)
     }
 }
 
-impl<F: BfField> Add<FieldScriptExpression<F>> for Variable {
-    type Output = FieldScriptExpression<F>;
+impl<F: BfField> Add<Dsl<F>> for Variable {
+    type Output = Dsl<F>;
 
-    fn add(self, rhs: FieldScriptExpression<F>) -> Self::Output {
-        FieldScriptExpression::from(self) + rhs
+    fn add(self, rhs: Dsl<F>) -> Self::Output {
+        Dsl::from(self) + rhs
     }
 }
 
-impl<F: BfField> Add<Variable> for FieldScriptExpression<F> {
+impl<F: BfField> Add<Variable> for Dsl<F> {
     type Output = Self;
 
     fn add(self, rhs: Variable) -> Self::Output {
@@ -275,22 +263,22 @@ impl<F: BfField> Add<Variable> for FieldScriptExpression<F> {
 }
 
 impl<F: BfField> Sub<F> for Variable {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn sub(self, rhs: F) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) - FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) - Dsl::<F>::constant_f(rhs)
     }
 }
 
-impl<F: BfField> Sub<FieldScriptExpression<F>> for Variable {
-    type Output = FieldScriptExpression<F>;
+impl<F: BfField> Sub<Dsl<F>> for Variable {
+    type Output = Dsl<F>;
 
-    fn sub(self, rhs: FieldScriptExpression<F>) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) - rhs
+    fn sub(self, rhs: Dsl<F>) -> Self::Output {
+        Dsl::<F>::from(self) - rhs
     }
 }
 
-impl<F: BfField> Sub<Variable> for FieldScriptExpression<F> {
+impl<F: BfField> Sub<Variable> for Dsl<F> {
     type Output = Self;
 
     fn sub(self, rhs: Variable) -> Self::Output {
@@ -299,22 +287,22 @@ impl<F: BfField> Sub<Variable> for FieldScriptExpression<F> {
 }
 
 impl<F: BfField> Mul<F> for Variable {
-    type Output = FieldScriptExpression<F>;
+    type Output = Dsl<F>;
 
     fn mul(self, rhs: F) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) * FieldScriptExpression::<F>::from(rhs)
+        Dsl::<F>::from(self) * Dsl::<F>::constant_f(rhs)
     }
 }
 
-impl<F: BfField> Mul<FieldScriptExpression<F>> for Variable {
-    type Output = FieldScriptExpression<F>;
+impl<F: BfField> Mul<Dsl<F>> for Variable {
+    type Output = Dsl<F>;
 
-    fn mul(self, rhs: FieldScriptExpression<F>) -> Self::Output {
-        FieldScriptExpression::<F>::from(self) * rhs
+    fn mul(self, rhs: Dsl<F>) -> Self::Output {
+        Dsl::<F>::from(self) * rhs
     }
 }
 
-impl<F: BfField> Mul<Variable> for FieldScriptExpression<F> {
+impl<F: BfField> Mul<Variable> for Dsl<F> {
     type Output = Self;
 
     fn mul(self, rhs: Variable) -> Self::Output {

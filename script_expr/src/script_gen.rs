@@ -10,39 +10,14 @@ use p3_util::log2_strict_usize;
 use primitives::field::BfField;
 use scripts::treepp::*;
 use scripts::u31_lib::{
-    u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add, u31ext_add_u31,
-    u31ext_equalverify, u31ext_mul, u31ext_mul_u31, u31ext_neg, u31ext_sub, u31ext_sub_u31,
-    u32_to_u31, BabyBear4, BabyBearU31,
+    u31_add, u31_double, u31_mul, u31_neg, u31_square, u31_sub, u31_sub_u31ext, u31_to_u31ext,
+    u31ext_add, u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
+    u31ext_neg, u31ext_square, u31ext_sub, u31ext_sub_u31, u32_to_u31, BabyBear4, BabyBearU31,
 };
 
 use crate::script_helper::{index_to_rou, value_exp_n};
-use crate::{CopyVar, Expression, ScriptExprError, StackVariable, Variable};
+use crate::{Expression, ScriptExprError, StackVariable, Variable};
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum OpcodeId {
-    StandardOp(StandardOpcodeId),
-    CustomOp(CustomOpcodeId),
-    InputOp(InputOpcodeId),
-    Copy,
-}
-
-impl From<StandardOpcodeId> for OpcodeId {
-    fn from(value: StandardOpcodeId) -> Self {
-        OpcodeId::StandardOp(value)
-    }
-}
-
-impl From<CustomOpcodeId> for OpcodeId {
-    fn from(value: CustomOpcodeId) -> Self {
-        OpcodeId::CustomOp(value)
-    }
-}
-
-impl From<InputOpcodeId> for OpcodeId {
-    fn from(value: InputOpcodeId) -> Self {
-        OpcodeId::InputOp(value)
-    }
-}
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum StandardOpcodeId {
     Add,
@@ -52,37 +27,18 @@ pub(crate) enum StandardOpcodeId {
     Equal,
     EqualVerify,
     NumToField,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum CustomOpcodeId {
     Constant,
     ExpConst,
     IndexToRou,
     Lookup,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum StdOpcodeId {}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum InputOpcodeId {
     InputVarMove,
     InputVarCopy,
+    Table,
+    Square,
+    Double,
 }
 
-pub(crate) type CustomOpScriptGen =
-    dyn Fn(Vec<u32>, Vec<u32>, &mut StackTracker) -> Vec<StackVariable> + 'static;
-
-pub(crate) type StandardOpScriptGen =
-    dyn Fn(Vec<u32>, &mut StackTracker) -> Vec<StackVariable> + 'static;
-
-pub(crate) type InputOpScriptGen = dyn Fn(
-        Variable,
-        Vec<u32>,
-        &mut StackTracker,
-        &BTreeMap<Variable, StackVariable>,
-    ) -> Vec<StackVariable>
+pub(crate) type StandardOpScriptGen = dyn Fn(Vec<u32>, &mut StackTracker, &BTreeMap<Variable, StackVariable>) -> Vec<StackVariable>
     + 'static;
 
 pub(crate) fn standard_script_genreator(opid: StandardOpcodeId) -> Box<StandardOpScriptGen> {
@@ -94,22 +50,76 @@ pub(crate) fn standard_script_genreator(opid: StandardOpcodeId) -> Box<StandardO
         StandardOpcodeId::EqualVerify => Box::new(op_euqalverify),
         StandardOpcodeId::Equal => Box::new(op_euqal),
         StandardOpcodeId::NumToField => Box::new(op_num_to_field),
+        StandardOpcodeId::Square => Box::new(op_square),
+        StandardOpcodeId::Double => Box::new(op_double),
+        _ => panic!("not support"),
     }
 }
 
-pub(crate) fn custom_script_generator<F: BfField>(opid: CustomOpcodeId) -> Box<CustomOpScriptGen> {
+pub(crate) fn custom_script_generator<F: BfField>(
+    opid: StandardOpcodeId,
+    custom_data: Vec<Vec<u32>>,
+) -> Box<StandardOpScriptGen> {
     match opid {
-        CustomOpcodeId::ExpConst => Box::new(op_expconst::<F>),
-        CustomOpcodeId::IndexToRou => Box::new(op_indextorou::<F>),
-        CustomOpcodeId::Constant => Box::new(op_constant),
-        CustomOpcodeId::Lookup => Box::new(op_lookup::<F>),
+        StandardOpcodeId::ExpConst => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_expconst::<F>(custom_data.clone(), vars_size, stack, var_getter)
+            },
+        ),
+        StandardOpcodeId::IndexToRou => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_indextorou::<F>(custom_data.clone(), vars_size, stack, var_getter)
+            },
+        ),
+        StandardOpcodeId::Constant => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_constant(custom_data.clone(), vars_size, stack, var_getter)
+            },
+        ),
+        StandardOpcodeId::Lookup => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_lookup::<F>(custom_data.clone(), vars_size, stack, var_getter)
+            },
+        ),
+        StandardOpcodeId::Table => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_table(custom_data.clone(), vars_size, stack, var_getter)
+            },
+        ),
+        _ => panic!("not support"),
     }
 }
 
-pub(crate) fn input_script_generator(opid: InputOpcodeId) -> Box<InputOpScriptGen> {
+pub(crate) fn input_script_generator(
+    opid: StandardOpcodeId,
+    input_var: Variable,
+) -> Box<StandardOpScriptGen> {
     match opid {
-        InputOpcodeId::InputVarMove => Box::new(op_inputvar_move),
-        InputOpcodeId::InputVarCopy => Box::new(op_inputvar_copy),
+        StandardOpcodeId::InputVarMove => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_inputvar_move(input_var, vars_size, stack, var_getter)
+            },
+        ),
+        StandardOpcodeId::InputVarCopy => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_inputvar_copy(input_var, vars_size, stack, var_getter)
+            },
+        ),
+        _ => panic!("not support"),
     }
 }
 
@@ -119,10 +129,7 @@ pub(crate) fn op_inputvar_copy(
     stack: &mut StackTracker,
     var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
-    println!("op_inputvar {:?}", input_var);
     let stack_var = var_getter.get(&input_var).unwrap();
-    // let var = stack.copy_var(stack_var.clone());
-
     let var = stack.copy_var(stack_var.clone());
     vec![var]
 }
@@ -133,15 +140,17 @@ pub(crate) fn op_inputvar_move(
     stack: &mut StackTracker,
     var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
-    println!("op_inputvar {:?}", input_var);
     let stack_var = var_getter.get(&input_var).unwrap();
-    // let var = stack.copy_var(stack_var.clone());
 
     let var = stack.move_var(stack_var.clone());
     vec![var]
 }
 
-pub(crate) fn op_num_to_field(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+pub(crate) fn op_num_to_field(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let vars = stack
         .custom1(
@@ -165,11 +174,12 @@ pub(crate) fn op_num_to_field(vars_size: Vec<u32>, stack: &mut StackTracker) -> 
 }
 
 pub(crate) fn op_lookup<F: BfField>(
-    len: Vec<u32>,
+    len: Vec<Vec<u32>>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
-    assert_eq!(len.len(), 1);
+    assert_eq!(len[0].len(), 1);
     assert_eq!(vars_size[0], 1); // the size of index is must 1
     assert!(F::U32_SIZE != 4); // no support extension
     let vars = stack.custom1(
@@ -183,7 +193,7 @@ pub(crate) fn op_lookup<F: BfField>(
         "ExprLookup_Result",
     );
     stack.to_altstack();
-    for _ in 0..(len[0]) {
+    for _ in 0..(len[0][0]) {
         stack.op_drop();
     }
     let var = stack.from_altstack();
@@ -191,15 +201,31 @@ pub(crate) fn op_lookup<F: BfField>(
     vec![var]
 }
 
+pub(crate) fn op_table(
+    table: Vec<Vec<u32>>,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    //push table
+    let mut vars = vec![];
+    for f in table.iter().rev() {
+        let v = f.clone();
+        vars.push(stack.bignumber(v));
+    }
+    vars
+}
+
 pub(crate) fn op_indextorou<F: BfField>(
-    sub_group_bits: Vec<u32>,
+    sub_group_bits: Vec<Vec<u32>>,
     _vars_size: Vec<u32>,
     stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
-    assert_eq!(sub_group_bits.len(), 1);
+    assert_eq!(sub_group_bits[0].len(), 1);
     let vars = stack
         .custom1(
-            index_to_rou::<F>(sub_group_bits[0]),
+            index_to_rou::<F>(sub_group_bits[0][0]),
             1,
             1,
             0,
@@ -212,14 +238,15 @@ pub(crate) fn op_indextorou<F: BfField>(
 }
 
 pub(crate) fn op_expconst<F: BfField>(
-    const_exp_power: Vec<u32>,
+    const_exp_power: Vec<Vec<u32>>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
-    assert_eq!(const_exp_power.len(), 1);
+    assert_eq!(const_exp_power[0].len(), 1);
     let vars = stack
         .custom1(
-            value_exp_n::<F>(log2_strict_usize(const_exp_power[0] as usize)),
+            value_exp_n::<F>(log2_strict_usize(const_exp_power[0][0] as usize)),
             1,
             1,
             0,
@@ -233,15 +260,21 @@ pub(crate) fn op_expconst<F: BfField>(
 }
 
 pub(crate) fn op_constant(
-    value: Vec<u32>,
+    value: Vec<Vec<u32>>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
-    let var = stack.bignumber(value);
+    assert_eq!(value.len(), 1);
+    let var = stack.bignumber(value[0].clone());
     vec![var]
 }
 
-pub(crate) fn op_euqal(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+pub(crate) fn op_euqal(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], vars_size[1]);
     assert_eq!(vars_size.len(), 2);
 
@@ -261,7 +294,11 @@ pub(crate) fn op_euqal(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<Sta
     }
 }
 
-pub(crate) fn op_euqalverify(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+pub(crate) fn op_euqalverify(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], vars_size[1]);
     assert_eq!(vars_size.len(), 2);
     if vars_size[0] == 1 {
@@ -277,7 +314,11 @@ pub(crate) fn op_euqalverify(vars_size: Vec<u32>, stack: &mut StackTracker) -> V
     }
     vec![]
 }
-pub(crate) fn op_neg(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+pub(crate) fn op_neg(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let vars = stack
         .custom1(
@@ -298,7 +339,11 @@ pub(crate) fn op_neg(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<Stack
     vars
 }
 
-pub(crate) fn op_sub(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+pub(crate) fn op_sub(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
     if vars_size[0] == vars_size[1] {
@@ -346,7 +391,11 @@ pub(crate) fn op_sub(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<Stack
     vars
 }
 
-pub(crate) fn op_add(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+pub(crate) fn op_add(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
     if vars_size[0] == vars_size[1] {
@@ -394,7 +443,87 @@ pub(crate) fn op_add(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<Stack
     vars
 }
 
-pub(crate) fn op_mul(vars_size: Vec<u32>, stack: &mut StackTracker) -> Vec<StackVariable> {
+pub(crate) fn op_double(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 1);
+    let mut vars = vec![];
+
+    if vars_size[0] == 1 {
+        vars = stack
+            .custom1(
+                script! {
+                    {u31_double::<BabyBearU31>()}
+                },
+                1,
+                1,
+                0,
+                vars_size[0],
+                "op_double",
+            )
+            .unwrap()
+    } else {
+        vars = stack
+            .custom1(
+                script! {
+                    {u31ext_double::<BabyBear4>()}
+                },
+                1,
+                1,
+                0,
+                vars_size[0],
+                "op_double",
+            )
+            .unwrap()
+    }
+    vars
+}
+
+pub(crate) fn op_square(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 1);
+    let mut vars = vec![];
+
+    if vars_size[0] == 1 {
+        vars = stack
+            .custom1(
+                script! {
+                    {u31_square()}
+                },
+                1,
+                1,
+                0,
+                vars_size[0],
+                "op_square",
+            )
+            .unwrap()
+    } else {
+        vars = stack
+            .custom1(
+                script! {
+                    {u31ext_square()}
+                },
+                1,
+                1,
+                0,
+                vars_size[0],
+                "op_square",
+            )
+            .unwrap()
+    }
+    vars
+}
+
+pub(crate) fn op_mul(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
 

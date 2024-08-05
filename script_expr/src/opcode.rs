@@ -2,19 +2,17 @@ use std::cell::{Cell, Ref, RefCell};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, RwLock};
 
-use bitcoin::psbt::Input;
-use bitcoin_script::script;
 use bitcoin_script_stack::stack::StackTracker;
-use p3_field::AbstractField;
 use primitives::field::BfField;
 
 use crate::script_gen::*;
 use crate::variable::VarWithValue;
 use crate::{
-    CopyVar, ExprPtr, Expression, FieldScriptExpression, ScriptExprError, StackVariable,
-    ValueVariable, Variable,
+    get_opid, Dsl, ExprPtr, Expression, IdCount, ScriptExprError, StackVariable, ValueVariable,
+    Variable, DYNAMIC_INPUT_OR_OUTPUT,
 };
 
 fn to_copy(
@@ -26,29 +24,24 @@ fn to_copy(
         return None;
     }
     let top_var = stack.copy_var(low_var);
-    copy_ref
-        .as_ref()
-        .unwrap()
-        .read()
-        .unwrap()
-        .set_copy_var(low_var);
     Some(top_var)
 }
 
 pub(crate) struct Opcode<const INPUT_NUM: usize, const OUTPUT_NUM: usize> {
+    id: u32,
+    name: RefCell<Option<String>>,
     var_size: u32,
     ops: Vec<ExprPtr>,
     debug: Cell<bool>,
-    to_copy_expr: RefCell<Option<ExprPtr>>,
 }
 
 impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Debug for Opcode<INPUT_NUM, OUTPUT_NUM> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Opcode")
+            .field("id", &self.id)
             .field("var_size", &self.var_size)
             .field("ops", &self.ops.len())
             .field("debug", &self.debug)
-            .field("to_copy_expr", &self.to_copy_expr.borrow().is_some())
             .finish()
     }
 }
@@ -56,22 +49,40 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Debug for Opcode<INPUT_NUM
 impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Clone for Opcode<INPUT_NUM, OUTPUT_NUM> {
     fn clone(&self) -> Self {
         Self {
+            id: self.id.clone(),
+            name: self.name.clone(),
             var_size: self.var_size,
             ops: self.ops.clone(),
             debug: self.debug.clone(),
-            to_copy_expr: RefCell::new(self.to_copy_expr.borrow().clone()),
         }
     }
 }
 
 impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Opcode<INPUT_NUM, OUTPUT_NUM> {
-    pub(crate) fn new(ops: Vec<Arc<RwLock<Box<dyn Expression>>>>, var_size: u32) -> Self {
+    pub(crate) fn new(id: u32, ops: Vec<Arc<RwLock<Box<dyn Expression>>>>, var_size: u32) -> Self {
         Self {
+            id: id,
+            name: RefCell::new(None),
             ops: ops,
             var_size: var_size,
             debug: Cell::new(false),
-            to_copy_expr: RefCell::new(None),
         }
+    }
+
+    pub(crate) fn get_id(&self) -> u32 {
+        self.id
+    }
+
+    pub(crate) fn get_name(&self) -> Option<String> {
+        self.name.borrow().deref().clone()
+    }
+
+    pub(crate) fn set_id(&mut self, id: u32) {
+        self.id = id;
+    }
+
+    pub(crate) fn set_name(&self, name: String) {
+        *self.name.borrow_mut() = Some(name);
     }
 
     pub(crate) fn get_op_expr_ptr(&self, index: usize) -> ExprPtr {
@@ -93,18 +104,51 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Opcode<INPUT_NUM, OUTPUT_N
     fn set_debug(&self) {
         self.debug.set(true);
     }
+}
 
-    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
-        if self.to_copy_expr.borrow().is_some() {
-            return Err(ScriptExprError::DoubleCopy);
+impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Expression for Opcode<INPUT_NUM, OUTPUT_NUM> {
+    fn as_expr_ptr(self) -> ExprPtr {
+        Arc::new(RwLock::new(Box::new(self)))
+    }
+
+    fn get_input_number(&self) -> usize {
+        INPUT_NUM
+    }
+
+    fn get_output_number(&self) -> usize {
+        OUTPUT_NUM
+    }
+
+    fn get_ops(&self) -> &Vec<ExprPtr> {
+        &self.ops
+    }
+
+    fn generate_script_fn(&self) -> Arc<Box<StandardOpScriptGen>> {
+        unimplemented!()
+    }
+
+    fn var_size(&self) -> u32 {
+        if self.var_size == 1 || self.var_size == 4 {
+            self.var_size
+        } else {
+            panic!("Invalid var_size")
         }
+    }
 
-        let copy_self = Arc::new(RwLock::new(
-            Box::new(CopyVar::new(self.var_size())) as Box<dyn Expression>
-        ));
+    fn get_id(&self) -> u32 {
+        self.id
+    }
 
-        *self.to_copy_expr.borrow_mut() = Some(copy_self.clone());
-        Ok(copy_self)
+    fn set_debug(&self) {
+        self.debug.set(true);
+    }
+
+    fn is_debug(&self) -> bool {
+        self.debug.get()
+    }
+
+    fn opcode(&self) -> StandardOpcodeId {
+        unimplemented!()
     }
 }
 
@@ -113,14 +157,16 @@ pub(crate) struct StandardOpcode<const INPUT_NUM: usize, const OUTPUT_NUM: usize
     opcode_id: StandardOpcodeId,
     script_gen: Arc<Box<StandardOpScriptGen>>,
 }
+
 impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> StandardOpcode<INPUT_NUM, OUTPUT_NUM> {
     pub(crate) fn new(
+        id: u32,
         ops: Vec<Arc<RwLock<Box<dyn Expression>>>>,
         var_size: u32,
         opcode: StandardOpcodeId,
     ) -> Self {
         Self {
-            opcode: Opcode::new(ops, var_size),
+            opcode: Opcode::new(id, ops, var_size),
             opcode_id: opcode,
             script_gen: Arc::new(standard_script_genreator(opcode)),
         }
@@ -161,43 +207,20 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Expression
         Arc::new(RwLock::new(Box::new(self)))
     }
 
-    fn express_to_script(
-        &self,
-        stack: &mut StackTracker,
-        input_variables: &BTreeMap<Variable, StackVariable>,
-    ) -> Vec<StackVariable> {
-        self.check_input_num();
+    fn get_input_number(&self) -> usize {
+        INPUT_NUM
+    }
 
-        let vars_size: Vec<u32> = self
-            .opcode
-            .ops
-            .iter()
-            .map(|op| {
-                op.as_ref()
-                    .read()
-                    .unwrap()
-                    .express_to_script(stack, input_variables);
-                op.as_ref().read().unwrap().var_size()
-            })
-            .collect();
+    fn get_output_number(&self) -> usize {
+        OUTPUT_NUM
+    }
 
-        let mut vars = (self.script_gen)(vars_size, stack);
+    fn get_ops(&self) -> &Vec<ExprPtr> {
+        &self.opcode.ops
+    }
 
-        // check output
-        assert_eq!(vars.len(), OUTPUT_NUM);
-
-        // copy case
-        if OUTPUT_NUM == 1 {
-            let copy_var = to_copy(vars[0], stack, self.opcode.to_copy_expr.borrow());
-            if copy_var.is_some() {
-                vars = vec![copy_var.unwrap()];
-            }
-        }
-
-        if self.opcode.debug.get() == true {
-            stack.debug();
-        }
-        vars
+    fn generate_script_fn(&self) -> Arc<Box<StandardOpScriptGen>> {
+        self.script_gen.clone()
     }
 
     fn var_size(&self) -> u32 {
@@ -208,49 +231,45 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Expression
         }
     }
 
+    fn get_id(&self) -> u32 {
+        self.opcode.get_id()
+    }
+
     fn set_debug(&self) {
         self.opcode.debug.set(true);
     }
 
-    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
-        if self.opcode.to_copy_expr.borrow().is_some() {
-            return Err(ScriptExprError::DoubleCopy);
-        }
-
-        let copy_self = Arc::new(RwLock::new(
-            Box::new(CopyVar::new(self.var_size())) as Box<dyn Expression>
-        ));
-
-        *self.opcode.to_copy_expr.borrow_mut() = Some(copy_self.clone());
-        Ok(copy_self)
+    fn is_debug(&self) -> bool {
+        self.opcode.debug.get()
     }
 
-    fn opcode(&self) -> OpcodeId {
+    fn opcode(&self) -> StandardOpcodeId {
         self.opcode_id.into()
     }
 }
 
 pub(crate) struct CustomOpcode<const INPUT_NUM: usize, const OUTPUT_NUM: usize, F: BfField> {
     opcode: Opcode<INPUT_NUM, OUTPUT_NUM>,
-    custom: Vec<u32>,
-    opcode_id: CustomOpcodeId,
-    script_gen: Arc<Box<CustomOpScriptGen>>,
+    custom: Vec<Vec<u32>>,
+    opcode_id: StandardOpcodeId,
+    script_gen: Arc<Box<StandardOpScriptGen>>,
     _marker: PhantomData<F>,
 }
 impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize, F: BfField>
     CustomOpcode<INPUT_NUM, OUTPUT_NUM, F>
 {
     pub(crate) fn new(
-        custom_data: Vec<u32>,
+        id: u32,
+        custom_data: Vec<Vec<u32>>,
         ops: Vec<Arc<RwLock<Box<dyn Expression>>>>,
         var_size: u32,
-        opcode: CustomOpcodeId,
+        opcode: StandardOpcodeId,
     ) -> Self {
         Self {
-            custom: custom_data,
-            opcode: Opcode::new(ops, var_size),
+            custom: custom_data.clone(),
+            opcode: Opcode::new(id, ops, var_size),
             opcode_id: opcode,
-            script_gen: Arc::new(custom_script_generator::<F>(opcode)),
+            script_gen: Arc::new(custom_script_generator::<F>(opcode, custom_data)),
             _marker: PhantomData,
         }
     }
@@ -291,43 +310,20 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize, F: BfField> Expression
     fn as_expr_ptr(self) -> ExprPtr {
         Arc::new(RwLock::new(Box::new(self)))
     }
-    fn express_to_script(
-        &self,
-        stack: &mut StackTracker,
-        input_variables: &BTreeMap<Variable, StackVariable>,
-    ) -> Vec<StackVariable> {
-        self.check_input_num();
 
-        let vars_size: Vec<u32> = self
-            .opcode
-            .ops
-            .iter()
-            .map(|op| {
-                op.as_ref()
-                    .read()
-                    .unwrap()
-                    .express_to_script(stack, input_variables);
-                op.as_ref().read().unwrap().var_size()
-            })
-            .collect();
+    fn get_input_number(&self) -> usize {
+        INPUT_NUM
+    }
+    fn get_output_number(&self) -> usize {
+        OUTPUT_NUM
+    }
 
-        let mut vars = (self.script_gen)(self.custom.clone(), vars_size, stack);
+    fn get_ops(&self) -> &Vec<ExprPtr> {
+        &self.opcode.ops
+    }
 
-        // check output
-        assert_eq!(vars.len(), OUTPUT_NUM);
-
-        // copy case
-        if OUTPUT_NUM == 1 {
-            let copy_var = to_copy(vars[0], stack, self.opcode.to_copy_expr.borrow());
-            if copy_var.is_some() {
-                vars = vec![copy_var.unwrap()];
-            }
-        }
-
-        if self.opcode.debug.get() == true {
-            stack.debug();
-        }
-        vars
+    fn generate_script_fn(&self) -> Arc<Box<StandardOpScriptGen>> {
+        self.script_gen.clone()
     }
 
     fn var_size(&self) -> u32 {
@@ -338,24 +334,19 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize, F: BfField> Expression
         }
     }
 
+    fn get_id(&self) -> u32 {
+        self.opcode.get_id()
+    }
+
     fn set_debug(&self) {
         self.opcode.debug.set(true);
     }
 
-    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
-        if self.opcode.to_copy_expr.borrow().is_some() {
-            return Err(ScriptExprError::DoubleCopy);
-        }
-
-        let copy_self = Arc::new(RwLock::new(
-            Box::new(CopyVar::new(self.var_size())) as Box<dyn Expression>
-        ));
-
-        *self.opcode.to_copy_expr.borrow_mut() = Some(copy_self.clone());
-        Ok(copy_self)
+    fn is_debug(&self) -> bool {
+        self.opcode.debug.get()
     }
 
-    fn opcode(&self) -> OpcodeId {
+    fn opcode(&self) -> StandardOpcodeId {
         self.opcode_id.into()
     }
 }
@@ -363,21 +354,22 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize, F: BfField> Expression
 pub(crate) struct InputOpcode<const INPUT_NUM: usize, const OUTPUT_NUM: usize> {
     opcode: Opcode<INPUT_NUM, OUTPUT_NUM>,
     input_var: Variable,
-    opcode_id: InputOpcodeId,
-    script_gen: Arc<Box<InputOpScriptGen>>,
+    opcode_id: StandardOpcodeId,
+    script_gen: Arc<Box<StandardOpScriptGen>>,
 }
 impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> InputOpcode<INPUT_NUM, OUTPUT_NUM> {
     pub(crate) fn new(
+        id: u32,
         input_var: Variable,
         ops: Vec<Arc<RwLock<Box<dyn Expression>>>>,
         var_size: u32,
-        opcode: InputOpcodeId,
+        opcode: StandardOpcodeId,
     ) -> Self {
         Self {
             input_var: input_var,
-            opcode: Opcode::new(ops, var_size),
+            opcode: Opcode::new(id, ops, var_size),
             opcode_id: opcode,
-            script_gen: Arc::new(input_script_generator(opcode)),
+            script_gen: Arc::new(input_script_generator(opcode, input_var)),
         }
     }
 
@@ -412,63 +404,43 @@ impl<const INPUT_NUM: usize, const OUTPUT_NUM: usize> Expression
     fn as_expr_ptr(self) -> ExprPtr {
         Arc::new(RwLock::new(Box::new(self)))
     }
-    fn express_to_script(
-        &self,
-        stack: &mut StackTracker,
-        var_getter: &BTreeMap<Variable, StackVariable>,
-    ) -> Vec<StackVariable> {
-        self.check_input_num();
 
-        let mut vars = (self.script_gen)(
-            self.input_var,
-            vec![self.opcode.var_size()],
-            stack,
-            var_getter,
-        );
+    fn get_input_number(&self) -> usize {
+        INPUT_NUM
+    }
+    fn get_output_number(&self) -> usize {
+        OUTPUT_NUM
+    }
 
-        // check output
-        assert_eq!(vars.len(), OUTPUT_NUM);
+    fn get_ops(&self) -> &Vec<ExprPtr> {
+        &self.opcode.ops
+    }
 
-        // copy case
-        if OUTPUT_NUM == 1 {
-            let copy_var = to_copy(vars[0], stack, self.opcode.to_copy_expr.borrow());
-            if copy_var.is_some() {
-                vars = vec![copy_var.unwrap()];
-            }
-        }
-
-        if self.opcode.debug.get() == true {
-            stack.debug();
-        }
-        vars
+    fn generate_script_fn(&self) -> Arc<Box<StandardOpScriptGen>> {
+        self.script_gen.clone()
     }
 
     fn var_size(&self) -> u32 {
-        if self.opcode.var_size == 1 || self.opcode.var_size == 4 {
+        if self.opcode.var_size == 1 || self.opcode.var_size == 4 || self.opcode.var_size == 0 {
             self.opcode.var_size
         } else {
             panic!("Invalid var_size")
         }
     }
 
+    fn get_id(&self) -> u32 {
+        self.opcode.get_id()
+    }
+
     fn set_debug(&self) {
         self.opcode.debug.set(true);
     }
 
-    fn to_copy(&self) -> Result<Arc<RwLock<Box<dyn Expression>>>, ScriptExprError> {
-        if self.opcode.to_copy_expr.borrow().is_some() {
-            return Err(ScriptExprError::DoubleCopy);
-        }
-
-        let copy_self = Arc::new(RwLock::new(
-            Box::new(CopyVar::new(self.var_size())) as Box<dyn Expression>
-        ));
-
-        *self.opcode.to_copy_expr.borrow_mut() = Some(copy_self.clone());
-        Ok(copy_self)
+    fn is_debug(&self) -> bool {
+        self.opcode.debug.get()
     }
 
-    fn opcode(&self) -> OpcodeId {
+    fn opcode(&self) -> StandardOpcodeId {
         self.opcode_id.into()
     }
 }
@@ -501,15 +473,41 @@ impl<F: BfField> InputManager<F> {
 
     pub(crate) fn assign_input_opcode(&mut self, value: Vec<u32>) -> InputOpcode<0, 1> {
         InputOpcode::new(
+            get_opid(),
             self.assign_input_var(value.clone()),
             vec![],
             value.len() as u32,
-            InputOpcodeId::InputVarMove,
+            StandardOpcodeId::InputVarMove,
         )
     }
 
-    pub(crate) fn assign_input_expr(&mut self, value: Vec<u32>) -> FieldScriptExpression<F> {
-        FieldScriptExpression::InputVarMove(self.assign_input_opcode(value.clone()))
+    pub(crate) fn assign_input_expr(&mut self, value: Vec<u32>) -> Dsl<F> {
+        Dsl::<F>::new(Arc::new(RwLock::new(Box::new(
+            self.assign_input_opcode(value),
+        ))))
+    }
+
+    pub(crate) fn assign_public_exprs(&mut self, value: Vec<u32>) -> Dsl<F> {
+        Dsl::<F>::new(Arc::new(RwLock::new(Box::new(
+            self.assign_input_opcode(value),
+        ))))
+    }
+
+    pub(crate) fn assign_trace_exprs(&mut self, local: Vec<F>, next: Vec<F>) {
+        let width = local.len();
+        let main_variables: Vec<ValueVariable<F>> = [local, next]
+            .into_iter()
+            .enumerate()
+            .flat_map(|(row_index, row_values)| {
+                (0..width).map(move |column_index| {
+                    ValueVariable::new(
+                        Variable::new(row_index, column_index),
+                        row_values[column_index],
+                    )
+                })
+            })
+            .collect();
+        self.trace_open = main_variables;
     }
 
     pub(crate) fn simulate_input(&mut self) -> (StackTracker, &BTreeMap<Variable, StackVariable>) {
