@@ -90,7 +90,7 @@ pub trait PcsExpr<Challenge, Challenger, Expr>: Pcs<Challenge, Challenger>
 where
     Challenge: ExtensionField<Val<Self::Domain>>,
 {
-    fn gererate_verify_expr(
+    fn generate_verify_expr(
         &self,
         // For each round:
         rounds: Vec<(
