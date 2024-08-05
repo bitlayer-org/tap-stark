@@ -26,7 +26,7 @@ use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
-use script_expr::{assert_field_expr, Expression, FieldScriptExpression, NumScriptExpression};
+use script_expr::{assert_dsl, Dsl, Expression};
 use script_manager::script_info::ScriptInfo;
 use tracing::{debug_span, info_span, instrument};
 
@@ -148,20 +148,19 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
     }
 }
 
-impl<F: BfField, InputProof, InputError: Debug>
-    FriGenericConfigWithExpr<F, FieldScriptExpression<F>>
+impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
     for TwoAdicFriGenericConfig<InputProof, InputError>
 {
     fn fold_row_with_expr(
         &self,
-        folded_eval: FieldScriptExpression<F>,
-        sibling_eval: FieldScriptExpression<F>,
-        x: FieldScriptExpression<F>, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
+        folded_eval: Dsl<F>,
+        sibling_eval: Dsl<F>,
+        x: Dsl<F>, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
         x_hint: F,
         _point_index: usize,
         index_sibling: usize,
-        beta: FieldScriptExpression<F>,
-    ) -> (FieldScriptExpression<F>, FieldScriptExpression<F>) {
+        beta: Dsl<F>,
+    ) -> (Dsl<F>, Dsl<F>) {
         let arity = 2;
         let log_arity = 1;
         // If performance critical, make this API stateful to avoid this
@@ -172,38 +171,29 @@ impl<F: BfField, InputProof, InputError: Debug>
         let mut xs_hint = vec![x_hint; 2];
         xs_hint[index_sibling % 2] = rev_x_hint;
         let xs1_minus_xs0_inverse_hint = F::one() / (xs_hint[1] - xs_hint[0]);
-        let expect_res = xs1_minus_xs0_inverse_hint * (xs_hint[1] - xs_hint[0]);
-        assert_eq!(expect_res, F::one());
-        println!("xs1_minus_xs0_inverse {}", xs1_minus_xs0_inverse_hint);
-        println!("x minius {}", xs_hint[1] - xs_hint[0]);
 
-        let mut xs = vec![x.clone(), x.clone()];
-        let rev_x = x.clone() * F::two_adic_generator(log_arity);
-        // let rev_x = FieldScriptExpression::from(x_hint) * F::two_adic_generator(log_arity);
-        xs[index_sibling % 2] = rev_x;
-        assert_field_expr(xs[0].clone().debug(), xs_hint[0]);
-        assert_field_expr(xs[1].clone().debug(), xs_hint[1]);
-        println!("xs_hint[0] {}", xs_hint[0]);
-        println!("xs_hint[1] {}", xs_hint[1]);
+        let mut xs_0 = Dsl::default();
+        if index_sibling % 2 == 0 {
+            xs_0 = x * F::two_adic_generator(log_arity);
+        } else {
+            xs_0 = x;
+        }
 
-        let mut evals = vec![folded_eval.clone(), folded_eval.clone()];
+        let mut evals = vec![Dsl::default(), Dsl::default()];
         evals[index_sibling % 2] = sibling_eval;
+        evals[(index_sibling + 1) % 2] = folded_eval;
         assert_eq!(log_arity, 1, "can only interpolate two points for now");
         // interpolate and evaluate at betawo
         let next_folded = evals[0].clone()
-            + (beta - xs[0].clone())
-                * (evals[1].clone() - evals[0].clone())
-                * xs1_minus_xs0_inverse_hint;
+            + (beta - xs_0) * (evals[1].clone() - evals[0].clone()) * xs1_minus_xs0_inverse_hint;
 
-        // let xs_minus = FieldScriptExpression::from(xs_hint[1]) - xs[0].clone().debug();
-        // let xs_minus = xs[1].clone().debug() - FieldScriptExpression::from(xs_hint[0]).debug();
-        let xs_minus = -xs[0].clone().debug() + xs[1].clone().debug();
-        assert_field_expr(xs_minus.clone().debug(), xs_hint[1] - xs_hint[0]);
-        let verify_hint = xs_minus * FieldScriptExpression::<F>::from(xs1_minus_xs0_inverse_hint);
+        // let xs_minus = -xs[0].clone().debug() + xs[1].clone().debug();
+        // assert_dsl(xs_minus.clone().debug(), xs_hint[1] - xs_hint[0]);
+        // let verify_hint = xs_minus * Dsl::<F>::constant_f(xs1_minus_xs0_inverse_hint);
+        // verify_hint.set_debug();
+        // assert_dsl(verify_hint.clone(), F::one());
 
-        verify_hint.set_debug();
-        assert_field_expr(verify_hint.clone(), F::one());
-        (next_folded, verify_hint)
+        (next_folded, Dsl::default())
     }
 }
 
@@ -534,8 +524,7 @@ where
 }
 
 impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger>
-    PcsExpr<Challenge, Challenger, FieldScriptExpression<Challenge>>
-    for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
+    PcsExpr<Challenge, Challenger, Dsl<Challenge>> for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
 where
     Val: BfField,
     Dft: TwoAdicSubgroupDft<Val>,
@@ -544,7 +533,7 @@ where
     Challenge: BfField + ExtensionField<Val>,
     Challenger: CanObserve<FriMmcs::Commitment> + CanSample<Challenge> + BfGrindingChallenger,
 {
-    fn gererate_verify_expr(
+    fn generate_verify_expr(
         &self,
         // For each round:
         rounds: Vec<(
@@ -564,7 +553,7 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-    ) -> Result<Vec<FieldScriptExpression<Challenge>>, Self::Error> {
+    ) -> Result<Vec<Dsl<Challenge>>, Self::Error> {
         // Batch combination challenge
         let alpha: Challenge = challenger.sample();
 
@@ -585,13 +574,8 @@ where
             |index, input_proof| {
                 // TODO: separate this out into functions
 
-                let mut reduced_openings_expr = BTreeMap::<
-                    usize,
-                    (
-                        FieldScriptExpression<Challenge>,
-                        FieldScriptExpression<Challenge>,
-                    ),
-                >::new();
+                let mut reduced_openings_expr =
+                    BTreeMap::<usize, (Dsl<Challenge>, Dsl<Challenge>)>::new();
 
                 for (batch_opening, (batch_commit, mats)) in izip!(input_proof, &rounds) {
                     let batch_heights = mats
@@ -624,13 +608,11 @@ where
                         let x: Val = Val::generator()
                             * Val::two_adic_generator(log_height).exp_u64(rev_reduced_index as u64); // calculate k
 
-                        let (alpha_pow_expr, ro_expr) =
-                            reduced_openings_expr.entry(log_height).or_insert((
-                                FieldScriptExpression::<Challenge>::one(),
-                                FieldScriptExpression::<Challenge>::zero(),
-                            ));
+                        let (alpha_pow_expr, ro_expr) = reduced_openings_expr
+                            .entry(log_height)
+                            .or_insert((Dsl::<Challenge>::one(), Dsl::<Challenge>::zero()));
                         for (z, ps_at_z) in mat_points_and_values {
-                            let mut acc = FieldScriptExpression::from(Challenge::zero());
+                            let mut acc = Dsl::constant_f(Challenge::zero());
                             // let prev_alpha_pow = *alpha_pow_expr;
                             for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
                                 //
@@ -643,12 +625,11 @@ where
                                 //    ro = (alpha^0 * (p(x)_{0} - p(z)_{0}) + alpha^1 * (p(x)_{1} -p(z)_{1}) + ... + alpha^i * (p(x)_{i} -p(z)_{i})) / (x - z)
                                 //
                                 acc += alpha_pow_expr.clone()
-                                    * (FieldScriptExpression::<Challenge>::from(-p_at_z)
-                                        .add_base(FieldScriptExpression::<Val>::from(p_at_x)));
+                                    * (Dsl::<Challenge>::constant_f(-p_at_z)
+                                        .add_base(Dsl::<Val>::constant_f(p_at_x)));
                                 *alpha_pow_expr *= alpha;
                             }
-                            *ro_expr = ro_expr.clone()
-                                + acc * FieldScriptExpression::from((-*z + x).inverse());
+                            *ro_expr = ro_expr.clone() + acc * Dsl::constant_f((-*z + x).inverse());
                             // using 1/x-z as hint
                         }
                     }

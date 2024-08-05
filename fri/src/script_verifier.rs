@@ -13,14 +13,13 @@ use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
-use script_expr::{
-    assert_field_expr, run_expr, Expression, FieldScriptExpression, NumScriptExpression,
-};
+use script_expr::{assert_dsl, Dsl, ExprPtr, Expression};
 use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
 use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
 use segment::SegmentLeaf;
 use tracing::field::Field;
+use tracing::{instrument, trace};
 
 use crate::error::{FriError, SVError};
 use crate::verifier::*;
@@ -31,15 +30,12 @@ pub fn bf_verify_challenges<G, F, M, Witness>(
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
-    open_input: impl Fn(
-        usize,
-        &G::InputProof,
-    ) -> Result<Vec<(usize, FieldScriptExpression<F>)>, G::InputError>,
-) -> Result<Vec<FieldScriptExpression<F>>, FriError<M::Error, G::InputError>>
+    open_input: impl Fn(usize, &G::InputProof) -> Result<Vec<(usize, Dsl<F>)>, G::InputError>,
+) -> Result<Vec<Dsl<F>>, FriError<M::Error, G::InputError>>
 where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
-    G: FriGenericConfigWithExpr<F, FieldScriptExpression<F>>,
+    G: FriGenericConfigWithExpr<F>,
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     let mut fri_exprs = vec![];
@@ -71,23 +67,23 @@ fn bf_verify_query<G, F, M>(
     mut index: usize,
     proof: &BfQueryProof<F, G::InputProof>,
     betas: &[F],
-    reduced_openings: Vec<(usize, FieldScriptExpression<F>)>,
+    reduced_openings: Vec<(usize, Dsl<F>)>,
     log_max_height: usize,
-) -> Result<FieldScriptExpression<F>, FriError<M::Error, G::InputError>>
+) -> Result<Dsl<F>, FriError<M::Error, G::InputError>>
 where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
-    G: FriGenericConfigWithExpr<F, FieldScriptExpression<F>>,
+    G: FriGenericConfigWithExpr<F>,
 {
     let mut ro_iter = reduced_openings.into_iter().peekable();
-    let mut folded_eval = FieldScriptExpression::<F>::zero();
+    let mut folded_eval = Dsl::<F>::zero();
 
     let rev_index = reverse_bits_len(index, log_max_height);
-    let mut x = NumScriptExpression::from(rev_index as u32).index_to_rou(log_max_height as u32);
+    // let mut x = Dsl::<F>::index_to_rou(rev_index as u32, log_max_height as u32 );
+
     let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
-    assert_field_expr(x.clone(), x_hint);
-    // let generator = F::two_adic_generator(log_max_height);
-    // let mut x = generator.exp_u64(rev_index as u64);
+    let mut x = Dsl::<F>::constant_f(x_hint.clone());
+    assert_dsl(x.clone(), x_hint);
 
     for (log_folded_height, commit, step, &beta) in izip!(
         (0..log_max_height).rev(),
@@ -104,25 +100,10 @@ where
         }
 
         let poins_leaf: PointsLeaf<F> = step.points_leaf.clone();
-        let challenge_point: Point<F> = poins_leaf.get_point_by_index(point_index).unwrap().clone();
-
-        if log_folded_height < log_max_height - 1 {
-            assert_field_expr(folded_eval.clone(), challenge_point.y);
-        }
         let sibling_point: Point<F> = poins_leaf
             .get_point_by_index(index_sibling)
             .unwrap()
             .clone();
-
-        // assert_eq!(challenge_point.x, x);
-        // let neg_x = x * F::two_adic_generator(1);
-        // assert_eq!(sibling_point.x, neg_x);
-
-        // let mut evals = vec![folded_eval.clone(); 2];
-        // evals[index_sibling % 2] = sibling_point.y.into(); // sibling_point.y is field_script_expression::input_variable
-
-        // let mut xs = vec![x; 2];
-        // xs[index_sibling % 2] = neg_x;
 
         let input = poins_leaf.witness();
         if let TapLeaf::Script(script, _ver) = step.leaf_node.leaf().clone() {
@@ -146,32 +127,27 @@ where
             .verify_taptree(step, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
-        println!(
-            "=================log_folded_height:{} ====index:{}======rev_index:{}=====",
-            log_folded_height, index, rev_index
+        trace!(
+            "log_folded_height:{}; open_index:{}; open index_sibling:{}; point_index:{} ",
+            log_folded_height,
+            index,
+            index_sibling,
+            point_index
         );
-        println!(
-            "=================index_sibling:{} ====point_index:{}",
-            index_sibling, point_index
-        );
+
         (folded_eval, _) = g.fold_row_with_expr(
-            folded_eval.clone(),
-            sibling_point.y.into(),
+            folded_eval,
+            Dsl::constant_f(sibling_point.y),
             x.clone(),
             x_hint,
             point_index,
             index_sibling,
-            beta.into(),
+            Dsl::constant_f(beta),
         );
 
         index = index_pair;
-
-        // folded_eval_value = g.fold_row(index, log_folded_height, beta, evals.into_iter());
-
-        // folded_eval_value = g.fold_row(index, log_folded_height, beta, evals.into_iter());
-        // folded_eval.clone().equal_for_f(fold)
         if log_folded_height != 1 {
-            x = x.clone() * x.clone();
+            x = x.square();
             x_hint = x_hint * x_hint;
         }
     }

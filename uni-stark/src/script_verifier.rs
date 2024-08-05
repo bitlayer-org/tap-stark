@@ -7,11 +7,11 @@ use itertools::Itertools;
 use p3_air::{Air, BaseAir};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
-use p3_field::{AbstractExtensionField, AbstractField, Field};
+use p3_field::{AbstractExtensionField, AbstractField, Field, TwoAdicField};
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
 use p3_util::log2_strict_usize;
-use primitives::bf_pcs::Pcs;
+use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::field::BfField;
 use script_expr::{selectors_at_point_expr, Expression, ScriptConstraintBuilder};
 use script_manager::script_info::ScriptInfo;
@@ -19,10 +19,12 @@ use scripts::execute_script_with_inputs;
 use tracing::instrument;
 
 use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
-use crate::{PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder};
+use crate::{
+    compute_quotient_expr, PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder,
+};
 
 #[instrument(skip_all)]
-pub fn verify<SC, A>(
+pub fn generate_script_verifier<SC, A>(
     config: &SC,
     air: &A,
     challenger: &mut SC::Challenger,
@@ -82,31 +84,43 @@ where
     let zeta: SC::Challenge = challenger.sample();
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
-    pcs.verify(
-        vec![
-            (
-                commitments.trace.clone(),
-                vec![(
-                    trace_domain,
-                    vec![
-                        (zeta, opened_values.trace_local.clone()),
-                        (zeta_next, opened_values.trace_next.clone()),
-                    ],
-                )],
-            ),
-            (
-                commitments.quotient_chunks.clone(),
-                quotient_chunks_domains
-                    .iter()
-                    .zip(&opened_values.quotient_chunks)
-                    .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
-                    .collect_vec(),
-            ),
-        ],
-        opening_proof,
-        challenger,
-    )
-    .map_err(VerificationError::InvalidOpeningArgument)?;
+    let pcs_expr = pcs
+        .generate_verify_expr(
+            vec![
+                (
+                    commitments.trace.clone(),
+                    vec![(
+                        trace_domain,
+                        vec![
+                            (zeta, opened_values.trace_local.clone()),
+                            (zeta_next, opened_values.trace_next.clone()),
+                        ],
+                    )],
+                ),
+                (
+                    commitments.quotient_chunks.clone(),
+                    quotient_chunks_domains
+                        .iter()
+                        .zip(&opened_values.quotient_chunks)
+                        .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
+                        .collect_vec(),
+                ),
+            ],
+            opening_proof,
+            challenger,
+        )
+        .map_err(VerificationError::InvalidOpeningArgument)?;
+
+    pcs_expr.iter().enumerate().for_each(|(index, expr)| {
+        let script = expr.express_with_optimize();
+        println!(
+            "[fri-pcs verify for query-{}] optimize script_len {}-kb",
+            index,
+            script.0.get_script().len() / 1024
+        );
+        let res = script.0.run();
+        assert!(res.success);
+    });
 
     let zps = quotient_chunks_domains
         .iter()
@@ -138,8 +152,42 @@ where
                 .sum::<SC::Challenge>()
         })
         .sum::<SC::Challenge>();
-    //SC::Challenge::monomial(e_i) * c
-    //quotient value is EF, but we use EF as base_slice for commit.  width from 1 to 4.
+    let denomiator_inverse = quotient_chunks_domains
+        .iter()
+        .enumerate()
+        .map(|(i, domain)| {
+            quotient_chunks_domains
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, other_domain)| {
+                    other_domain
+                        .zp_at_point(domain.first_point())
+                        .inverse()
+                        .into()
+                })
+                .product::<Val<SC>>()
+        })
+        .collect_vec();
+    let generator = Val::<SC>::two_adic_generator(degree_bits + log_quotient_degree);
+
+    let quotient_chunk_nums = quotient_chunks_domains.len();
+
+    let (q_zeta, _hint_verify) = compute_quotient_expr::<Val<SC>, SC::Challenge>(
+        zeta,
+        degree,
+        generator,
+        quotient_chunk_nums,
+        opened_values.quotient_chunks.clone(),
+        denomiator_inverse,
+    );
+    let equla_expr = q_zeta.equal_for_f(quotient);
+    let res = equla_expr.express_with_optimize();
+    println!(
+        "[compute quotient] optimize script: {:?}-kb",
+        res.0.get_script().len() / 1024
+    );
+    assert!(res.0.run().success);
 
     let sels = trace_domain.selectors_at_point(zeta);
 
@@ -183,18 +231,19 @@ where
     let mut var_getter = BTreeMap::new();
     let mut optimize = BTreeMap::new();
     script_folder.set_variable_values(public_values, &mut var_getter, &mut stack);
-    stack.debug();
 
     let acc_expr = script_folder.get_accmulator_expr();
     let equal_expr = acc_expr.equal_verify_for_f(folder.accumulator);
     equal_expr.simulate_express(&mut optimize);
     equal_expr.express_to_script(&mut stack, &mut var_getter, &mut optimize, true);
-    stack.debug();
     script_folder.drop_variable_values(&mut var_getter, &mut stack);
     stack.op_true();
     let res = stack.run();
     assert!(res.success);
-    println!("optimize script: {:?}-kb", stack.get_script().len() / 1024);
+    println!(
+        "[compute trace open] optimize script: {:?}-kb",
+        stack.get_script().len() / 1024
+    );
     Ok(())
 }
 

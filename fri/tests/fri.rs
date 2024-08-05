@@ -25,7 +25,7 @@ mod tests {
     use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    use script_expr::{Expression, FieldScriptExpression};
+    use script_expr::{Dsl, Expression};
     use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
     use script_manager::script_info::ScriptInfo;
 
@@ -162,7 +162,7 @@ mod tests {
         let mmcs = ValMmcs::new();
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 1,
+            num_queries: 10,
             proof_of_work_bits: 8,
             mmcs,
         };
@@ -256,24 +256,31 @@ mod tests {
             |_index, proof| {
                 Ok(proof
                     .iter()
-                    .map(|(lh, v)| (*lh, v.clone().into()))
+                    .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
                     .collect())
             },
         )
         .expect("failed verify challenges");
-        let mut stack = StackTracker::new();
-        let mut input_variables = BTreeMap::new();
+
         fri_exprs.iter().for_each(|expr| {
-            let script = expr.express_to_script(&mut stack, &mut input_variables);
-            println!("================== script_len{} ===========", script.len());
-            // stack.debug();
-            let res = stack.run();
-            if !res.success {
-                println!("res error: {:?}", res.error);
-                println!("res error_msg: {:?}", res.error_msg);
-                println!("res error_msg: {:?}", res.last_opcode);
+            {
+                let script = expr.express_with_optimize();
+                println!(
+                    "||optimize script_len {}-kb ||",
+                    script.0.get_script().len() / 1024
+                );
+                let res = script.0.run();
+                assert!(res.success);
             }
-            assert!(res.success);
+            {
+                let script = expr.express_without_optimize();
+                println!(
+                    "||no optimize script_len {}-kb ||",
+                    script.0.get_script().len() / 1024
+                );
+                let res = script.0.run();
+                assert!(res.success);
+            }
         });
         assert_eq!(
             p_sample,
@@ -293,7 +300,7 @@ mod tests {
         let mmcs = ValMmcs::new();
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 1,
+            num_queries: 10,
             proof_of_work_bits: 8,
             mmcs,
         };
@@ -365,15 +372,6 @@ mod tests {
         )
         .expect("failed verify shape and sample");
 
-        // verifier::verify_challenges(
-        //     &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
-        //     &fri_config,
-        //     &proof,
-        //     &fri_challenges,
-        //     |_index, proof| Ok(proof.clone()),
-        // )
-        // .expect("failed verify challenges");
-
         let fri_exprs = bf_verify_challenges(
             &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
             &fri_config,
@@ -382,24 +380,31 @@ mod tests {
             |_index, proof| {
                 Ok(proof
                     .iter()
-                    .map(|(lh, v)| (*lh, v.clone().into()))
+                    .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
                     .collect())
             },
         )
         .expect("failed verify challenges");
-        let mut stack = StackTracker::new();
-        let mut input_variables = BTreeMap::new();
+
         fri_exprs.iter().for_each(|expr| {
-            let script = expr.express_to_script(&mut stack, &mut input_variables);
-            println!("================== script_len{} ===========", script.len());
-            // stack.debug();
-            let res = stack.run();
-            if !res.success {
-                println!("res error: {:?}", res.error);
-                println!("res error_msg: {:?}", res.error_msg);
-                println!("res error_msg: {:?}", res.last_opcode);
+            {
+                let script = expr.express_with_optimize();
+                println!(
+                    "||optimize script_len {}-kb ||",
+                    script.0.get_script().len() / 1024
+                );
+                let res = script.0.run();
+                assert!(res.success);
             }
-            assert!(res.success);
+            {
+                let script = expr.express_without_optimize();
+                println!(
+                    "||no optimize script_len {}-kb ||",
+                    script.0.get_script().len() / 1024
+                );
+                let res = script.0.run();
+                assert!(res.success);
+            }
         });
     }
 }
@@ -430,6 +435,7 @@ mod tests2 {
     use primitives::mmcs::taptree_mmcs::{TapTreeMmcs, ROOT_WIDTH};
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
+    use script_expr::Dsl;
     use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
     use script_manager::script_info::ScriptInfo;
     use tracing_subscriber::fmt;
@@ -662,7 +668,7 @@ mod tests2 {
             |_index, proof| {
                 Ok(proof
                     .iter()
-                    .map(|(index, value)| (*index, value.clone().into()))
+                    .map(|(index, value)| (*index, Dsl::constant_f(value.clone())))
                     .collect())
             },
         )

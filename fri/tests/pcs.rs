@@ -15,7 +15,7 @@ use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::{Expression, FieldScriptExpression};
+use script_expr::{Dsl, Expression};
 
 extern crate alloc;
 use alloc::collections::BTreeMap;
@@ -30,7 +30,7 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     (pcs, challenger): &(P, Challenger),
     log_degrees_by_round: &[&[usize]],
 ) where
-    P: PcsExpr<Challenge, Challenger, FieldScriptExpression<Challenge>>,
+    P: PcsExpr<Challenge, Challenger>,
     P::Domain: PolynomialSpace<Val = Val>,
     Val: Field,
     Standard: Distribution<Val>,
@@ -100,28 +100,40 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     .collect_vec();
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
-    // pcs.verify(
-    //     commits_and_claims_by_round.clone(),
-    //     &proof,
-    //     &mut v_challenger,
-    // )
-    // .unwrap();
-
     let fri_exprs =
-        pcs.gererate_verify_expr(commits_and_claims_by_round, &proof, &mut v_challenger);
-    let mut stack = StackTracker::new();
-    let mut input_variables = BTreeMap::new();
+        pcs.generate_verify_expr(commits_and_claims_by_round, &proof, &mut v_challenger);
+
     fri_exprs.iter().for_each(|exprs| {
         exprs.iter().for_each(|expr| {
-            let script = expr.express_to_script(&mut stack, &mut input_variables);
-            println!("script_len{}", script.len());
-            let res = stack.run();
-            if !res.success {
-                println!("res error: {:?}", res.error);
-                println!("res error_msg: {:?}", res.error_msg);
-                println!("res error_msg: {:?}", res.last_opcode);
+            {
+                let script = expr.express_with_optimize();
+                println!(
+                    "||optimize script_len {}-kb ||",
+                    script.0.get_script().len() / 1024
+                );
+                let res = script.0.run();
+                assert!(res.success);
             }
-            assert!(res.success);
+            {
+                let script = expr.express_without_optimize();
+                println!(
+                    "||no optimize script_len {}-kb ||",
+                    script.0.get_script().len() / 1024
+                );
+                let res = script.0.run();
+                assert!(res.success);
+            }
+            // let mut stack = StackTracker::new();
+            // let mut input_variables = BTreeMap::new();
+            // let script = expr.express_to_script(&mut stack, &mut input_variables);
+            // println!("script_len{}", stack.get_script().len());
+            // let res = stack.run();
+            // if !res.success {
+            //     println!("res error: {:?}", res.error);
+            //     println!("res error_msg: {:?}", res.error_msg);
+            //     println!("res error_msg: {:?}", res.last_opcode);
+            // }
+            // assert!(res.success);
         });
     });
 }
@@ -221,19 +233,5 @@ mod babybear_fri_pcs {
     }
     mod blowup_2 {
         make_tests_for_pcs!(super::get_pcs(2));
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use p3_util::reverse_bits_len;
-
-        use super::get_pcs;
-        #[test]
-        fn test_for_pcs_fold() {
-            let pcs = get_pcs(1);
-            let log_height = 5;
-            let index = 2;
-            let rev_index = reverse_bits_len(index, log_height);
-        }
     }
 }

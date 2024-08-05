@@ -4,8 +4,10 @@ use p3_challenger::{CanObserve, CanSample, FieldChallenger};
 use p3_commit::PolynomialSpace;
 use p3_field::{ExtensionField, Field};
 use primitives::bf_pcs;
-use primitives::bf_pcs::Pcs;
+use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::challenger::BfGrindingChallenger;
+use primitives::field::BfField;
+use script_expr::Dsl;
 
 pub type PcsError<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
@@ -30,10 +32,10 @@ pub type PackedChallenge<SC> =
 
 pub trait StarkGenericConfig {
     /// The PCS used to commit to trace polynomials.
-    type Pcs: Pcs<Self::Challenge, Self::Challenger>;
+    type Pcs: PcsExpr<Self::Challenge, Self::Challenger, Dsl<Self::Challenge>>;
 
     /// The field from which most random challenges are drawn.
-    type Challenge: ExtensionField<Val<Self>>;
+    type Challenge: ExtensionField<Val<Self>> + BfField;
 
     /// The challenger (Fiat-Shamir) implementation used.
     // type Challenger: FieldChallenger<Val<Self>>
@@ -66,8 +68,8 @@ impl<Pcs, Challenge, Challenger> StarkConfig<Pcs, Challenge, Challenger> {
 
 impl<Pcs, Challenge, Challenger> StarkGenericConfig for StarkConfig<Pcs, Challenge, Challenger>
 where
-    Challenge: ExtensionField<<Pcs::Domain as PolynomialSpace>::Val>,
-    Pcs: bf_pcs::Pcs<Challenge, Challenger>,
+    Challenge: ExtensionField<<Pcs::Domain as PolynomialSpace>::Val> + BfField,
+    Pcs: PcsExpr<Challenge, Challenger, Dsl<Challenge>>,
     Challenger: BfGrindingChallenger
         + CanObserve<<Pcs as bf_pcs::Pcs<Challenge, Challenger>>::Commitment>
         + CanSample<Challenge>,

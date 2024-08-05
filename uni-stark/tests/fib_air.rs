@@ -27,7 +27,8 @@ use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::execute_script_with_inputs;
 use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
 use uni_stark::{
-    compute_quotient_expr, get_log_quotient_degree, prove, verify, Proof, StarkConfig,
+    compute_quotient_expr, generate_script_verifier, get_log_quotient_degree, prove, verify, Proof,
+    StarkConfig,
 };
 
 /// For testing the public values feature
@@ -153,16 +154,36 @@ fn test_public_value() {
 
     let permutation = Blake3Permutation {};
     let mut challenger = Challenger::new(permutation).unwrap();
-    let mut script_manager = vec![];
-    verify(
-        &config,
-        &FibonacciAir {},
-        &mut challenger,
-        &proof,
-        &pis,
-        &mut script_manager,
-    )
-    .expect("verification failed");
+    verify(&config, &FibonacciAir {}, &mut challenger, &proof, &pis).expect("verification failed");
+}
+
+#[test]
+fn test_generate_script_expr() {
+    let val_mmcs = ValMmcs::new();
+    let challenge_mmcs = ChallengeMmcs::new();
+    let dft = Dft {};
+    let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
+    let fri_config = FriConfig {
+        log_blowup: 2,
+        num_queries: 28,
+        proof_of_work_bits: 8,
+        mmcs: challenge_mmcs,
+    };
+    let pcs = MyPcs::new(dft, val_mmcs, fri_config);
+    let config = MyConfig::new(pcs);
+    let permutation = Blake3Permutation {};
+    let mut challenger = Challenger::new(permutation).unwrap();
+    let pis = vec![
+        BabyBear::from_canonical_u64(0),
+        BabyBear::from_canonical_u64(1),
+        BabyBear::from_canonical_u64(21),
+    ];
+    let proof = prove(&config, &FibonacciAir {}, &mut challenger, trace, &pis);
+
+    let permutation = Blake3Permutation {};
+    let mut challenger = Challenger::new(permutation).unwrap();
+    generate_script_verifier(&config, &FibonacciAir {}, &mut challenger, &proof, &pis)
+        .expect("verification failed");
 }
 
 #[test]
@@ -281,7 +302,7 @@ fn test_quotient_zeta() {
 
     let mut stack = StackTracker::new();
     let bmap = BTreeMap::new();
-    let script = q_zeta.express_to_script(&mut stack, &bmap);
+    let script = q_zeta.express(&mut stack, &bmap);
 
     stack.bignumber(quotient.as_u32_vec());
 

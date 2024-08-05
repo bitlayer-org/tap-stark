@@ -4,7 +4,7 @@ use core::fmt::Debug;
 use p3_field::Field;
 use p3_matrix::Matrix;
 use primitives::field::BfField;
-use script_expr::{Expression, NumScriptExpression};
+use script_expr::Dsl;
 
 #[derive(Debug)]
 pub struct FriConfig<M> {
@@ -45,15 +45,15 @@ pub trait FriGenericConfig<F: Field> {
     fn fold_matrix<M: Matrix<F>>(&self, beta: F, m: M) -> Vec<F>;
 }
 
-pub trait FriGenericConfigWithExpr<F: BfField, Expr: Expression>: FriGenericConfig<F> {
+pub trait FriGenericConfigWithExpr<F: BfField>: FriGenericConfig<F> {
     fn fold_row_with_expr(
         &self,
-        folded_eval: Expr,
-        sibling_eval: Expr,
-        x: Expr, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
+        folded_eval: Dsl<F>,
+        sibling_eval: Dsl<F>,
+        x: Dsl<F>, // x = x^2  ; neg_x = x * val::two_adic_generator(1);  // xs[index%2] = x, xs[index%2+1] = neg_x
         x_hint: F,
         point_index: usize,
         index_sibling: usize,
-        beta: Expr,
-    ) -> (Expr, Expr);
+        beta: Dsl<F>,
+    ) -> (Dsl<F>, Dsl<F>);
 }

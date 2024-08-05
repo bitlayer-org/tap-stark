@@ -14,6 +14,7 @@ use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
+use tracing::trace;
 
 use crate::error::FriError;
 use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriProof};
@@ -130,20 +131,22 @@ where
         let index_pair = index >> 1;
 
         if let Some((_, ro)) = ro_iter.next_if(|(lh, _)| *lh == log_folded_height + 1) {
-            println!("ro:{}", ro);
+            trace!("ro:{}", ro);
             folded_eval += ro;
         }
 
-        println!(
+        trace!(
             "ch point index:{}, sib point index:{}, index_pair:{}",
-            point_index, index_sibling, index_pair
+            point_index,
+            index_sibling,
+            index_pair
         );
         let open_leaf: PointsLeaf<F> = step.points_leaf.clone();
         let challenge_point: Point<F> = open_leaf.get_point_by_index(point_index).unwrap().clone();
 
         let sibling_point: Point<F> = open_leaf.get_point_by_index(index_sibling).unwrap().clone();
-        println!("challenge_point.y:{}", challenge_point.y);
-        println!("sibling_point.y:{}", sibling_point.y);
+        trace!("challenge_point.y:{}", challenge_point.y);
+        trace!("sibling_point.y:{}", sibling_point.y);
         if log_folded_height < log_max_height - 1 {
             assert_eq!(folded_eval, challenge_point.y);
         }
