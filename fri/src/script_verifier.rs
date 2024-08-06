@@ -38,9 +38,9 @@ where
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     let mut manager_assign = ManagerAssign::new();
     for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
-        let cur_manager = manager_assign.current_manager();
+        let cur_manager = manager_assign.next_manager();
         let ro = {
-            let mut manager: std::sync::MutexGuard<Box<InputManager>> = cur_manager.lock().unwrap(); // 仅在此范围内锁定
+            let mut manager: std::sync::MutexGuard<Box<InputManager>> = cur_manager.lock().unwrap();
             open_input(index, &query_proof.input_proof, manager)
                 .map_err(|e| FriError::InputError(e))?
         };
@@ -56,12 +56,10 @@ where
             &cur_manager,
         )?;
 
-        println!("== 3 == ");
         {
             let mut manager = cur_manager.lock().unwrap();
             manager.set_exec_dsl(folded_eval.equal_for_f(proof.final_poly).into());
         }
-        manager_assign.next_manager();
     }
 
     Ok(manager_assign)
@@ -85,9 +83,11 @@ where
 {
     let mut ro_iter = reduced_openings.into_iter().peekable();
     let mut folded_eval = Dsl::<F>::zero();
-
+    // todo: replace the rust version of reverse_bits_len as dsl version
     let rev_index = reverse_bits_len(index, log_max_height);
-    // let mut x = Dsl::<F>::index_to_rou(rev_index as u32, log_max_height as u32 ); d
+
+    // todo: active dsl::index_to_rou()
+    // let mut x = Dsl::<F>::index_to_rou(rev_index as u32, log_max_height as u32 );
 
     let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
     let mut x = manager
@@ -101,7 +101,6 @@ where
         &proof.commit_phase_openings,
         betas,
     ) {
-        println!("== 2 == ");
         let point_index = index & 1;
         let index_sibling = point_index ^ 1;
         let index_pair = index >> 1;
@@ -138,13 +137,16 @@ where
             .verify_taptree(step, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
-        println!(
+        trace!(
             "log_folded_height:{}; open_index:{}; open index_sibling:{}; point_index:{} ",
-            log_folded_height, index, index_sibling, point_index
+            log_folded_height,
+            index,
+            index_sibling,
+            point_index
         );
 
         folded_eval = {
-            let mut cur_manager: MutexGuard<Box<InputManager>> = manager.lock().unwrap(); // 仅在此范围内锁定
+            let mut cur_manager: MutexGuard<Box<InputManager>> = manager.lock().unwrap();
             g.fold_row_with_expr(
                 folded_eval,
                 cur_manager.assign_input_f::<F>(sibling_point.y),

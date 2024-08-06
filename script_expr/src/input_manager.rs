@@ -19,7 +19,7 @@ use crate::{
 
 pub struct ManagerAssign {
     managers: Vec<Arc<Mutex<Box<InputManager>>>>,
-    current_index: usize,
+    current_index: Option<usize>,
 }
 
 impl IntoIterator for ManagerAssign {
@@ -33,8 +33,8 @@ impl IntoIterator for ManagerAssign {
 impl ManagerAssign {
     pub fn new() -> Self {
         Self {
-            managers: vec![Arc::new(Mutex::new(Box::new(InputManager::new())))],
-            current_index: 0,
+            managers: vec![],
+            current_index: None,
         }
     }
 
@@ -43,8 +43,8 @@ impl ManagerAssign {
     }
 
     pub fn clear(&mut self) {
-        self.managers = vec![Arc::new(Mutex::new(Box::new(InputManager::new())))];
-        self.current_index = 0;
+        self.managers = vec![];
+        self.current_index = None;
     }
 
     pub fn add_manager(&mut self) -> Arc<Mutex<Box<InputManager>>> {
@@ -54,29 +54,40 @@ impl ManagerAssign {
         manager
     }
 
-    pub fn current_manager(&self) -> Arc<Mutex<Box<InputManager>>> {
-        self.managers.get(self.current_index).unwrap().clone()
-    }
-
     pub fn next_manager(&mut self) -> Arc<Mutex<Box<InputManager>>> {
-        self.current_index += 1;
+        if self.current_index.is_none() {
+            self.current_index = Some(0);
+        } else {
+            self.current_index = Some(self.current_index.unwrap() + 1);
+        }
         self.add_manager()
     }
 
-    pub fn next(&mut self) {
-        self.current_index += 1;
-        assert!(self.current_index <= self.managers.len());
+    pub fn current_manager(&self) -> Arc<Mutex<Box<InputManager>>> {
+        self.managers
+            .get(self.current_index.unwrap())
+            .unwrap()
+            .clone()
     }
 
-    pub fn select_manager(&mut self, index: usize) -> Arc<Mutex<Box<InputManager>>> {
+    pub fn move_current_index(&mut self, index: usize) -> Arc<Mutex<Box<InputManager>>> {
         assert!(index < self.managers.len());
-        self.current_index = index;
+        self.current_index = Some(index);
         self.managers.get(index).unwrap().clone()
     }
 
     pub fn get_manager(&mut self, index: usize) -> Arc<Mutex<Box<InputManager>>> {
         assert!(index < self.managers.len());
         self.managers.get(index).unwrap().clone()
+    }
+
+    pub fn next(&mut self) {
+        if self.current_index.is_none() {
+            panic!("current_index no set");
+        } else {
+            self.current_index = Some(self.current_index.unwrap() + 1);
+        }
+        assert!(self.current_index.unwrap() <= self.managers.len());
     }
 
     pub fn assign_input<EF: BfField>(&self, value: Vec<u32>) -> Dsl<EF> {
@@ -207,7 +218,7 @@ impl InputManager {
         (self.stack.clone(), self.var_getter.clone())
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, debug: bool) {
         if self.exec_dsl.is_none() {
             warn!("No expression to run");
             return;
@@ -225,6 +236,10 @@ impl InputManager {
             .read()
             .unwrap()
             .express_to_script(&mut self.stack, &self.var_getter, &mut self.id_mapper, true);
+
+        if debug {
+            self.stack.debug();
+        }
         assert!(self.stack.run().success);
     }
 
@@ -298,14 +313,15 @@ mod tests {
         input_manager.add_hint_verify(hint1.into());
 
         input_manager.embed_hint_verify::<BabyBear>();
-        input_manager.run();
+        input_manager.run(false);
     }
 
     #[test]
-    fn test_global_input_manager_assign() {
+    fn test_manager_assign() {
         type EF = BinomialExtensionField<BabyBear, 4>;
         let mut manager_assign = ManagerAssign::new();
         for _ in 0..10 {
+            manager_assign.next_manager();
             let a = manager_assign.assign_input::<BabyBear>(BabyBear::from_u32(3).as_u32_vec());
             let b = manager_assign.assign_input::<BabyBear>(BabyBear::from_u32(3).as_u32_vec());
             let c = manager_assign.assign_input_f::<BabyBear>(BabyBear::from_u32(100));
@@ -316,8 +332,6 @@ mod tests {
             let equal = d.equal_for_f(EF::from_u32(3002));
             let res = equal.express1(&mut stack, &var_getter, true);
             assert!(stack.run().success);
-
-            manager_assign.next_manager();
         }
 
         for _ in 0..10 {
@@ -339,17 +353,8 @@ mod tests {
             let c = (a + b.clone() + b.square()) * c + BabyBear::from_u32(1);
             let d = c.mul_ext(Dsl::<EF>::from(EF::from_u32(2)));
             let equal = d.equal_for_f(EF::from_u32(3002));
-            let res = equal.express1(&mut stack, &var_getter, true);
+            equal.express1(&mut stack, &var_getter, true);
             assert!(stack.run().success);
         }
-
-        // let d = manager_assign.assign_input::<BabyBear>(BabyBear::from_u32(13).as_u32_vec());
-        // let e = manager_assign.assign_input::<BabyBear>(BabyBear::from_u32(31).as_u32_vec());
-        // let (mut stack, var_getter) = manager_assign.simulate_input();
-
-        // let f = d + e;
-        // let equal = f.equal_for_f(BabyBear::from_u32(44));
-        // let res = equal.express1(&mut stack, &var_getter, true);
-        // assert!(stack.run().success);
     }
 }

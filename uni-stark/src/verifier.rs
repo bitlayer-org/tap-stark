@@ -31,9 +31,7 @@ pub fn verify<SC, A>(
 ) -> Result<(), VerificationError<PcsError<SC>>>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> Air<VerifierConstraintFolder<'a, SC>>
-        + Air<ScriptConstraintBuilder<SC::Challenge>>,
+    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
     Val<SC>: BfField,
     SC::Challenge: BfField,
 {
@@ -165,36 +163,6 @@ where
     if folded_constraints * sels.inv_zeroifier != quotient {
         return Err(VerificationError::OodEvaluationMismatch);
     }
-
-    let log_n = log2_strict_usize(degree);
-    let sels_expr = selectors_at_point_expr(Val::<SC>::one(), zeta, log_n);
-    let mut script_folder = ScriptConstraintBuilder::new_with_expr(
-        opened_values.trace_local.clone(),
-        opened_values.trace_next.clone(),
-        public_values.len(),
-        sels_expr.is_first_row,
-        sels_expr.is_last_row,
-        sels_expr.is_transition,
-        alpha.into(),
-    );
-
-    air.eval(&mut script_folder);
-    let mut stack = StackTracker::new();
-    let mut var_getter = BTreeMap::new();
-    let mut optimize = BTreeMap::new();
-    script_folder.set_variable_values(public_values, &mut var_getter, &mut stack);
-    stack.debug();
-
-    let acc_expr = script_folder.get_accmulator_expr();
-    let equal_expr = acc_expr.equal_verify_for_f(folder.accumulator);
-    equal_expr.simulate_express(&mut optimize);
-    equal_expr.express_to_script(&mut stack, &mut var_getter, &mut optimize, true);
-    stack.debug();
-    script_folder.drop_variable_values(&mut var_getter, &mut stack);
-    stack.op_true();
-    let res = stack.run();
-    assert!(res.success);
-    println!("optimize script: {:?}-kb", stack.get_script().len() / 1024);
     Ok(())
 }
 

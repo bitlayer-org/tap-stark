@@ -22,7 +22,7 @@ use primitives::field::BfField;
 use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::Expression;
+use script_expr::{Expression, ManagerAssign};
 use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::execute_script_with_inputs;
 use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
@@ -291,31 +291,42 @@ fn test_quotient_zeta() {
         })
         .collect_vec();
 
-    let (q_zeta, _hint_verify) = compute_quotient_expr::<Val, Challenge>(
+    let mut manager_assign = ManagerAssign::new();
+    let manager = manager_assign.next_manager();
+
+    compute_quotient_expr::<Val, Challenge>(
         zeta,
         degree,
         generator,
         quotient_chunk_nums,
         opened_values.quotient_chunks,
         denomiator_inverse,
+        quotient,
+        manager.lock().unwrap(),
     );
 
-    let mut stack = StackTracker::new();
-    let bmap = BTreeMap::new();
-    let script = q_zeta.express(&mut stack, &bmap);
+    {
+        let mut m = manager.lock().unwrap();
+        m.embed_hint_verify::<BabyBear>();
+        m.run(false);
+    }
 
-    stack.bignumber(quotient.as_u32_vec());
+    // let mut stack = StackTracker::new();
+    // let bmap = BTreeMap::new();
+    // let script = q_zeta.express(&mut stack, &bmap);
 
-    stack.custom(
-        u31ext_equalverify::<BabyBear4>(),
-        2,
-        false,
-        0,
-        "u31ext_equalverify",
-    );
-    stack.op_true();
-    let res = stack.run();
-    assert!(res.success);
+    // stack.bignumber(quotient.as_u32_vec());
+
+    // stack.custom(
+    //     u31ext_equalverify::<BabyBear4>(),
+    //     2,
+    //     false,
+    //     0,
+    //     "u31ext_equalverify",
+    // );
+    // stack.op_true();
+    // let res = stack.run();
+    // assert!(res.success);
 
     // let mut bc_assigner = DefaultBCAssignment::new();
     // let mut exec_script_info = compute_quotient_zeta_script::<Val, Challenge>(

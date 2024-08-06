@@ -15,10 +15,7 @@ use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::{
-    global_clear, global_next_manager, global_select_manager, global_simulate_input, Dsl,
-    Expression,
-};
+use script_expr::{Dsl, Expression, ManagerAssign};
 
 extern crate alloc;
 
@@ -30,9 +27,9 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     (pcs, challenger): &(P, Challenger),
     log_degrees_by_round: &[&[usize]],
 ) where
-    P: PcsExpr<Challenge, Challenger, Dsl<Challenge>>,
+    P: PcsExpr<Challenge, Challenger, ManagerAssign>,
     P::Domain: PolynomialSpace<Val = Val>,
-    Val: Field,
+    Val: Field + BfField,
     Standard: Distribution<Val>,
     Challenge: BfField + ExtensionField<Val>,
     Challenger: Clone + CanObserve<P::Commitment> + CanSample<Challenge>,
@@ -100,83 +97,72 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     .collect_vec();
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
-    let fri_exprs =
+    let manager_assign =
         pcs.generate_verify_expr(commits_and_claims_by_round, &proof, &mut v_challenger);
 
-    fri_exprs.iter().for_each(|exprs| {
-        exprs.iter().enumerate().for_each(|(manager_index, expr)| {
-            global_select_manager(manager_index);
-            let (mut stack, var_getter) = global_simulate_input();
-            expr.express(&mut stack, &var_getter);
+    manager_assign
+        .unwrap()
+        .managers()
+        .iter()
+        .enumerate()
+        .for_each(|(manager_index, manager)| {
+            manager.lock().unwrap().embed_hint_verify::<Val>();
+            manager.lock().unwrap().run(false);
             println!(
                 "||optimize script_len {}-kb ||",
-                stack.get_script().len() / 1024
+                manager.lock().unwrap().get_script_len() / 1024
             );
-            let res = stack.run();
-            stack.debug();
-            assert!(res.success);
-            // {
-            //     let script = expr.express_without_optimize();
-            //     println!(
-            //         "||no optimize script_len {}-kb ||",
-            //         script.0.get_script().len() / 1024
-            //     );
-            //     let res = script.0.run();
-            //     assert!(res.success);
-            // }
         });
-    });
 }
 
 // Set it up so we create tests inside a module for each pcs, so we get nice error reports
 // specific to a failing PCS.
 macro_rules! make_tests_for_pcs {
     ($p:expr) => {
-        // #[test]
-        // fn single() {
-        //     let p = $p;
-        //     for i in 3..6 {
-        //         $crate::do_test_fri_pcs(&p, &[&[i]]);
-        //     }
-        // }
+        #[test]
+        fn single() {
+            let p = $p;
+            for i in 3..6 {
+                $crate::do_test_fri_pcs(&p, &[&[i]]);
+            }
+        }
 
         #[test]
         fn small() {
-            $crate::global_clear();
             let p = $p;
             $crate::do_test_fri_pcs(&p, &[&[2, 1]]);
         }
 
-        // #[test]
-        // fn many_equal() {
-        //     let p = $p;
-        //     for i in 2..3 {
-        //         $crate::do_test_fri_pcs(&p, &[&[i; 5]]);
-        //     }
-        // }
+        #[test]
+        fn many_equal() {
+            let p = $p;
+            for i in 2..3 {
+                $crate::do_test_fri_pcs(&p, &[&[i; 5]]);
+            }
+        }
 
-        // #[test]
-        // fn many_different_rev() {
-        //     let p = $p;
-        //     for i in 1..3 {
-        //         let degrees = (3..3 + i).rev().collect::<Vec<_>>();
-        //         $crate::do_test_fri_pcs(&p, &[&degrees]);
-        //     }
-        // }
+        #[test]
+        fn many_different_rev() {
+            let p = $p;
+            for i in 1..3 {
+                let degrees = (3..3 + i).rev().collect::<Vec<_>>();
+                $crate::do_test_fri_pcs(&p, &[&degrees]);
+            }
+        }
 
-        // #[test]
-        // fn multiple_rounds() {
-        //     let p = $p;
-        //     $crate::do_test_fri_pcs(&p, &[&[3]]);
-        //     $crate::do_test_fri_pcs(&p, &[&[3], &[3]]);
-        //     $crate::do_test_fri_pcs(&p, &[&[3], &[2]]);
-        //     $crate::do_test_fri_pcs(&p, &[&[2], &[3]]);
-        //     // $crate::do_test_fri_pcs(&p, &[&[3, 4], &[3, 4]]);
-        //     $crate::do_test_fri_pcs(&p, &[&[4, 2], &[4, 2]]);
-        //     $crate::do_test_fri_pcs(&p, &[&[2, 2], &[3, 3]]);
-        //     $crate::do_test_fri_pcs(&p, &[&[3, 3], &[2, 2]]);
-        //     $crate::do_test_fri_pcs(&p, &[&[2], &[3, 3]]);
-        // }
+        #[test]
+        fn multiple_rounds() {
+            let p = $p;
+            $crate::do_test_fri_pcs(&p, &[&[3]]);
+            $crate::do_test_fri_pcs(&p, &[&[3], &[3]]);
+            $crate::do_test_fri_pcs(&p, &[&[3], &[2]]);
+            $crate::do_test_fri_pcs(&p, &[&[2], &[3]]);
+            // $crate::do_test_fri_pcs(&p, &[&[3, 4], &[3, 4]]);
+            $crate::do_test_fri_pcs(&p, &[&[4, 2], &[4, 2]]);
+            $crate::do_test_fri_pcs(&p, &[&[2, 2], &[3, 3]]);
+            $crate::do_test_fri_pcs(&p, &[&[3, 3], &[2, 2]]);
+            $crate::do_test_fri_pcs(&p, &[&[2], &[3, 3]]);
+        }
     };
 }
 
@@ -193,7 +179,6 @@ mod babybear_fri_pcs {
     type Dft = Radix2DitParallel;
     type Challenger = BfChallenger<Challenge, PF, Blake3Permutation, WIDTH>;
     type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
-    use script_expr::global_clear;
 
     fn get_pcs(log_blowup: usize) -> (MyPcs, Challenger) {
         let val_mmcs = ValMmcs::new();
@@ -215,7 +200,7 @@ mod babybear_fri_pcs {
         make_tests_for_pcs!(super::get_pcs(1));
     }
 
-    // mod blowup_2 {
-    //     make_tests_for_pcs!(super::get_pcs(2));
-    // }
+    mod blowup_2 {
+        make_tests_for_pcs!(super::get_pcs(2));
+    }
 }

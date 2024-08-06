@@ -193,7 +193,8 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
                 * (evals[1].clone() - evals[0].clone())
                 * xs1_minus_xs0_inverse_hint;
 
-        let verify_hint = (xs_1 - xs_0) * manager.assign_hint_input_f(xs1_minus_xs0_inverse_hint);
+        let one = (xs_1 - xs_0) * manager.assign_hint_input_f(xs1_minus_xs0_inverse_hint);
+        let verify_hint = one.equal_for_f(F::one());
         manager.add_hint_verify(verify_hint.into());
 
         next_folded

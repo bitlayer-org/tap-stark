@@ -7,7 +7,7 @@ use primitives::bf_pcs;
 use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
-use script_expr::Dsl;
+use script_expr::{Dsl, ManagerAssign};
 
 pub type PcsError<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
@@ -32,7 +32,7 @@ pub type PackedChallenge<SC> =
 
 pub trait StarkGenericConfig {
     /// The PCS used to commit to trace polynomials.
-    type Pcs: PcsExpr<Self::Challenge, Self::Challenger, Dsl<Self::Challenge>>;
+    type Pcs: PcsExpr<Self::Challenge, Self::Challenger, ManagerAssign>;
 
     /// The field from which most random challenges are drawn.
     type Challenge: ExtensionField<Val<Self>> + BfField;
@@ -69,7 +69,7 @@ impl<Pcs, Challenge, Challenger> StarkConfig<Pcs, Challenge, Challenger> {
 impl<Pcs, Challenge, Challenger> StarkGenericConfig for StarkConfig<Pcs, Challenge, Challenger>
 where
     Challenge: ExtensionField<<Pcs::Domain as PolynomialSpace>::Val> + BfField,
-    Pcs: PcsExpr<Challenge, Challenger, Dsl<Challenge>>,
+    Pcs: PcsExpr<Challenge, Challenger, ManagerAssign>,
     Challenger: BfGrindingChallenger
         + CanObserve<<Pcs as bf_pcs::Pcs<Challenge, Challenger>>::Commitment>
         + CanSample<Challenge>,

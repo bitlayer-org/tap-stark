@@ -272,7 +272,7 @@ mod tests0 {
             .enumerate()
             .for_each(|(manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val>();
-                manager.lock().unwrap().run();
+                manager.lock().unwrap().run(false);
                 println!(
                     "||optimize script_len {}-kb ||",
                     manager.lock().unwrap().get_script_len() / 1024
@@ -417,7 +417,6 @@ mod tests1 {
             |_index, proof, mut manager| {
                 Ok(proof
                     .iter()
-                    // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
                     .map(|(lh, v)| {
                         let v_dsl = manager.assign_input_f::<Val>(v.clone());
                         (*lh, v_dsl)
@@ -433,7 +432,7 @@ mod tests1 {
             .enumerate()
             .for_each(|(manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val>();
-                manager.lock().unwrap().run();
+                manager.lock().unwrap().run(false);
                 println!(
                     "||optimize script_len {}-kb ||",
                     manager.lock().unwrap().get_script_len() / 1024
@@ -717,7 +716,7 @@ mod tests2 {
             .enumerate()
             .for_each(|(manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val>();
-                manager.lock().unwrap().run();
+                manager.lock().unwrap().run(false);
                 println!(
                     "||optimize script_len {}-kb ||",
                     manager.lock().unwrap().get_script_len() / 1024

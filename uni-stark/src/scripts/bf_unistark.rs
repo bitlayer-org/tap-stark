@@ -1,12 +1,12 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, MutexGuard};
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use itertools::Itertools;
 use p3_field::ExtensionField;
 use primitives::field::BfField;
-use script_expr::{global_assign_input_f, Dsl, Expression};
+use script_expr::{Dsl, Expression, InputManager};
 use scripts::u31_lib::u31_equalverify;
 
 use crate::get_table;
@@ -20,7 +20,9 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
     open_values: Vec<Vec<Challenge>>,
     //hint
     denominator_inverse: Vec<Val>,
-) -> (Dsl<Challenge>, Vec<Dsl<Val>>) {
+    quotient_res: Challenge,
+    mut manager: MutexGuard<Box<InputManager>>,
+) {
     assert_eq!(open_values.len(), quotient_chunk_nums);
     assert_eq!(denominator_inverse.len(), quotient_chunk_nums);
 
@@ -29,16 +31,18 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
         .map(|inner_v| {
             inner_v
                 .iter()
-                .map(|v| global_assign_input_f(*v))
+                .map(|v| manager.assign_input_f(*v))
                 .collect_vec()
         })
         .collect_vec();
     let denominator_inverse = denominator_inverse
         .iter()
-        .map(|v| global_assign_input_f(*v))
+        .map(|v| manager.assign_hint_input_f(*v))
         .collect_vec();
 
-    let zeta_dsl = global_assign_input_f(zeta);
+    // todo: replace the constant as input
+    // let zeta_dsl = manager.assign_input_f(zeta);
+    let zeta_dsl = Dsl::from(zeta);
     //babybear generator inverse constant
     let inverse_a = Dsl::from(Val::from_u32(64944062 as u32));
     let zeta_div_a = inverse_a.mul_ext(zeta_dsl);
@@ -63,7 +67,6 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
         numerator.push(acc_numerator);
     }
 
-    let mut hint_verify = vec![];
     for i in 0..quotient_chunk_nums {
         let mut acc_denominator = Dsl::from(Val::one());
         for j in 0..quotient_chunk_nums {
@@ -79,8 +82,11 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
         }
 
         //verify hint
-        hint_verify
-            .push((acc_denominator * denominator_inverse[i].clone()).equal_for_f(Val::one()));
+        manager.add_hint_verify(
+            (acc_denominator * denominator_inverse[i].clone())
+                .equal_for_f(Val::one())
+                .into(),
+        );
     }
 
     let mut quotient_zeta = Dsl::from(Challenge::zero());
@@ -93,5 +99,5 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
         quotient_zeta = quotient_zeta + (acc * zps_i);
     }
 
-    (quotient_zeta, hint_verify)
+    manager.set_exec_dsl(quotient_zeta.equal_for_f(quotient_res).into());
 }

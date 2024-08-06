@@ -14,8 +14,7 @@ use p3_util::log2_strict_usize;
 use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::field::BfField;
 use script_expr::{
-    global_next_manager, global_select_manager, global_simulate_input, selectors_at_point_expr,
-    ScriptConstraintBuilder,
+    selectors_at_point_expr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
 };
 use tracing::instrument;
 
@@ -85,7 +84,7 @@ where
     let zeta: SC::Challenge = challenger.sample();
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
-    let pcs_expr = pcs
+    let mut manager_assign = pcs
         .generate_verify_expr(
             vec![
                 (
@@ -129,19 +128,6 @@ where
                 chunk.len() * 4
             );
         });
-
-    pcs_expr.iter().enumerate().for_each(|(query_index, expr)| {
-        global_select_manager(query_index);
-        let (mut stack, var_getter) = global_simulate_input();
-        expr.express(&mut stack, &var_getter);
-        println!(
-            "[fri-pcs verify for query-{}] optimize script_len {}-kb",
-            query_index,
-            stack.get_script().len() / 1024,
-        );
-        let res = stack.run();
-        assert!(res.success);
-    });
 
     let zps = quotient_chunks_domains
         .iter()
@@ -194,25 +180,33 @@ where
 
     let quotient_chunk_nums = quotient_chunks_domains.len();
 
-    global_next_manager();
-    let (q_zeta, _hint_verify) = compute_quotient_expr::<Val<SC>, SC::Challenge>(
-        zeta,
-        degree,
-        generator,
-        quotient_chunk_nums,
-        opened_values.quotient_chunks.clone(),
-        denomiator_inverse,
-    );
-    let (mut stack, var_getter) = global_simulate_input();
-    println!("{:?}", var_getter);
-    let equla_expr = q_zeta.equal_for_f(quotient);
-    let _res = equla_expr.express(&mut stack, &var_getter);
-    println!(
-        "[compute quotient] optimize script: {:?}-kb",
-        stack.get_script().len() / 1024
-    );
-    stack.debug();
-    assert!(stack.run().success);
+    let manager_for_quotient = manager_assign.next_manager();
+    {
+        let manager = manager_for_quotient.lock().unwrap();
+        compute_quotient_expr::<Val<SC>, SC::Challenge>(
+            zeta,
+            degree,
+            generator,
+            quotient_chunk_nums,
+            opened_values.quotient_chunks.clone(),
+            denomiator_inverse,
+            quotient,
+            manager,
+        );
+    }
+
+    manager_assign
+        .managers()
+        .iter()
+        .enumerate()
+        .for_each(|(manager_index, manager)| {
+            manager.lock().unwrap().embed_hint_verify::<Val<SC>>();
+            manager.lock().unwrap().run(false);
+            println!(
+                "||optimize script_len {}-kb ||",
+                manager.lock().unwrap().get_script_len() / 1024
+            );
+        });
 
     let sels = trace_domain.selectors_at_point(zeta);
 
