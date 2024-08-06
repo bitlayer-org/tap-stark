@@ -1,9 +1,5 @@
-use std::cell::{Cell, Ref, RefCell};
 use std::collections::BTreeMap;
-use std::env::vars;
-use std::sync::{Arc, RwLock};
 
-use bitcoin::hashes::serde::de::value;
 use bitcoin_script::script;
 use bitcoin_script_stack::stack::StackTracker;
 use p3_util::log2_strict_usize;
@@ -16,7 +12,7 @@ use scripts::u31_lib::{
 };
 
 use crate::script_helper::{index_to_rou, value_exp_n};
-use crate::{Expression, ScriptExprError, StackVariable, Variable};
+use crate::{StackVariable, Variable};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum StandardOpcodeId {
@@ -129,6 +125,7 @@ pub(crate) fn op_inputvar_copy(
     stack: &mut StackTracker,
     var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 0);
     let stack_var = var_getter.get(&input_var).unwrap();
     let var = stack.copy_var(stack_var.clone());
     vec![var]
@@ -140,6 +137,7 @@ pub(crate) fn op_inputvar_move(
     stack: &mut StackTracker,
     var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 0);
     let stack_var = var_getter.get(&input_var).unwrap();
 
     let var = stack.move_var(stack_var.clone());

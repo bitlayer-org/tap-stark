@@ -4,43 +4,43 @@ use std::sync::Arc;
 use bitcoin_script_stack::stack::StackVariable;
 use p3_field::{AbstractField, Field};
 use primitives::field::BfField;
-use script_expr::{ValueVariable, Variable};
+use script_expr::{Dsl, ValueVariable, Variable};
 
 use crate::symbolic_variable::SymbolicVariable;
 use crate::{Entry, SymbolicExpression};
 
-// impl<F: BfField> From<&SymbolicExpression<F>> for FieldScriptExpression<F> {
+// impl<F: BfField> From<&SymbolicExpression<F>> for Dsl<F> {
 //     fn from(value: &SymbolicExpression<F>) -> Self {
 //         match value {
-//             SymbolicExpression::Variable(v) => FieldScriptExpression::InputVariable {
+//             SymbolicExpression::Variable(v) => Dsl::InputVariable {
 //                 sv: v.into(),
 //                 debug: Cell::new(false),
 //                 var: StackVariable::null(),
 //             },
-//             SymbolicExpression::IsFirstRow => FieldScriptExpression::one(),
-//             SymbolicExpression::IsLastRow => FieldScriptExpression::one(),
-//             SymbolicExpression::IsTransition => FieldScriptExpression::one(),
-//             SymbolicExpression::Constant(f) => FieldScriptExpression::new_c
-//             SymbolicExpression::Add { x, y, .. } => FieldScriptExpression::Add {
-//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
-//                 y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
+//             SymbolicExpression::IsFirstRow => Dsl::one(),
+//             SymbolicExpression::IsLastRow => Dsl::one(),
+//             SymbolicExpression::IsTransition => Dsl::one(),
+//             SymbolicExpression::Constant(f) => Dsl::constant_f(f.clone()),
+//             SymbolicExpression::Add { x, y, .. } => Dsl::Add {
+//                 x: Arc::new(Box::new(Dsl::from(&*x.clone()))),
+//                 y: Arc::new(Box::new(Dsl::from(&*y.clone()))),
 //                 debug: Cell::new(false),
 //                 var: StackVariable::null(),
 //             },
-//             SymbolicExpression::Sub { x, y, .. } => FieldScriptExpression::Sub {
-//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
-//                 y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
+//             SymbolicExpression::Sub { x, y, .. } => Dsl::Sub {
+//                 x: Arc::new(Box::new(Dsl::from(&*x.clone()))),
+//                 y: Arc::new(Box::new(Dsl::from(&*y.clone()))),
 //                 debug: Cell::new(false),
 //                 var: StackVariable::null(),
 //             },
-//             SymbolicExpression::Neg { x, .. } => FieldScriptExpression::Neg {
-//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
+//             SymbolicExpression::Neg { x, .. } => Dsl::Neg {
+//                 x: Arc::new(Box::new(Dsl::from(&*x.clone()))),
 //                 debug: Cell::new(false),
 //                 var: StackVariable::null(),
 //             },
-//             SymbolicExpression::Mul { x, y, .. } => FieldScriptExpression::Mul {
-//                 x: Arc::new(Box::new(FieldScriptExpression::from(&*x.clone()))),
-//                 y: Arc::new(Box::new(FieldScriptExpression::from(&*y.clone()))),
+//             SymbolicExpression::Mul { x, y, .. } => Dsl::Mul {
+//                 x: Arc::new(Box::new(Dsl::from(&*x.clone()))),
+//                 y: Arc::new(Box::new(Dsl::from(&*y.clone()))),
 //                 debug: Cell::new(false),
 //                 var: StackVariable::null(),
 //             },
@@ -101,7 +101,7 @@ mod tests {
     use common::{BabyBear, BinomialExtensionField};
     use p3_air::AirBuilder;
     use p3_matrix::Matrix;
-    use script_expr::{FieldScriptExpression, *};
+    use script_expr::{Dsl, *};
     type EF = BinomialExtensionField<BabyBear, 4>;
 
     use crate::SymbolicAirBuilder;
@@ -119,9 +119,9 @@ mod tests {
     //     when_transition.assert_eq(local[0] + local[1], next[1]);
 
     //     let cs = builder.constraints();
-    //     let script_exp: Vec<FieldScriptExpression<BabyBear>> = cs
+    //     let script_exp: Vec<Dsl<BabyBear>> = cs
     //         .iter()
-    //         .map(|cons| FieldScriptExpression::from(cons))
+    //         .map(|cons| Dsl::from(cons))
     //         .collect();
     // }
 }

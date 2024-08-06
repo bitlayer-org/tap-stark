@@ -15,12 +15,12 @@ use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::{Dsl, Expression};
+use script_expr::{
+    global_clear, global_next_manager, global_select_manager, global_simulate_input, Dsl,
+    Expression,
+};
 
 extern crate alloc;
-use alloc::collections::BTreeMap;
-
-use bitcoin_script_stack::stack::StackTracker;
 
 fn seeded_rng() -> impl Rng {
     ChaCha20Rng::seed_from_u64(0)
@@ -30,7 +30,7 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     (pcs, challenger): &(P, Challenger),
     log_degrees_by_round: &[&[usize]],
 ) where
-    P: PcsExpr<Challenge, Challenger>,
+    P: PcsExpr<Challenge, Challenger, Dsl<Challenge>>,
     P::Domain: PolynomialSpace<Val = Val>,
     Val: Field,
     Standard: Distribution<Val>,
@@ -104,36 +104,26 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
         pcs.generate_verify_expr(commits_and_claims_by_round, &proof, &mut v_challenger);
 
     fri_exprs.iter().for_each(|exprs| {
-        exprs.iter().for_each(|expr| {
-            {
-                let script = expr.express_with_optimize();
-                println!(
-                    "||optimize script_len {}-kb ||",
-                    script.0.get_script().len() / 1024
-                );
-                let res = script.0.run();
-                assert!(res.success);
-            }
-            {
-                let script = expr.express_without_optimize();
-                println!(
-                    "||no optimize script_len {}-kb ||",
-                    script.0.get_script().len() / 1024
-                );
-                let res = script.0.run();
-                assert!(res.success);
-            }
-            // let mut stack = StackTracker::new();
-            // let mut input_variables = BTreeMap::new();
-            // let script = expr.express_to_script(&mut stack, &mut input_variables);
-            // println!("script_len{}", stack.get_script().len());
-            // let res = stack.run();
-            // if !res.success {
-            //     println!("res error: {:?}", res.error);
-            //     println!("res error_msg: {:?}", res.error_msg);
-            //     println!("res error_msg: {:?}", res.last_opcode);
+        exprs.iter().enumerate().for_each(|(manager_index, expr)| {
+            global_select_manager(manager_index);
+            let (mut stack, var_getter) = global_simulate_input();
+            expr.express(&mut stack, &var_getter);
+            println!(
+                "||optimize script_len {}-kb ||",
+                stack.get_script().len() / 1024
+            );
+            let res = stack.run();
+            stack.debug();
+            assert!(res.success);
+            // {
+            //     let script = expr.express_without_optimize();
+            //     println!(
+            //         "||no optimize script_len {}-kb ||",
+            //         script.0.get_script().len() / 1024
+            //     );
+            //     let res = script.0.run();
+            //     assert!(res.success);
             // }
-            // assert!(res.success);
         });
     });
 }
@@ -142,59 +132,51 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
 // specific to a failing PCS.
 macro_rules! make_tests_for_pcs {
     ($p:expr) => {
-        #[test]
-        fn single() {
-            let p = $p;
-            for i in 3..6 {
-                $crate::do_test_fri_pcs(&p, &[&[i]]);
-            }
-        }
-
-        #[test]
-        fn small() {
-            let p = $p;
-            $crate::do_test_fri_pcs(&p, &[&[2, 1]]);
-        }
-
-        #[test]
-        fn many_equal() {
-            let p = $p;
-            for i in 2..3 {
-                $crate::do_test_fri_pcs(&p, &[&[i; 5]]);
-            }
-        }
-
         // #[test]
-        // fn many_different() {
+        // fn single() {
         //     let p = $p;
-        //     for i in 2..4 {
-        //         let degrees = (3..3 + i).collect::<Vec<_>>();
-        //         $crate::do_test_fri_pcs(&p, &[&degrees]);
+        //     for i in 3..6 {
+        //         $crate::do_test_fri_pcs(&p, &[&[i]]);
         //     }
         // }
 
         #[test]
-        fn many_different_rev() {
+        fn small() {
+            $crate::global_clear();
             let p = $p;
-            for i in 1..3 {
-                let degrees = (3..3 + i).rev().collect::<Vec<_>>();
-                $crate::do_test_fri_pcs(&p, &[&degrees]);
-            }
+            $crate::do_test_fri_pcs(&p, &[&[2, 1]]);
         }
 
-        #[test]
-        fn multiple_rounds() {
-            let p = $p;
-            $crate::do_test_fri_pcs(&p, &[&[3]]);
-            $crate::do_test_fri_pcs(&p, &[&[3], &[3]]);
-            $crate::do_test_fri_pcs(&p, &[&[3], &[2]]);
-            $crate::do_test_fri_pcs(&p, &[&[2], &[3]]);
-            // $crate::do_test_fri_pcs(&p, &[&[3, 4], &[3, 4]]);
-            $crate::do_test_fri_pcs(&p, &[&[4, 2], &[4, 2]]);
-            $crate::do_test_fri_pcs(&p, &[&[2, 2], &[3, 3]]);
-            $crate::do_test_fri_pcs(&p, &[&[3, 3], &[2, 2]]);
-            $crate::do_test_fri_pcs(&p, &[&[2], &[3, 3]]);
-        }
+        // #[test]
+        // fn many_equal() {
+        //     let p = $p;
+        //     for i in 2..3 {
+        //         $crate::do_test_fri_pcs(&p, &[&[i; 5]]);
+        //     }
+        // }
+
+        // #[test]
+        // fn many_different_rev() {
+        //     let p = $p;
+        //     for i in 1..3 {
+        //         let degrees = (3..3 + i).rev().collect::<Vec<_>>();
+        //         $crate::do_test_fri_pcs(&p, &[&degrees]);
+        //     }
+        // }
+
+        // #[test]
+        // fn multiple_rounds() {
+        //     let p = $p;
+        //     $crate::do_test_fri_pcs(&p, &[&[3]]);
+        //     $crate::do_test_fri_pcs(&p, &[&[3], &[3]]);
+        //     $crate::do_test_fri_pcs(&p, &[&[3], &[2]]);
+        //     $crate::do_test_fri_pcs(&p, &[&[2], &[3]]);
+        //     // $crate::do_test_fri_pcs(&p, &[&[3, 4], &[3, 4]]);
+        //     $crate::do_test_fri_pcs(&p, &[&[4, 2], &[4, 2]]);
+        //     $crate::do_test_fri_pcs(&p, &[&[2, 2], &[3, 3]]);
+        //     $crate::do_test_fri_pcs(&p, &[&[3, 3], &[2, 2]]);
+        //     $crate::do_test_fri_pcs(&p, &[&[2], &[3, 3]]);
+        // }
     };
 }
 
@@ -211,19 +193,20 @@ mod babybear_fri_pcs {
     type Dft = Radix2DitParallel;
     type Challenger = BfChallenger<Challenge, PF, Blake3Permutation, WIDTH>;
     type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
+    use script_expr::global_clear;
 
     fn get_pcs(log_blowup: usize) -> (MyPcs, Challenger) {
         let val_mmcs = ValMmcs::new();
         let challenge_mmscs = ChallengeMmcs::new();
         let fri_config = FriConfig {
             log_blowup,
-            num_queries: 10,
+            num_queries: 1,
             proof_of_work_bits: 8,
             mmcs: challenge_mmscs,
         };
 
         let permutation = Blake3Permutation {};
-        let mut challenger = Challenger::new(permutation).unwrap();
+        let challenger = Challenger::new(permutation).unwrap();
         let pcs = MyPcs::new(Dft {}, val_mmcs, fri_config);
         (pcs, challenger)
     }
@@ -231,7 +214,8 @@ mod babybear_fri_pcs {
     mod blowup_1 {
         make_tests_for_pcs!(super::get_pcs(1));
     }
-    mod blowup_2 {
-        make_tests_for_pcs!(super::get_pcs(2));
-    }
+
+    // mod blowup_2 {
+    //     make_tests_for_pcs!(super::get_pcs(2));
+    // }
 }

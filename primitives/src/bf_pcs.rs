@@ -86,7 +86,7 @@ where
     ) -> Result<(), Self::Error>;
 }
 
-pub trait PcsExpr<Challenge, Challenger, Expr>: Pcs<Challenge, Challenger>
+pub trait PcsExpr<Challenge, Challenger, ManagerAssign>: Pcs<Challenge, Challenger>
 where
     Challenge: ExtensionField<Val<Self::Domain>>,
 {
@@ -110,7 +110,7 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-    ) -> Result<Vec<Expr>, Self::Error>;
+    ) -> Result<ManagerAssign, Self::Error>;
 }
 pub type OpenedValues<F> = Vec<OpenedValuesForRound<F>>;
 pub type OpenedValuesForRound<F> = Vec<OpenedValuesForMatrix<F>>;

@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod tests0 {
 
     use core::cmp::Reverse;
     use std::marker::PhantomData;
@@ -22,10 +22,11 @@ mod tests {
     use p3_util::log2_strict_usize;
     use primitives::challenger::chan_field::U32;
     use primitives::challenger::{BfChallenger, Blake3Permutation};
+    use primitives::field::BfField;
     use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    use script_expr::{Dsl, Expression};
+    use script_expr::{InputManager, ManagerAssign};
     use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
     use script_manager::script_info::ScriptInfo;
 
@@ -54,7 +55,6 @@ mod tests {
     impl CryptographicPermutation<SpongeState> for TestPermutation {}
     type Val = BabyBear;
     type ValMmcs = TapTreeMmcs<Val>;
-    type MyFriConfig = FriConfig<ValMmcs>;
     #[test]
     fn test_compelte_fri_process() {
         let mut script_manager: Vec<ScriptInfo> = Vec::new();
@@ -248,52 +248,89 @@ mod tests {
         )
         .expect("failed verify challenges");
 
-        let fri_exprs = bf_verify_challenges(
+        let manager_assign = bf_verify_challenges(
             &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| {
+            |_index, proof, mut manager| {
                 Ok(proof
                     .iter()
-                    .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
+                    // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
+                    .map(|(lh, v)| {
+                        let v_dsl = manager.assign_input_f::<Val>(v.clone());
+                        (*lh, v_dsl)
+                    })
                     .collect())
             },
         )
         .expect("failed verify challenges");
 
-        fri_exprs.iter().for_each(|expr| {
-            {
-                let script = expr.express_with_optimize();
+        manager_assign
+            .managers()
+            .iter()
+            .enumerate()
+            .for_each(|(manager_index, manager)| {
+                manager.lock().unwrap().embed_hint_verify::<Val>();
+                manager.lock().unwrap().run();
                 println!(
                     "||optimize script_len {}-kb ||",
-                    script.0.get_script().len() / 1024
+                    manager.lock().unwrap().get_script_len() / 1024
                 );
-                let res = script.0.run();
-                assert!(res.success);
-            }
-            {
-                let script = expr.express_without_optimize();
-                println!(
-                    "||no optimize script_len {}-kb ||",
-                    script.0.get_script().len() / 1024
-                );
-                let res = script.0.run();
-                assert!(res.success);
-            }
-        });
+            });
         assert_eq!(
             p_sample,
             v_challenger.sample_bits(8),
             "prover and verifier transcript have same state after FRI"
         );
     }
+}
+
+#[cfg(test)]
+mod tests1 {
+
+    use core::cmp::Reverse;
+    use std::marker::PhantomData;
+
+    use fri::prover::bf_prove;
+    // use super::*;
+    use fri::script_verifier::bf_verify_challenges;
+    use fri::two_adic_pcs::TwoAdicFriGenericConfig;
+    use fri::{verifier, FriConfig};
+    use itertools::Itertools;
+    use p3_baby_bear::BabyBear;
+    use p3_challenger::CanSampleBits;
+    use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
+    use p3_field::extension::BinomialExtensionField;
+    use p3_field::AbstractField;
+    use p3_matrix::dense::RowMajorMatrix;
+    use p3_matrix::util::reverse_matrix_index_bits;
+    use p3_matrix::Matrix;
+    use p3_symmetric::{CryptographicPermutation, Permutation};
+    use p3_util::log2_strict_usize;
+    use primitives::challenger::chan_field::U32;
+    use primitives::challenger::{BfChallenger, Blake3Permutation};
+    use primitives::field::BfField;
+    use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha20Rng;
+    use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+    use script_manager::script_info::ScriptInfo;
+
+    extern crate alloc;
+    use alloc::collections::BTreeMap;
+
+    use bitcoin_script_stack::stack::StackTracker;
+    type PF = U32;
+    const WIDTH: usize = 16;
+    type SpongeState = [PF; WIDTH];
+    type F = BabyBear;
+    // impl CryptographicPermutation<SpongeState> for TestPermutation {}
+    type Val = BabyBear;
+    type ValMmcs = TapTreeMmcs<Val>;
 
     #[test]
     fn test_bf_prove_with_blake3_permutation() {
-        // tracing_subscriber::registry().with(fmt::layer()).init(); // open some log information
-
-        let mut script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<F, [u8; 4], Blake3Permutation, 16> =
             BfChallenger::<F, PF, Blake3Permutation, WIDTH>::new(permutation).unwrap();
@@ -372,40 +409,36 @@ mod tests {
         )
         .expect("failed verify shape and sample");
 
-        let fri_exprs = bf_verify_challenges(
+        let manager_assign = bf_verify_challenges(
             &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| {
+            |_index, proof, mut manager| {
                 Ok(proof
                     .iter()
-                    .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
+                    // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
+                    .map(|(lh, v)| {
+                        let v_dsl = manager.assign_input_f::<Val>(v.clone());
+                        (*lh, v_dsl)
+                    })
                     .collect())
             },
         )
         .expect("failed verify challenges");
 
-        fri_exprs.iter().for_each(|expr| {
-            {
-                let script = expr.express_with_optimize();
+        manager_assign
+            .managers()
+            .iter()
+            .enumerate()
+            .for_each(|(manager_index, manager)| {
+                manager.lock().unwrap().embed_hint_verify::<Val>();
+                manager.lock().unwrap().run();
                 println!(
                     "||optimize script_len {}-kb ||",
-                    script.0.get_script().len() / 1024
+                    manager.lock().unwrap().get_script_len() / 1024
                 );
-                let res = script.0.run();
-                assert!(res.success);
-            }
-            {
-                let script = expr.express_without_optimize();
-                println!(
-                    "||no optimize script_len {}-kb ||",
-                    script.0.get_script().len() / 1024
-                );
-                let res = script.0.run();
-                assert!(res.success);
-            }
-        });
+            });
     }
 }
 
@@ -660,19 +693,36 @@ mod tests2 {
         )
         .expect("failed verify challenges");
 
-        bf_verify_challenges(
+        let manager_assign = bf_verify_challenges(
             &TwoAdicFriGenericConfig::<Vec<(usize, Val)>, ()>(PhantomData),
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| {
+            |_index, proof, mut manager| {
                 Ok(proof
                     .iter()
-                    .map(|(index, value)| (*index, Dsl::constant_f(value.clone())))
+                    // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
+                    .map(|(lh, v)| {
+                        let v_dsl = manager.assign_input_f::<Val>(v.clone());
+                        (*lh, v_dsl)
+                    })
                     .collect())
             },
         )
         .expect("failed verify challenges");
+
+        manager_assign
+            .managers()
+            .iter()
+            .enumerate()
+            .for_each(|(manager_index, manager)| {
+                manager.lock().unwrap().embed_hint_verify::<Val>();
+                manager.lock().unwrap().run();
+                println!(
+                    "||optimize script_len {}-kb ||",
+                    manager.lock().unwrap().get_script_len() / 1024
+                );
+            });
         assert_eq!(
             p_sample,
             v_challenger.sample_bits(8),

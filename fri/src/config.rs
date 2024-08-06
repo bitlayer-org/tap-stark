@@ -1,10 +1,11 @@
 use alloc::vec::Vec;
 use core::fmt::Debug;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use p3_field::Field;
 use p3_matrix::Matrix;
 use primitives::field::BfField;
-use script_expr::Dsl;
+use script_expr::{Dsl, InputManager};
 
 #[derive(Debug)]
 pub struct FriConfig<M> {
@@ -55,5 +56,6 @@ pub trait FriGenericConfigWithExpr<F: BfField>: FriGenericConfig<F> {
         point_index: usize,
         index_sibling: usize,
         beta: Dsl<F>,
-    ) -> (Dsl<F>, Dsl<F>);
+        manager: MutexGuard<Box<InputManager>>,
+    ) -> Dsl<F>;
 }

@@ -27,6 +27,8 @@ pub mod script_gen;
 pub use script_gen::*;
 pub mod alias;
 pub use alias::*;
+pub mod input_manager;
+pub use input_manager::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptExprError {
@@ -66,9 +68,9 @@ pub trait Expression: Debug {
             .and_modify(|count| (*count).count += 1)
             .or_insert(IdCount::new(1))
             .count;
-        trace!("insert id:{:?}   count:{:?}", id, count);
+        trace!("insert id:{:?}; count:{:?}", id, count);
         if count > 1 {
-            trace!("insert id:{:?}   find the same op_id, just copy", id);
+            trace!("insert id:{:?} and find the same op_id, just copy", id);
         } else {
             // 1. simulate execution
             self.get_ops().iter().for_each(|op| {
@@ -93,7 +95,7 @@ pub trait Expression: Debug {
                     trace!("id:{:?}  copy and drop form stack_var {:?}", id, id_count);
                     let top_var = stack.move_var_from_altstack(id_count.stack_var.unwrap());
                     stack.rename(top_var, "move_var");
-                    let mut id_count = id_mapper.get(&id).unwrap().clone();
+                    let id_count = id_mapper.get(&id).unwrap().clone();
                     trace!(
                         "id:{:?}  copy and drop ending {:?} get the new stack_var {:?}",
                         id,

@@ -6,7 +6,7 @@ use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use itertools::Itertools;
 use p3_field::ExtensionField;
 use primitives::field::BfField;
-use script_expr::{Dsl, Expression};
+use script_expr::{global_assign_input_f, Dsl, Expression};
 use scripts::u31_lib::u31_equalverify;
 
 use crate::get_table;
@@ -26,17 +26,22 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
 
     let open_values = open_values
         .iter()
-        .map(|inner_v| inner_v.iter().map(|v| Dsl::from(*v)).collect_vec())
+        .map(|inner_v| {
+            inner_v
+                .iter()
+                .map(|v| global_assign_input_f(*v))
+                .collect_vec()
+        })
         .collect_vec();
     let denominator_inverse = denominator_inverse
         .iter()
-        .map(|v| Dsl::from(*v))
+        .map(|v| global_assign_input_f(*v))
         .collect_vec();
 
-    let zeta = Dsl::from(zeta);
+    let zeta_dsl = global_assign_input_f(zeta);
     //babybear generator inverse constant
     let inverse_a = Dsl::from(Val::from_u32(64944062 as u32));
-    let zeta_div_a = inverse_a.mul_ext(zeta);
+    let zeta_div_a = inverse_a.mul_ext(zeta_dsl);
 
     let table = Dsl::from_table(&get_table(generator, quotient_chunk_nums));
 
@@ -74,9 +79,8 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
         }
 
         //verify hint
-        hint_verify.push(
-            (acc_denominator * denominator_inverse[i].clone()).equal_verify_for_f(Val::one()),
-        );
+        hint_verify
+            .push((acc_denominator * denominator_inverse[i].clone()).equal_for_f(Val::one()));
     }
 
     let mut quotient_zeta = Dsl::from(Challenge::zero());

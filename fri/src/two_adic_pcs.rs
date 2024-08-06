@@ -4,6 +4,7 @@ use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 use std::cell::Cell;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use bitcoin_script_stack::stack::StackTracker;
 use itertools::{izip, Itertools};
@@ -26,8 +27,7 @@ use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
-use script_expr::{assert_dsl, Dsl, Expression};
-use script_manager::script_info::ScriptInfo;
+use script_expr::{Dsl, InputManager, ManagerAssign};
 use tracing::{debug_span, info_span, instrument};
 
 use crate::error::{self, FriError};
@@ -160,7 +160,8 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
         _point_index: usize,
         index_sibling: usize,
         beta: Dsl<F>,
-    ) -> (Dsl<F>, Dsl<F>) {
+        mut manager: MutexGuard<Box<InputManager>>,
+    ) -> Dsl<F> {
         let arity = 2;
         let log_arity = 1;
         // If performance critical, make this API stateful to avoid this
@@ -173,27 +174,29 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
         let xs1_minus_xs0_inverse_hint = F::one() / (xs_hint[1] - xs_hint[0]);
 
         let mut xs_0 = Dsl::default();
+        let mut xs_1 = Dsl::default();
         if index_sibling % 2 == 0 {
-            xs_0 = x * F::two_adic_generator(log_arity);
+            xs_0 = x.clone() * F::two_adic_generator(log_arity);
+            xs_1 = x;
         } else {
-            xs_0 = x;
+            xs_0 = x.clone();
+            xs_1 = x * F::two_adic_generator(log_arity);
         }
 
         let mut evals = vec![Dsl::default(), Dsl::default()];
         evals[index_sibling % 2] = sibling_eval;
         evals[(index_sibling + 1) % 2] = folded_eval;
         assert_eq!(log_arity, 1, "can only interpolate two points for now");
-        // interpolate and evaluate at betawo
+        // interpolate and evaluate at beta
         let next_folded = evals[0].clone()
-            + (beta - xs_0) * (evals[1].clone() - evals[0].clone()) * xs1_minus_xs0_inverse_hint;
+            + (beta - xs_0.clone())
+                * (evals[1].clone() - evals[0].clone())
+                * xs1_minus_xs0_inverse_hint;
 
-        // let xs_minus = -xs[0].clone().debug() + xs[1].clone().debug();
-        // assert_dsl(xs_minus.clone().debug(), xs_hint[1] - xs_hint[0]);
-        // let verify_hint = xs_minus * Dsl::<F>::constant_f(xs1_minus_xs0_inverse_hint);
-        // verify_hint.set_debug();
-        // assert_dsl(verify_hint.clone(), F::one());
+        let verify_hint = (xs_1 - xs_0) * manager.assign_hint_input_f(xs1_minus_xs0_inverse_hint);
+        manager.add_hint_verify(verify_hint.into());
 
-        (next_folded, Dsl::default())
+        next_folded
     }
 }
 
@@ -524,7 +527,7 @@ where
 }
 
 impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger>
-    PcsExpr<Challenge, Challenger, Dsl<Challenge>> for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
+    PcsExpr<Challenge, Challenger, ManagerAssign> for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
 where
     Val: BfField,
     Dft: TwoAdicSubgroupDft<Val>,
@@ -553,7 +556,7 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-    ) -> Result<Vec<Dsl<Challenge>>, Self::Error> {
+    ) -> Result<ManagerAssign, Self::Error> {
         // Batch combination challenge
         let alpha: Challenge = challenger.sample();
 
@@ -566,12 +569,12 @@ where
             verifier::verify_shape_and_sample_challenges(&g, &self.fri, proof, challenger)
                 .expect("failed verify shape and sample");
 
-        let fri_exprs = script_verifier::bf_verify_challenges(
+        let manager_assign = script_verifier::bf_verify_challenges(
             &g,
             &self.fri,
             proof,
             &fri_challenges,
-            |index, input_proof| {
+            |index, input_proof, mut manager| {
                 // TODO: separate this out into functions
 
                 let mut reduced_openings_expr =
@@ -586,7 +589,7 @@ where
                     let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
                     let log_batch_max_height = log2_strict_usize(*batch_max_height);
                     let bits_reduced = log_global_max_height - log_batch_max_height;
-                    let reduced_index = index >> bits_reduced;
+                    let _reduced_index = index >> bits_reduced;
 
                     self.mmcs.verify_batch(
                         &batch_opening.opened_values,
@@ -624,13 +627,19 @@ where
                                 //  Optimized formula:
                                 //    ro = (alpha^0 * (p(x)_{0} - p(z)_{0}) + alpha^1 * (p(x)_{1} -p(z)_{1}) + ... + alpha^i * (p(x)_{i} -p(z)_{i})) / (x - z)
                                 //
+                                // acc += alpha_pow_expr.clone()
+                                //     * (Dsl::<Challenge>::constant_f(-p_at_z)
+                                //         .add_base(Dsl::<Val>::constant_f(p_at_x)));
                                 acc += alpha_pow_expr.clone()
-                                    * (Dsl::<Challenge>::constant_f(-p_at_z)
-                                        .add_base(Dsl::<Val>::constant_f(p_at_x)));
+                                    * (manager
+                                        .assign_input_f::<Challenge>(-p_at_z)
+                                        .add_base(manager.assign_input_f::<Val>(p_at_x)));
                                 *alpha_pow_expr *= alpha;
                             }
-                            *ro_expr = ro_expr.clone() + acc * Dsl::constant_f((-*z + x).inverse());
-                            // using 1/x-z as hint
+
+                            let x_minus_z_inv =
+                                manager.assign_input_f::<Challenge>((-*z + x).inverse());
+                            *ro_expr = ro_expr.clone() + acc * x_minus_z_inv;
                         }
                     }
                 }
@@ -645,7 +654,7 @@ where
         )
         .expect("fri err");
 
-        Ok(fri_exprs)
+        Ok(manager_assign)
     }
 }
 

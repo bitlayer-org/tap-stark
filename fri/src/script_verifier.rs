@@ -1,48 +1,49 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::panic;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use bitcoin::taproot::TapLeaf;
-use bitcoin::Script;
 use itertools::izip;
-use p3_challenger::{CanObserve, CanSample};
 use p3_field::AbstractField;
 use p3_util::reverse_bits_len;
-use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
-use script_expr::{assert_dsl, Dsl, ExprPtr, Expression};
-use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
-use script_manager::script_info::ScriptInfo;
+use script_expr::{Dsl, InputManager, ManagerAssign};
 use scripts::execute_script_with_inputs;
-use segment::SegmentLeaf;
-use tracing::field::Field;
 use tracing::{instrument, trace};
 
 use crate::error::{FriError, SVError};
 use crate::verifier::*;
-use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriGenericConfigWithExpr, FriProof};
+use crate::{BfQueryProof, FriConfig, FriGenericConfigWithExpr, FriProof};
 
 pub fn bf_verify_challenges<G, F, M, Witness>(
     g: &G,
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
-    open_input: impl Fn(usize, &G::InputProof) -> Result<Vec<(usize, Dsl<F>)>, G::InputError>,
-) -> Result<Vec<Dsl<F>>, FriError<M::Error, G::InputError>>
+    open_input: impl Fn(
+        usize,
+        &G::InputProof,
+        MutexGuard<Box<InputManager>>,
+    ) -> Result<Vec<(usize, Dsl<F>)>, G::InputError>,
+) -> Result<ManagerAssign, FriError<M::Error, G::InputError>>
 where
     F: BfField,
     M: BFMmcs<F, Proof = CommitProof<F>>,
     G: FriGenericConfigWithExpr<F>,
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
-    let mut fri_exprs = vec![];
+    let mut manager_assign = ManagerAssign::new();
     for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
-        let ro =
-            open_input(index, &query_proof.input_proof).map_err(|e| FriError::InputError(e))?;
-
+        let cur_manager = manager_assign.current_manager();
+        let ro = {
+            let mut manager: std::sync::MutexGuard<Box<InputManager>> = cur_manager.lock().unwrap(); // 仅在此范围内锁定
+            open_input(index, &query_proof.input_proof, manager)
+                .map_err(|e| FriError::InputError(e))?
+        };
         let folded_eval = bf_verify_query(
             g,
             config,
@@ -52,12 +53,18 @@ where
             &challenges.betas,
             ro,
             log_max_height,
+            &cur_manager,
         )?;
 
-        fri_exprs.push(folded_eval.equal_for_f(proof.final_poly));
+        println!("== 3 == ");
+        {
+            let mut manager = cur_manager.lock().unwrap();
+            manager.set_exec_dsl(folded_eval.equal_for_f(proof.final_poly).into());
+        }
+        manager_assign.next_manager();
     }
 
-    Ok(fri_exprs)
+    Ok(manager_assign)
 }
 
 fn bf_verify_query<G, F, M>(
@@ -69,6 +76,7 @@ fn bf_verify_query<G, F, M>(
     betas: &[F],
     reduced_openings: Vec<(usize, Dsl<F>)>,
     log_max_height: usize,
+    manager: &Arc<Mutex<Box<InputManager>>>,
 ) -> Result<Dsl<F>, FriError<M::Error, G::InputError>>
 where
     F: BfField,
@@ -79,11 +87,13 @@ where
     let mut folded_eval = Dsl::<F>::zero();
 
     let rev_index = reverse_bits_len(index, log_max_height);
-    // let mut x = Dsl::<F>::index_to_rou(rev_index as u32, log_max_height as u32 );
+    // let mut x = Dsl::<F>::index_to_rou(rev_index as u32, log_max_height as u32 ); d
 
     let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
-    let mut x = Dsl::<F>::constant_f(x_hint.clone());
-    assert_dsl(x.clone(), x_hint);
+    let mut x = manager
+        .lock()
+        .unwrap()
+        .assign_input::<F>(x_hint.as_u32_vec());
 
     for (log_folded_height, commit, step, &beta) in izip!(
         (0..log_max_height).rev(),
@@ -91,6 +101,7 @@ where
         &proof.commit_phase_openings,
         betas,
     ) {
+        println!("== 2 == ");
         let point_index = index & 1;
         let index_sibling = point_index ^ 1;
         let index_pair = index >> 1;
@@ -127,23 +138,24 @@ where
             .verify_taptree(step, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
-        trace!(
+        println!(
             "log_folded_height:{}; open_index:{}; open index_sibling:{}; point_index:{} ",
-            log_folded_height,
-            index,
-            index_sibling,
-            point_index
+            log_folded_height, index, index_sibling, point_index
         );
 
-        (folded_eval, _) = g.fold_row_with_expr(
-            folded_eval,
-            Dsl::constant_f(sibling_point.y),
-            x.clone(),
-            x_hint,
-            point_index,
-            index_sibling,
-            Dsl::constant_f(beta),
-        );
+        folded_eval = {
+            let mut cur_manager: MutexGuard<Box<InputManager>> = manager.lock().unwrap(); // 仅在此范围内锁定
+            g.fold_row_with_expr(
+                folded_eval,
+                cur_manager.assign_input_f::<F>(sibling_point.y),
+                x.clone(),
+                x_hint,
+                point_index,
+                index_sibling,
+                cur_manager.assign_input_f::<F>(beta),
+                cur_manager,
+            )
+        };
 
         index = index_pair;
         if log_folded_height != 1 {

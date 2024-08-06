@@ -9,13 +9,13 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::usize;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-use common::AbstractField;
+use common::{AbstractField, BabyBear};
 use lazy_static::lazy_static;
 use primitives::field::BfField;
 
 use crate::{
-    CustomOpcode, Expression, IdCount, ScriptExprError, StandardOpcode, StandardOpcodeId, Variable,
-    DYNAMIC_INPUT_OR_OUTPUT,
+    CustomOpcode, Expression, IdCount, InputManager, ManagerAssign, ScriptExprError,
+    StandardOpcode, StandardOpcodeId, Variable, DYNAMIC_INPUT_OR_OUTPUT,
 };
 lazy_static! {
     static ref OPID: Mutex<u32> = Mutex::new(0);
@@ -188,15 +188,6 @@ impl<F: BfField> Dsl<F> {
         )
     }
 
-    // pub fn from_table(table: &[F]) -> Self {
-    //     Self(
-    //         Arc::new(RwLock::new(Box::new(
-    //             FieldScriptExpression::<F>::from_table(table),
-    //         ))),
-    //         PhantomData::<F>,
-    //     )
-    // }
-
     pub fn from_table(table: &[F]) -> Self {
         let vs = table.iter().map(|f| f.as_u32_vec()).collect::<Vec<_>>();
         Self(
@@ -337,12 +328,6 @@ impl<F: BfField> Dsl<F> {
     }
 }
 
-// impl<F: BfField> From<FieldScriptExpression<F>> for Dsl<F> {
-//     fn from(value: FieldScriptExpression<F>) -> Self {
-//         Self::new(value.as_expr_ptr())
-//     }
-// }
-
 impl<F: BfField> Dsl<F> {
     pub fn read(&self) -> Result<ExprRead, ScriptExprError> {
         self.0.read().map_err(|_| ScriptExprError::ReadLockError)
@@ -389,7 +374,21 @@ impl<F: BfField> Dsl<F> {
         let mut id_mapper = BTreeMap::new();
         self.read().unwrap().simulate_express(&mut id_mapper);
         (
-            self.express_to_script(stack, &var_getter, &mut id_mapper, false),
+            self.express_to_script(stack, &var_getter, &mut id_mapper, true),
+            id_mapper,
+        )
+    }
+
+    pub fn express1(
+        &self,
+        stack: &mut StackTracker,
+        var_getter: &BTreeMap<Variable, StackVariable>,
+        optimize: bool,
+    ) -> (Vec<StackVariable>, BTreeMap<u32, IdCount>) {
+        let mut id_mapper = BTreeMap::new();
+        self.read().unwrap().simulate_express(&mut id_mapper);
+        (
+            self.express_to_script(stack, &var_getter, &mut id_mapper, optimize),
             id_mapper,
         )
     }
@@ -853,19 +852,6 @@ mod tests {
             let res = stack.run();
             assert!(res.success);
         }
-
-        // {
-        //     let bmap = BTreeMap::new();
-        //     let mut stack = StackTracker::new();
-        //     let a = Dsl::constant_u32(num);
-        //     let b = a.num_to_field();
-        //     let res = EF::from_canonical_u32(num);
-        //     let equal = b.equal_verify_for_f(res);
-        //     equal.express(&mut stack, &bmap);
-        //     stack.op_true();
-        //     let res = stack.run();
-        //     assert!(res.success);
-        // }
     }
 
     #[test]
@@ -982,22 +968,22 @@ mod tests {
 
     #[test]
     fn test_script_expr_with_input() {
-        let mut input_manager = InputManager::<BabyBear>::new();
+        let mut input_manager = InputManager::new();
         let var1_wrap =
-            input_manager.assign_input_expr(BabyBear::from_canonical_u32(1u32).as_u32_vec());
+            input_manager.assign_input::<BabyBear>(BabyBear::from_canonical_u32(1u32).as_u32_vec());
         let var2_wrap =
-            input_manager.assign_input_expr(BabyBear::from_canonical_u32(2u32).as_u32_vec());
+            input_manager.assign_input::<BabyBear>(BabyBear::from_canonical_u32(2u32).as_u32_vec());
         let var3_wrap =
-            input_manager.assign_input_expr(BabyBear::from_canonical_u32(3u32).as_u32_vec());
+            input_manager.assign_input::<BabyBear>(BabyBear::from_canonical_u32(3u32).as_u32_vec());
         let var4_wrap =
-            input_manager.assign_input_expr(BabyBear::from_canonical_u32(4u32).as_u32_vec());
+            input_manager.assign_input::<BabyBear>(BabyBear::from_canonical_u32(4u32).as_u32_vec());
         let (mut stack, input_getter) = input_manager.simulate_input();
 
         let res1 = var1_wrap + var2_wrap;
         let res2 = var3_wrap + var4_wrap;
 
         let res = res1 + res2;
-        res.express(&mut stack, input_getter);
+        res.express(&mut stack, &input_getter);
 
         stack.number(BabyBear::from_canonical_u32(10u32).as_u32_vec()[0]);
         stack.op_equalverify();
@@ -1008,15 +994,11 @@ mod tests {
         assert!(res.success);
 
         {
-            let mut input_manager = InputManager::<EF>::new();
-            let var1_wrap =
-                input_manager.assign_input_expr(EF::from_canonical_u32(1u32).as_u32_vec());
-            let var2_wrap =
-                input_manager.assign_input_expr(EF::from_canonical_u32(2u32).as_u32_vec());
-            let var3_wrap =
-                input_manager.assign_input_expr(EF::from_canonical_u32(3u32).as_u32_vec());
-            let var4_wrap =
-                input_manager.assign_input_expr(EF::from_canonical_u32(4u32).as_u32_vec());
+            let mut input_manager = InputManager::new();
+            let var1_wrap = input_manager.assign_input(EF::from_canonical_u32(1u32).as_u32_vec());
+            let var2_wrap = input_manager.assign_input(EF::from_canonical_u32(2u32).as_u32_vec());
+            let var3_wrap = input_manager.assign_input(EF::from_canonical_u32(3u32).as_u32_vec());
+            let var4_wrap = input_manager.assign_input(EF::from_canonical_u32(4u32).as_u32_vec());
             let (mut stack, input_getter) = input_manager.simulate_input();
 
             let res1 = var1_wrap + var2_wrap;
@@ -1024,7 +1006,7 @@ mod tests {
 
             let res = res1 + res2;
             let equal = res.equal_for_f(EF::from_canonical_u32(10));
-            equal.debug().express(&mut stack, input_getter);
+            equal.debug().express(&mut stack, &input_getter);
             let res = stack.run();
             assert!(res.success);
         }
@@ -1337,6 +1319,27 @@ mod tests2 {
 
     #[test]
     fn test_index_to_rou_bug() {
+        // {
+        //     let bmap = BTreeMap::new();
+        //     let mut stack = StackTracker::new();
+        //     let sub_group_bits = 10u32;
+        //     let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
+        //     let index = 7u32;
+        //     let res = generator.exp_u64(index as u64);
+
+        //     let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
+        //     b.set_debug();
+        //     let b_2 = b.clone() * b;
+        //     //  let b_2 = b.square();
+        //     let res_expr = Dsl::constant_f(res * res);
+        //     let equal = b_2.equal_verify(res_expr);
+        //     equal.express1(&mut stack, &bmap,false);
+        //     stack.op_true();
+        //     let res = stack.run();
+        //     assert!(res.success);
+        //     println!("script_len: {:?}", stack.get_script_len());
+        // }
+
         {
             let bmap = BTreeMap::new();
             let mut stack = StackTracker::new();
@@ -1346,31 +1349,7 @@ mod tests2 {
             let res = generator.exp_u64(index as u64);
 
             let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
-            b.set_debug();
             let b_2 = b.clone() * b;
-            //  let b_2 = b.square();
-            let res_expr = Dsl::constant_f(res * res);
-            let equal = b_2.equal_verify(res_expr);
-            equal.express(&mut stack, &bmap);
-            stack.op_true();
-            let res = stack.run();
-            assert!(res.success);
-            println!("script_len: {:?}", stack.get_script_len());
-        }
-
-        {
-            let bmap = BTreeMap::new();
-            let mut stack = StackTracker::new();
-            let sub_group_bits = 10u32;
-            let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
-            let index = 7u32;
-            let res = generator.exp_u64(index as u64);
-
-            let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
-            b.set_debug();
-            let b_2 = b.clone() * b;
-            b_2.set_debug();
-            // b.set_debug();
             let res_expr = Dsl::constant_f(res * res);
             let equal = b_2.equal_verify(res_expr);
             equal.express(&mut stack, &bmap);
