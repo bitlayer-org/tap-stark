@@ -83,10 +83,35 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-        script_managers: &mut Vec<ScriptInfo>,
     ) -> Result<(), Self::Error>;
 }
 
+pub trait PcsExpr<Challenge, Challenger, ManagerAssign>: Pcs<Challenge, Challenger>
+where
+    Challenge: ExtensionField<Val<Self::Domain>>,
+{
+    fn generate_verify_expr(
+        &self,
+        // For each round:
+        rounds: Vec<(
+            Self::Commitment,
+            // for each matrix:
+            Vec<(
+                // its domain,
+                Self::Domain,
+                // for each point:
+                Vec<(
+                    // the point,
+                    Challenge,
+                    // values at the point
+                    Vec<Challenge>,
+                )>,
+            )>,
+        )>,
+        proof: &Self::Proof,
+        challenger: &mut Challenger,
+    ) -> Result<ManagerAssign, Self::Error>;
+}
 pub type OpenedValues<F> = Vec<OpenedValuesForRound<F>>;
 pub type OpenedValuesForRound<F> = Vec<OpenedValuesForMatrix<F>>;
 pub type OpenedValuesForMatrix<F> = Vec<OpenedValuesForPoint<F>>;

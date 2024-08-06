@@ -33,6 +33,22 @@ pub mod u31_lib {
         BabyBear as BabyBearU31, BabyBear4, U31Config, U31ExtConfig,
     };
 
+    use crate::pseudo::OP_4DUP;
+
+    pub fn u31_square() -> Script {
+        script! {
+            OP_DUP
+            {u31_mul::<BabyBearU31>()}
+        }
+    }
+
+    pub fn u31ext_square() -> Script {
+        script! {
+            OP_4DUP
+            {u31ext_mul::<BabyBear4>()}
+        }
+    }
+
     pub fn u31_equalverify() -> Script {
         script! {
             OP_EQUALVERIFY

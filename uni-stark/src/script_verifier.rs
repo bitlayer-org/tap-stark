@@ -7,22 +7,24 @@ use itertools::Itertools;
 use p3_air::{Air, BaseAir};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
-use p3_field::{AbstractExtensionField, AbstractField, Field};
+use p3_field::{AbstractExtensionField, AbstractField, Field, TwoAdicField};
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
 use p3_util::log2_strict_usize;
-use primitives::bf_pcs::Pcs;
+use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::field::BfField;
-use script_expr::{selectors_at_point_expr, Expression, ScriptConstraintBuilder};
-use script_manager::script_info::ScriptInfo;
-use scripts::execute_script_with_inputs;
+use script_expr::{
+    selectors_at_point_expr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
+};
 use tracing::instrument;
 
 use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
-use crate::{PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder};
+use crate::{
+    compute_quotient_expr, PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder,
+};
 
 #[instrument(skip_all)]
-pub fn verify<SC, A>(
+pub fn generate_script_verifier<SC, A>(
     config: &SC,
     air: &A,
     challenger: &mut SC::Challenger,
@@ -31,7 +33,9 @@ pub fn verify<SC, A>(
 ) -> Result<(), VerificationError<PcsError<SC>>>
 where
     SC: StarkGenericConfig,
-    A: Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<VerifierConstraintFolder<'a, SC>>,
+    A: Air<SymbolicAirBuilder<Val<SC>>>
+        + for<'a> Air<VerifierConstraintFolder<'a, SC>>
+        + Air<ScriptConstraintBuilder<SC::Challenge>>,
     Val<SC>: BfField,
     SC::Challenge: BfField,
 {
@@ -80,31 +84,50 @@ where
     let zeta: SC::Challenge = challenger.sample();
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
-    pcs.verify(
-        vec![
-            (
-                commitments.trace.clone(),
-                vec![(
-                    trace_domain,
-                    vec![
-                        (zeta, opened_values.trace_local.clone()),
-                        (zeta_next, opened_values.trace_next.clone()),
-                    ],
-                )],
-            ),
-            (
-                commitments.quotient_chunks.clone(),
-                quotient_chunks_domains
-                    .iter()
-                    .zip(&opened_values.quotient_chunks)
-                    .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
-                    .collect_vec(),
-            ),
-        ],
-        opening_proof,
-        challenger,
-    )
-    .map_err(VerificationError::InvalidOpeningArgument)?;
+    let mut manager_assign = pcs
+        .generate_verify_expr(
+            vec![
+                (
+                    commitments.trace.clone(),
+                    vec![(
+                        trace_domain,
+                        vec![
+                            (zeta, opened_values.trace_local.clone()),
+                            (zeta_next, opened_values.trace_next.clone()),
+                        ],
+                    )],
+                ),
+                (
+                    commitments.quotient_chunks.clone(),
+                    quotient_chunks_domains
+                        .iter()
+                        .zip(&opened_values.quotient_chunks)
+                        .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
+                        .collect_vec(),
+                ),
+            ],
+            opening_proof,
+            challenger,
+        )
+        .map_err(VerificationError::InvalidOpeningArgument)?;
+
+    println!(
+        "[Counter Trace u32-Len] local {}-u32 next {}-u32",
+        opened_values.trace_local.len() * 4,
+        opened_values.trace_next.len() * 4
+    );
+    opened_values
+        .quotient_chunks
+        .iter()
+        .enumerate()
+        .for_each(|(index, chunk)| {
+            println!(
+                "[Counter quotient_chunk-{} u32-Len] local {}-u32 next {}-u32",
+                index,
+                chunk.len() * 4,
+                chunk.len() * 4
+            );
+        });
 
     let zps = quotient_chunks_domains
         .iter()
@@ -136,8 +159,54 @@ where
                 .sum::<SC::Challenge>()
         })
         .sum::<SC::Challenge>();
-    //SC::Challenge::monomial(e_i) * c
-    //quotient value is EF, but we use EF as base_slice for commit.  width from 1 to 4.
+    let denomiator_inverse = quotient_chunks_domains
+        .iter()
+        .enumerate()
+        .map(|(i, domain)| {
+            quotient_chunks_domains
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, other_domain)| {
+                    other_domain
+                        .zp_at_point(domain.first_point())
+                        .inverse()
+                        .into()
+                })
+                .product::<Val<SC>>()
+        })
+        .collect_vec();
+    let generator = Val::<SC>::two_adic_generator(degree_bits + log_quotient_degree);
+
+    let quotient_chunk_nums = quotient_chunks_domains.len();
+
+    let manager_for_quotient = manager_assign.next_manager();
+    {
+        let manager = manager_for_quotient.lock().unwrap();
+        compute_quotient_expr::<Val<SC>, SC::Challenge>(
+            zeta,
+            degree,
+            generator,
+            quotient_chunk_nums,
+            opened_values.quotient_chunks.clone(),
+            denomiator_inverse,
+            quotient,
+            manager,
+        );
+    }
+
+    manager_assign
+        .managers()
+        .iter()
+        .enumerate()
+        .for_each(|(manager_index, manager)| {
+            manager.lock().unwrap().embed_hint_verify::<Val<SC>>();
+            manager.lock().unwrap().run(false);
+            println!(
+                "||optimize script_len {}-kb ||",
+                manager.lock().unwrap().get_script_len() / 1024
+            );
+        });
 
     let sels = trace_domain.selectors_at_point(zeta);
 
@@ -163,6 +232,37 @@ where
     if folded_constraints * sels.inv_zeroifier != quotient {
         return Err(VerificationError::OodEvaluationMismatch);
     }
+
+    let log_n = log2_strict_usize(degree);
+    let sels_expr = selectors_at_point_expr(Val::<SC>::one(), zeta, log_n);
+    let mut script_folder = ScriptConstraintBuilder::new_with_expr(
+        opened_values.trace_local.clone(),
+        opened_values.trace_next.clone(),
+        public_values.len(),
+        sels_expr.is_first_row,
+        sels_expr.is_last_row,
+        sels_expr.is_transition,
+        alpha.into(),
+    );
+
+    air.eval(&mut script_folder);
+    let mut stack = StackTracker::new();
+    let mut var_getter = BTreeMap::new();
+    let mut optimize = BTreeMap::new();
+    script_folder.set_variable_values(public_values, &mut var_getter, &mut stack);
+
+    let acc_expr = script_folder.get_accmulator_expr();
+    let equal_expr = acc_expr.equal_verify_for_f(folder.accumulator);
+    equal_expr.simulate_express(&mut optimize);
+    equal_expr.express_to_script(&mut stack, &mut var_getter, &mut optimize, true);
+    script_folder.drop_variable_values(&mut var_getter, &mut stack);
+    stack.op_true();
+    let res = stack.run();
+    assert!(res.success);
+    println!(
+        "[compute trace open] optimize script: {:?}-kb",
+        stack.get_script().len() / 1024
+    );
     Ok(())
 }
 

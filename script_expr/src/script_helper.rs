@@ -24,7 +24,7 @@ pub fn compress_bits(bits: usize) -> Script {
 }
 
 /// decompress num to a vector of bits, from lowest bit to highest bit
-pub fn decompress(num: u32, bits: usize) -> Vec<u8> {
+fn decompress(num: u32, bits: usize) -> Vec<u8> {
     let mut res = vec![];
     for index in 0..bits {
         res.push(((num >> index) & 0x1) as u8);
@@ -33,7 +33,7 @@ pub fn decompress(num: u32, bits: usize) -> Vec<u8> {
 }
 
 /// input: [index, b_{0}, b_{1}, ..., b_{bits-1}]
-pub fn reverse_bits_len_script(bits: usize) -> Script {
+fn reverse_bits_len_script(bits: usize) -> Script {
     let script = script! {
         for i in 0..bits {
             {i*2} OP_PICK
@@ -49,18 +49,16 @@ pub fn reverse_bits_len_script(bits: usize) -> Script {
     script
 }
 
-// the input stack:
+// input stack:
+// index <-- top
+// output stack:
 // rev_index <-- top
-// index
 pub fn reverse_bits_len_script_with_input(input_index: u32, bits: usize) -> Script {
     script! {
-        OP_TOALTSTACK
         for bit  in decompress(input_index, bits) {
             {bit}
         }
         {reverse_bits_len_script(bits)}
-        OP_FROMALTSTACK
-        OP_EQUAL
     }
 }
 
@@ -289,6 +287,28 @@ mod tests {
 
     use super::*;
     type EF = BinomialExtensionField<BabyBear, 4>;
+
+    // #[test]
+    // fn test_reverse_bits_20() {
+    //     for bits in 1..31 {
+    //         for _ in 0..30 {
+    //             let x: u32 = rand::thread_rng().gen();
+    //             let x = x % (1 << bits);
+    //             let script = script! {
+    //                 {x}
+    //                 for bit in decompress(x, bits) {
+    //                     {bit}
+    //                 }
+    //                 {reverse_bits_len_script(bits)}
+    //                 {reverse_bits_len(x as usize, bits)}
+    //                 OP_EQUAL
+    //             };
+    //             let res = execute_script(script);
+    //             // println!("{:?}", res);
+    //             assert_eq!(res.success, true);
+    //         }
+    //     }
+    // }
 
     #[test]
     fn test_index_to_rou() {

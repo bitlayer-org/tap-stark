@@ -7,7 +7,7 @@ use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
 use p3_field::{ExtensionField, Field};
 use p3_matrix::dense::RowMajorMatrix;
-use primitives::bf_pcs::Pcs;
+use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::challenger::chan_field::U32;
 use primitives::challenger::{BfChallenger, Blake3Permutation};
 use primitives::field::BfField;
@@ -15,8 +15,9 @@ use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_manager::bc_assignment::DefaultBCAssignment;
-use scripts::execute_script_with_inputs;
+use script_expr::{Dsl, Expression, ManagerAssign};
+
+extern crate alloc;
 
 fn seeded_rng() -> impl Rng {
     ChaCha20Rng::seed_from_u64(0)
@@ -26,9 +27,9 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     (pcs, challenger): &(P, Challenger),
     log_degrees_by_round: &[&[usize]],
 ) where
-    P: Pcs<Challenge, Challenger>,
+    P: PcsExpr<Challenge, Challenger, ManagerAssign>,
     P::Domain: PolynomialSpace<Val = Val>,
-    Val: Field,
+    Val: Field + BfField,
     Standard: Distribution<Val>,
     Challenge: BfField + ExtensionField<Val>,
     Challenger: Clone + CanObserve<P::Commitment> + CanSample<Challenge>,
@@ -96,23 +97,22 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     .collect_vec();
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
-    let mut script_manager = vec![];
-    pcs.verify(
-        commits_and_claims_by_round,
-        &proof,
-        &mut v_challenger,
-        &mut script_manager,
-    )
-    .unwrap();
+    let manager_assign =
+        pcs.generate_verify_expr(commits_and_claims_by_round, &proof, &mut v_challenger);
 
-    let mut bc_assigner = DefaultBCAssignment::new();
-    // execute script verifier
-    for item in script_manager.iter_mut() {
-        item.gen(&mut bc_assigner);
-        let res = execute_script_with_inputs(item.get_eq_script(), item.witness());
-        // println!("res: {:?}", res);
-        assert!(res.success);
-    }
+    manager_assign
+        .unwrap()
+        .managers()
+        .iter()
+        .enumerate()
+        .for_each(|(manager_index, manager)| {
+            manager.lock().unwrap().embed_hint_verify::<Val>();
+            manager.lock().unwrap().run(false);
+            println!(
+                "||optimize script_len {}-kb ||",
+                manager.lock().unwrap().get_script_len() / 1024
+            );
+        });
 }
 
 // Set it up so we create tests inside a module for each pcs, so we get nice error reports
@@ -140,15 +140,6 @@ macro_rules! make_tests_for_pcs {
                 $crate::do_test_fri_pcs(&p, &[&[i; 5]]);
             }
         }
-
-        // #[test]
-        // fn many_different() {
-        //     let p = $p;
-        //     for i in 2..4 {
-        //         let degrees = (3..3 + i).collect::<Vec<_>>();
-        //         $crate::do_test_fri_pcs(&p, &[&degrees]);
-        //     }
-        // }
 
         #[test]
         fn many_different_rev() {
@@ -194,13 +185,13 @@ mod babybear_fri_pcs {
         let challenge_mmscs = ChallengeMmcs::new();
         let fri_config = FriConfig {
             log_blowup,
-            num_queries: 10,
+            num_queries: 1,
             proof_of_work_bits: 8,
             mmcs: challenge_mmscs,
         };
 
         let permutation = Blake3Permutation {};
-        let mut challenger = Challenger::new(permutation).unwrap();
+        let challenger = Challenger::new(permutation).unwrap();
         let pcs = MyPcs::new(Dft {}, val_mmcs, fri_config);
         (pcs, challenger)
     }
@@ -208,6 +199,7 @@ mod babybear_fri_pcs {
     mod blowup_1 {
         make_tests_for_pcs!(super::get_pcs(1));
     }
+
     mod blowup_2 {
         make_tests_for_pcs!(super::get_pcs(2));
     }

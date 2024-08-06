@@ -22,12 +22,13 @@ use primitives::field::BfField;
 use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::Expression;
+use script_expr::{Expression, ManagerAssign};
 use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::execute_script_with_inputs;
 use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
 use uni_stark::{
-    compute_quotient_expr, get_log_quotient_degree, prove, verify, Proof, StarkConfig,
+    compute_quotient_expr, generate_script_verifier, get_log_quotient_degree, prove, verify, Proof,
+    StarkConfig,
 };
 
 /// For testing the public values feature
@@ -153,16 +154,36 @@ fn test_public_value() {
 
     let permutation = Blake3Permutation {};
     let mut challenger = Challenger::new(permutation).unwrap();
-    let mut script_manager = vec![];
-    verify(
-        &config,
-        &FibonacciAir {},
-        &mut challenger,
-        &proof,
-        &pis,
-        &mut script_manager,
-    )
-    .expect("verification failed");
+    verify(&config, &FibonacciAir {}, &mut challenger, &proof, &pis).expect("verification failed");
+}
+
+#[test]
+fn test_generate_script_expr() {
+    let val_mmcs = ValMmcs::new();
+    let challenge_mmcs = ChallengeMmcs::new();
+    let dft = Dft {};
+    let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
+    let fri_config = FriConfig {
+        log_blowup: 2,
+        num_queries: 28,
+        proof_of_work_bits: 8,
+        mmcs: challenge_mmcs,
+    };
+    let pcs = MyPcs::new(dft, val_mmcs, fri_config);
+    let config = MyConfig::new(pcs);
+    let permutation = Blake3Permutation {};
+    let mut challenger = Challenger::new(permutation).unwrap();
+    let pis = vec![
+        BabyBear::from_canonical_u64(0),
+        BabyBear::from_canonical_u64(1),
+        BabyBear::from_canonical_u64(21),
+    ];
+    let proof = prove(&config, &FibonacciAir {}, &mut challenger, trace, &pis);
+
+    let permutation = Blake3Permutation {};
+    let mut challenger = Challenger::new(permutation).unwrap();
+    generate_script_verifier(&config, &FibonacciAir {}, &mut challenger, &proof, &pis)
+        .expect("verification failed");
 }
 
 #[test]
@@ -270,52 +291,27 @@ fn test_quotient_zeta() {
         })
         .collect_vec();
 
-    let (q_zeta, _hint_verify) = compute_quotient_expr::<Val, Challenge>(
+    let mut manager_assign = ManagerAssign::new();
+    let manager = manager_assign.next_manager();
+
+    compute_quotient_expr::<Val, Challenge>(
         zeta,
         degree,
         generator,
         quotient_chunk_nums,
         opened_values.quotient_chunks,
         denomiator_inverse,
+        quotient,
+        manager.lock().unwrap(),
     );
 
-    let mut stack = StackTracker::new();
-    let bmap = BTreeMap::new();
-    let script = q_zeta.express_to_script(&mut stack, &bmap);
-
-    stack.bignumber(quotient.as_u32_vec());
-
-    stack.custom(
-        u31ext_equalverify::<BabyBear4>(),
-        2,
-        false,
-        0,
-        "u31ext_equalverify",
-    );
-    stack.op_true();
-    let res = stack.run();
-    assert!(res.success);
-
-    // let mut bc_assigner = DefaultBCAssignment::new();
-    // let mut exec_script_info = compute_quotient_zeta_script::<Val, Challenge>(
-    //     quotient_chunk_nums,
-    //     zps,
-    //     opened_values.quotient_chunks,
-    //     quotient,
-    // );
-
-    // exec_script_info.gen(&mut bc_assigner);
-
-    // let res =
-    //     execute_script_with_inputs(exec_script_info.get_eq_script(), exec_script_info.witness());
-    // assert!(res.success);
-
-    // let res = execute_script_with_inputs(
-    //     exec_script_info.get_neq_script(),
-    //     exec_script_info.witness(),
-    // );
-    // assert!(!res.success);
+    {
+        let mut m = manager.lock().unwrap();
+        m.embed_hint_verify::<BabyBear>();
+        m.run(false);
+    }
 }
+
 // #[cfg(debug_assertions)]
 // #[test]
 // #[should_panic(expected = "assertion `left == right` failed: constraints had nonzero value")]

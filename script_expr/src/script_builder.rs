@@ -8,16 +8,16 @@ use p3_matrix::dense::RowMajorMatrix;
 use primitives::field::BfField;
 use scripts::treepp::*;
 
-use super::{FieldScriptExpression, ValueVariable, Variable};
+use super::{Dsl, ValueVariable, Variable};
 
 pub struct ScriptConstraintBuilder<F: BfField> {
     pub main: RowMajorMatrix<ValueVariable<F>>,
     pub public_values: Vec<Variable>,
-    pub is_first_row: FieldScriptExpression<F>,
-    pub is_last_row: FieldScriptExpression<F>,
-    pub is_transition: FieldScriptExpression<F>,
-    pub constraints: Vec<FieldScriptExpression<F>>,
-    pub alpha: FieldScriptExpression<F>,
+    pub is_first_row: Dsl<F>,
+    pub is_last_row: Dsl<F>,
+    pub is_transition: Dsl<F>,
+    pub constraints: Vec<Dsl<F>>,
+    pub alpha: Dsl<F>,
 }
 
 impl<F: BfField> ScriptConstraintBuilder<F> {
@@ -34,10 +34,10 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
             local,
             next,
             num_public_values,
-            FieldScriptExpression::from(is_first_row),
-            FieldScriptExpression::from(is_last_row),
-            FieldScriptExpression::from(is_transition),
-            FieldScriptExpression::from(alpha),
+            Dsl::constant_f(is_first_row),
+            Dsl::constant_f(is_last_row),
+            Dsl::constant_f(is_transition),
+            Dsl::constant_f(alpha),
         )
     }
 
@@ -45,10 +45,10 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
         local: Vec<F>,
         next: Vec<F>,
         num_public_values: usize,
-        is_first_row: FieldScriptExpression<F>,
-        is_last_row: FieldScriptExpression<F>,
-        is_transition: FieldScriptExpression<F>,
-        alpha: FieldScriptExpression<F>,
+        is_first_row: Dsl<F>,
+        is_last_row: Dsl<F>,
+        is_transition: Dsl<F>,
+        alpha: Dsl<F>,
     ) -> Self {
         let width = local.len();
         let main_variables: Vec<ValueVariable<F>> = [local, next]
@@ -57,7 +57,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
             .flat_map(|(row_index, row_values)| {
                 (0..width).map(move |column_index| {
                     ValueVariable::new(
-                        Variable::new(row_index, column_index),
+                        Variable::new_with_size(row_index, column_index, F::U32_SIZE as u32),
                         row_values[column_index],
                     )
                 })
@@ -80,7 +80,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
         }
     }
 
-    pub fn get_accmulator_expr(&self) -> FieldScriptExpression<F> {
+    pub fn get_accmulator_expr(&self) -> Dsl<F> {
         let mut acc = self.constraints[0].clone();
         for i in 1..self.constraints.len() {
             acc = acc * self.alpha.clone() + self.constraints[i].clone();
@@ -116,7 +116,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
                     F::U32_SIZE as u32,
                     script! { {u32_vec[3]} {u32_vec[2]}  {u32_vec[1]} {u32_vec[0]} },
                     &format!(
-                        "main_trace row index={} column_value={}",
+                        "main_trace row_index={} column_index={}",
                         i / self.main().width,
                         i % self.main().width
                     ),
@@ -142,7 +142,7 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
 
 impl<F: BfField> AirBuilder for ScriptConstraintBuilder<F> {
     type F = F;
-    type Expr = FieldScriptExpression<F>;
+    type Expr = Dsl<F>;
     type Var = ValueVariable<F>;
     type M = RowMajorMatrix<Self::Var>;
 
