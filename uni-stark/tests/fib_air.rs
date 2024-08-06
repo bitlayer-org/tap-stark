@@ -310,44 +310,8 @@ fn test_quotient_zeta() {
         m.embed_hint_verify::<BabyBear>();
         m.run(false);
     }
-
-    // let mut stack = StackTracker::new();
-    // let bmap = BTreeMap::new();
-    // let script = q_zeta.express(&mut stack, &bmap);
-
-    // stack.bignumber(quotient.as_u32_vec());
-
-    // stack.custom(
-    //     u31ext_equalverify::<BabyBear4>(),
-    //     2,
-    //     false,
-    //     0,
-    //     "u31ext_equalverify",
-    // );
-    // stack.op_true();
-    // let res = stack.run();
-    // assert!(res.success);
-
-    // let mut bc_assigner = DefaultBCAssignment::new();
-    // let mut exec_script_info = compute_quotient_zeta_script::<Val, Challenge>(
-    //     quotient_chunk_nums,
-    //     zps,
-    //     opened_values.quotient_chunks,
-    //     quotient,
-    // );
-
-    // exec_script_info.gen(&mut bc_assigner);
-
-    // let res =
-    //     execute_script_with_inputs(exec_script_info.get_eq_script(), exec_script_info.witness());
-    // assert!(res.success);
-
-    // let res = execute_script_with_inputs(
-    //     exec_script_info.get_neq_script(),
-    //     exec_script_info.witness(),
-    // );
-    // assert!(!res.success);
 }
+
 // #[cfg(debug_assertions)]
 // #[test]
 // #[should_panic(expected = "assertion `left == right` failed: constraints had nonzero value")]
