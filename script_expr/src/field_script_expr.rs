@@ -436,8 +436,9 @@ impl<F: BfField> Expression for FieldScriptExpression<F> {
                             if F::U32_SIZE == 1 {
                                 {u32_to_u31()}
                             } else {
-                                {u32_to_u31()}
-                                {u31_to_u31ext::<BabyBear4>()}
+                                //TODO:
+                                // {u32_to_u31()}
+                                //{u31_to_u31ext::<BabyBear4>()}
                             }
                         },
                         1,

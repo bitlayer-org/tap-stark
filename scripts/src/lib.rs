@@ -41,8 +41,16 @@ pub mod u31_lib {
 
     pub fn u32_to_u31() -> Script {
         script! {
-           {BabyBearU31::MOD}
-           {u31_sub::<BabyBearU31>()}
+            OP_DUP
+            0 OP_LESSTHAN
+            OP_IF
+            OP_ABS
+            {BabyBearU31::MOD}
+            {u31_sub::<BabyBearU31>()}
+            {0x80000000 as u32 - 0x78000001} OP_ADD
+            OP_ENDIF
+            {BabyBearU31::MOD}
+            {u31_sub::<BabyBearU31>()}
         }
     }
 }

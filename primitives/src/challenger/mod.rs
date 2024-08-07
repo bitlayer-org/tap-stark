@@ -16,6 +16,8 @@ use p3_symmetric::{CryptographicPermutation, Hash, Permutation};
 use tracing;
 use tracing::instrument;
 
+use crate::field::BfField;
+
 pub mod chan_field;
 /// A challenger that operates natively on PF but produces challenges of F: Field + BitExtractor,.
 
@@ -176,7 +178,10 @@ where
         for i in WIDTH / 2..WIDTH {
             self.output_buffer.push(self.sponge_state[i].clone());
         }
-        tracing::debug! {"state change: {:?}", u32::from_le_bytes(self.sponge_state[8].as_u8_array())};
+        println!(
+            "state change: {:?}",
+            u32::from_le_bytes(self.sponge_state[15].as_u8_array())
+        );
     }
 }
 
@@ -336,4 +341,54 @@ where
         let rand_usize = rand_f.as_usize();
         rand_usize >> (32 - bits)
     }
+}
+
+#[test]
+fn test_challenger() {
+    let permutation = Blake3Permutation {};
+    let mut challenger =
+        BfChallenger::<BinomialExtensionField<BabyBear, 4>, U32, Blake3Permutation, 16>::new(
+            permutation,
+        )
+        .unwrap();
+
+    println!("{:?}", challenger.sponge_state);
+
+    let mut temp_state = challenger.sponge_state;
+
+    let value = [1 as u8; 4];
+    let zero = [0 as u8; 4];
+    challenger.observe(value.clone());
+
+    // temp_state[0] = value;
+
+    // let mut hasher = blake3::Hasher::new();
+    // for chunk in temp_state.clone() {
+    //     hasher.update(&chunk);
+    // }
+    // let hashed: [u8; 32] = hasher.finalize().into();
+    // println!("hash:{:?}", hashed);
+
+    println!("input buffer:{:?}", challenger.input_buffer);
+
+    let t = challenger.sample();
+
+    println!("sponge_state: {:?}", challenger.sponge_state);
+    challenger.observe(value);
+
+    println!("input buffer:{:?}", challenger.input_buffer);
+
+    let t1 = challenger.sample();
+
+    println!("sample input: {:?}", challenger.sample_input);
+
+    println!("sample1: {:?}  sample2:{:?}", t, t1);
+
+    let test = [229 as u8, 116 as u8, 50 as u8, 236 as u8];
+    let m = BabyBear::from_pf(&test);
+    println!("m:{:?}", m);
+
+    //let test1 = 0xe57432ec as u32 - 0x78000001 as u32;
+
+    let m1 = BabyBear::from_canonical_u32(0x41c10f04 as u32);
 }

@@ -7,11 +7,24 @@ use core::cell::Cell;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::any::{Any, TypeId};
 use std::sync::RwLock;
 
+use bitcoin::opcodes::{OP_FROMALTSTACK, OP_MUL, OP_TOALTSTACK};
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
+use common::BinomialExtensionField;
+use p3_baby_bear::BabyBear;
+use p3_challenger::{CanObserve, CanSample};
+use p3_field::{AbstractExtensionField, AbstractField, Field};
+use p3_symmetric::CryptographicPermutation;
+use primitives::challenger::chan_field::{PermutationField, U32};
+use primitives::challenger::BitExtractor;
 use primitives::field::BfField;
+use scripts::blake3::{blake3, blake3_var_length};
+use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4ROLL, OP_4TOALTSTACK};
 use scripts::treepp::*;
+use scripts::u31_lib::{u31_add, u31_mul, u32_to_u31, BabyBearU31};
+use scripts::u32_std::u32_compress;
 
 use super::variable::{ValueVariable, Variable};
 use super::{Expression, FieldScriptExpression};
@@ -84,12 +97,31 @@ pub enum NumScriptExpression {
         var: Vec<StackVariable>,
         bits_len: u32,
     },
-    // Exp{
-    //     x: Arc<Box<dyn Expression>>,
-    //     y: Arc<Box<dyn Expression>>,
-    //     var: StackVariable,
-    //     debug: Cell<bool>,
-    // },
+    Blake3Perm {
+        x: Vec<Arc<Box<dyn Expression>>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
+    ToSample {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
+    SampleF {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+    },
+    SampleEF {
+        x: Arc<Box<dyn Expression>>,
+        debug: Cell<bool>,
+        var: StackVariable,
+    }, // Exp{
+       //     x: Arc<Box<dyn Expression>>,
+       //     y: Arc<Box<dyn Expression>>,
+       //     var: StackVariable,
+       //     debug: Cell<bool>,
+       // },
 }
 
 impl NumScriptExpression {
@@ -137,6 +169,39 @@ impl NumScriptExpression {
             debug: Cell::new(false),
             var: StackVariable::null(),
             bits_len: bits_len,
+        }
+    }
+
+    pub fn blake3(state: &[Self]) -> Self {
+        let state = state
+            .iter()
+            .map(|x| Arc::new(Box::new(x.clone()) as Box<_>))
+            .collect::<Vec<_>>();
+        Self::Blake3Perm {
+            x: state,
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
+    pub fn to_sample(&self) -> Self {
+        Self::ToSample {
+            x: Arc::new(Box::new(self.clone())),
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
+    pub fn sample_f(&self) -> Self {
+        Self::SampleF {
+            x: Arc::new(Box::new(self.clone())),
+            debug: Cell::new(false),
+            var: StackVariable::null(),
+        }
+    }
+    pub fn sample_ef(&self) -> Self {
+        Self::SampleEF {
+            x: Arc::new(Box::new(self.clone())),
+            debug: Cell::new(false),
+            var: StackVariable::null(),
         }
     }
 
@@ -197,6 +262,18 @@ impl Expression for NumScriptExpression {
                 debug.set(true);
             }
             NumScriptExpression::ToBitsVec { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::Blake3Perm { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::ToSample { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::SampleF { debug, .. } => {
+                debug.set(true);
+            }
+            NumScriptExpression::SampleEF { debug, .. } => {
                 debug.set(true);
             }
         };
@@ -371,6 +448,97 @@ impl Expression for NumScriptExpression {
                 // var = stack.custom1(value_to_bits_format(*bits_len), x.var_size(), *bits_len, 0, 1, "NumExpr::ToBitsVec").unwrap();
                 vec![]
             }
+            NumScriptExpression::Blake3Perm { x, debug, mut var } => {
+                for i in x.iter().rev() {
+                    i.express_to_script(stack, input_variables);
+                }
+                stack.debug();
+                let vars = stack
+                    .custom1(
+                        script! {
+                            {blake3()}
+                            for i in 0..7{
+                                {(i+1)*4} OP_4ROLL
+                            }
+                        },
+                        64,
+                        32,
+                        0,
+                        1,
+                        "ExprBlake3Perm_Result",
+                    )
+                    .unwrap();
+                vars
+            }
+            NumScriptExpression::ToSample { x, debug, mut var } => {
+                //input 32 u8  => output 8 babybear
+                x.express_to_script(stack, input_variables);
+                stack.debug();
+                let vars = stack
+                    .custom1(
+                        script! {
+                            for _ in 0..8 {
+                                {u32_compress()}
+                                {u32_to_u31()}
+                                OP_TOALTSTACK
+                            }
+                            for _ in 0..8 {
+                                OP_FROMALTSTACK
+                            }
+                            for i in 0..7{
+                                {i+1} OP_ROLL
+                            }
+                        },
+                        32 as u32,
+                        8,
+                        0,
+                        1,
+                        "ExprToF_Result",
+                    )
+                    .unwrap();
+                vars
+            }
+            NumScriptExpression::SampleF { x, debug, mut var } => {
+                x.express_to_script(stack, input_variables);
+                println!("before sample f");
+                stack.debug();
+                let vars = stack
+                    .custom1(
+                        script! {
+                            OP_TOALTSTACK
+                            for _ in 0..7 {
+                                OP_DROP
+                            }
+                            OP_FROMALTSTACK
+                        },
+                        8 as u32,
+                        1,
+                        0,
+                        1,
+                        "ExprSampleF_Result",
+                    )
+                    .unwrap();
+                vars
+            }
+            NumScriptExpression::SampleEF { x, debug, mut var } => {
+                x.express_to_script(stack, input_variables);
+                stack.debug();
+                let vars = stack
+                    .custom1(
+                        script! {
+                            OP_4TOALTSTACK
+                            OP_4DROP
+                            OP_4FROMALTSTACK
+                        },
+                        8 as u32,
+                        1,
+                        0,
+                        4,
+                        "ExprSampleEF_Result",
+                    )
+                    .unwrap();
+                vars
+            }
         }
     }
 
@@ -459,6 +627,22 @@ impl Debug for NumScriptExpression {
                 .debug_struct("ScriptExpression::ToBits")
                 .field("variable", var)
                 .finish(),
+            NumScriptExpression::Blake3Perm { x, debug, var, .. } => fm
+                .debug_struct("ScriptExpression::Blake3Perm")
+                .field("variable", var)
+                .finish(),
+            NumScriptExpression::ToSample { x, debug, var, .. } => fm
+                .debug_struct("ScriptExpression::Blake3Perm")
+                .field("variable", var)
+                .finish(),
+            NumScriptExpression::SampleF { x, debug, var, .. } => fm
+                .debug_struct("ScriptExpression::Blake3Perm")
+                .field("variable", var)
+                .finish(),
+            NumScriptExpression::SampleEF { x, debug, var, .. } => fm
+                .debug_struct("ScriptExpression::Blake3Perm")
+                .field("variable", var)
+                .finish(),
         }
     }
 }
@@ -543,6 +727,26 @@ impl Clone for NumScriptExpression {
                 debug: debug.clone(),
                 var: var.clone(),
                 bits_len: *bits_len,
+            },
+            NumScriptExpression::Blake3Perm { x, debug, var } => NumScriptExpression::Blake3Perm {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
+            NumScriptExpression::ToSample { x, debug, var } => NumScriptExpression::ToSample {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
+            NumScriptExpression::SampleF { x, debug, var } => NumScriptExpression::SampleF {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
+            },
+            NumScriptExpression::SampleEF { x, debug, var } => NumScriptExpression::SampleEF {
+                x: x.clone(),
+                debug: debug.clone(),
+                var: var.clone(),
             },
         }
     }
@@ -695,12 +899,261 @@ impl Product<u32> for NumScriptExpression {
     }
 }
 
+// BASE is the base field of F when F is a extension field
+// And BASE is exactly same with F when F is a prime field
+#[derive(Clone, Debug)]
+pub struct BfChallengerExpr<F, const WIDTH: usize>
+where
+    F: BfField + BitExtractor,
+{
+    sponge_state: Vec<NumScriptExpression>,
+    input_buffer: Vec<NumScriptExpression>,
+    output_buffer: Vec<NumScriptExpression>,
+
+    pub grind_bits: Option<usize>,
+    pub grind_output: F,
+    pub sample_input: Vec<Vec<NumScriptExpression>>,
+    pub sample_output: Vec<FieldScriptExpression<F>>,
+}
+
+impl<F, const WIDTH: usize> BfChallengerExpr<F, WIDTH>
+where
+    F: BfField + BitExtractor,
+{
+    pub fn new() -> Result<Self, String> {
+        let mut u8_state = vec![];
+        for _ in 0..64 {
+            u8_state.push(NumScriptExpression::from(0));
+        }
+        Ok(Self {
+            sponge_state: u8_state,
+            input_buffer: vec![],
+            output_buffer: vec![],
+
+            grind_bits: None,
+            grind_output: F::default(),
+            sample_input: vec![],
+            sample_output: vec![],
+        })
+    }
+
+    pub fn record_sample(
+        &mut self,
+        input: &Vec<NumScriptExpression>,
+        output: &FieldScriptExpression<F>,
+    ) {
+        self.sample_input.push(input.clone());
+        self.sample_output.push(output.clone());
+    }
+}
+
+impl<F, const WIDTH: usize> BfChallengerExpr<F, WIDTH>
+where
+    F: BfField + BitExtractor,
+{
+    fn duplexing(&mut self) {
+        assert!(self.input_buffer.len() <= WIDTH / 2);
+
+        for i in 0..self.input_buffer.len() {
+            self.sponge_state[i] = self.input_buffer[i].clone();
+        }
+        self.input_buffer.clear();
+
+        // Apply the permutation.
+        //self.permutation.permute_mut(&mut self.sponge_state);
+        let temp = NumScriptExpression::blake3(&self.sponge_state);
+
+        self.sponge_state.clear();
+        for i in 0..32 {
+            self.sponge_state.push(NumScriptExpression::zero());
+        }
+        self.sponge_state.push(temp.clone());
+
+        //
+        self.output_buffer.push(temp.to_sample());
+
+        //tracing::debug! {"state change: {:?}", u32::from_le_bytes(self.sponge_state[8].as_u8_array())};
+    }
+}
+
+// impl<F, const WIDTH: usize> CanObserve<NumScriptExpression> for BfChallengerExpr<F, WIDTH>
+// where
+//     F: BfField + BitExtractor,
+// {
+//     fn observe(&mut self, value: NumScriptExpression) {
+//         //tracing::debug! {"observe: {:?}", u32::from_le_bytes(value.as_u8_array())};
+
+//         // Any buffered output is now invalid.
+//         self.output_buffer.clear();
+
+//         self.input_buffer.push(value);
+
+//         if self.input_buffer.len() == 32 {
+//             self.duplexing();
+//         }
+//     }
+// }
+
+// impl<F, const WIDTH: usize> CanObserve<F> for BfChallengerExpr<F, WIDTH>
+// where
+//     F: BfField + BitExtractor,
+// {
+//     fn observe(&mut self, value: F) {
+//         //tracing::debug! {"observe: {:?}", u32::from_le_bytes(value.as_u8_array())};
+
+//         // Any buffered output is now invalid.
+//         self.output_buffer.clear();
+
+//         let elems_u32 = value.as_u32_vec();
+
+//         for elem_u32 in elems_u32 {
+//             let elems_u8 = elem_u32.to_le_bytes();
+//             for elem_u8 in elems_u8 {
+//                 self.input_buffer.push(NumScriptExpression::from(elem_u8.into()));
+//             }
+
+//         }
+
+//         if self.input_buffer.len() == 32 {
+//             self.duplexing();
+//         }
+//     }
+// }
+
+impl<F, const WIDTH: usize> CanObserve<U32> for BfChallengerExpr<F, WIDTH>
+where
+    F: BfField + BitExtractor,
+{
+    fn observe(&mut self, value: U32) {
+        //tracing::debug! {"observe: {:?}", u32::from_le_bytes(value.as_u8_array())};
+
+        // Any buffered output is now invalid.
+        self.output_buffer.clear();
+
+        for elem in value {
+            self.input_buffer
+                .push(NumScriptExpression::from(elem as u32));
+        }
+
+        if self.input_buffer.len() == 32 {
+            self.duplexing();
+        }
+    }
+}
+
+// impl<F, const N: usize, const WIDTH: usize> CanObserve<[NumScriptExpression; N]>
+//     for BfChallengerExpr<F, WIDTH>
+// where
+//     F: BfField + BitExtractor,
+// {
+//     fn observe(&mut self, values: [NumScriptExpression; N]) {
+//         for value in values {
+//             self.observe(value);
+//         }
+//     }
+// }
+impl<F, const N: usize, const WIDTH: usize> CanObserve<[U32; N]> for BfChallengerExpr<F, WIDTH>
+where
+    F: BfField + BitExtractor,
+{
+    fn observe(&mut self, values: [U32; N]) {
+        for value in values {
+            self.observe(value);
+        }
+    }
+}
+
+// impl<F, PF, const N: usize, P, const WIDTH: usize> CanObserve<Hash<PF, PF, N>>
+//     for BfChallengerExpr<F, PF, P, WIDTH>
+// where
+//     F: Field + BitExtractor,
+//     PF: PermutationField<4>,
+//     P: CryptographicPermutation<[PF; WIDTH]>,
+// {
+//     fn observe(&mut self, values: Hash<PF, PF, N>) {
+//         for pf_val in values {
+//             self.observe(pf_val);
+//         }
+//     }
+// }
+
+// for TrivialPcs
+impl<F, const WIDTH: usize> CanObserve<Vec<Vec<U32>>> for BfChallengerExpr<F, WIDTH>
+where
+    F: BfField + BitExtractor,
+{
+    fn observe(&mut self, valuess: Vec<Vec<U32>>) {
+        for values in valuess {
+            for value in values {
+                self.observe(value);
+            }
+        }
+    }
+}
+
+impl<F, const WIDTH: usize> CanSample<FieldScriptExpression<F>> for BfChallengerExpr<F, WIDTH>
+where
+    F: BfField + BitExtractor,
+{
+    fn sample(&mut self) -> FieldScriptExpression<F> {
+        // if BASE is the same with F
+        let mut sample_input = vec![];
+        let res;
+        if TypeId::of::<F>() == TypeId::of::<BabyBear>() {
+            // If we have buffered inputs, we must perform a duplexing so that the challenge will
+            // reflect them. Or if we've run out of outputs, we must perform a duplexing to get more.
+            if !self.input_buffer.is_empty() || self.output_buffer.is_empty() {
+                println!("!self.input_buffer.is_empty() || self.output_buffer.is_empty()");
+                self.duplexing();
+            }
+
+            let value = self
+                .output_buffer
+                .pop()
+                .expect("Output buffer should be non-empty");
+
+            sample_input.push(value.clone());
+
+            println!("line 1110");
+            let output = value.sample_f();
+
+            res = output.num_to_field();
+            // res = (&output as &dyn Any).downcast_ref::<F>().unwrap().clone();
+        }
+        // else, F would be a extension field of Babybear
+        else if TypeId::of::<F>() == TypeId::of::<BinomialExtensionField<BabyBear, 4>>() {
+            // If we have buffered inputs, we must perform a duplexing so that the challenge will
+            // reflect them. Or if we've run out of outputs, we must perform a duplexing to get more.
+            if !self.input_buffer.is_empty() || self.output_buffer.is_empty() {
+                self.duplexing();
+            }
+            let value = self
+                .output_buffer
+                .pop()
+                .expect("Output buffer should be non-empty");
+
+            sample_input.push(value.clone());
+
+            let output = value.sample_ef();
+
+            res = output.num_to_field();
+        } else {
+            panic!("the type of base or f is invalid")
+        } // no other implementation yet
+
+        res
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::collections::BTreeMap;
     use core::cell::{self, Cell};
 
+    use bitcoin::opcodes::OP_EQUAL;
     use bitcoin_script_stack::stack::{StackTracker, StackVariable};
+    use primitives::challenger::{self, BfChallenger, Blake3Permutation};
+    use scripts::pseudo::OP_256MUL;
     use scripts::treepp::*;
 
     use super::{Expression, NumScriptExpression, Variable, *};
@@ -828,5 +1281,75 @@ mod tests {
         stack.op_equal();
         let res = stack.run();
         assert!(res.success);
+    }
+    #[test]
+    fn test_challenger_expr() {
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+
+            let mut challenger = BfChallengerExpr::<BabyBear, 64>::new().unwrap();
+
+            let value = [1 as u8; 4];
+            challenger.observe(value.clone());
+
+            let t = challenger.sample();
+
+            challenger.observe(value.clone());
+
+            let t1 = challenger.sample();
+
+            t1.express_to_script(&mut stack, &bmap);
+
+            stack.number(1103171332 as u32);
+            stack.debug();
+            stack.op_equal();
+
+            stack.debug();
+            let res = stack.run();
+            assert!(res.success);
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+
+            let mut challenger =
+                BfChallengerExpr::<BinomialExtensionField<BabyBear, 4>, 64>::new().unwrap();
+
+            let value = [1 as u8, 2 as u8, 3 as u8, 4 as u8];
+            challenger.observe(value.clone());
+
+            let _t = challenger.sample();
+
+            challenger.observe(value.clone());
+
+            let t1 = challenger.sample();
+
+            //t1.express_to_script(&mut stack, &bmap);
+
+            let permutation = Blake3Permutation {};
+            let mut challenger = BfChallenger::<
+                BinomialExtensionField<BabyBear, 4>,
+                U32,
+                Blake3Permutation,
+                16,
+            >::new(permutation)
+            .unwrap();
+            let value = [1 as u8, 2 as u8, 3 as u8, 4 as u8];
+
+            challenger.observe(value.clone());
+            let _t_value = challenger.sample();
+
+            challenger.observe(value);
+            let t1_value = challenger.sample();
+
+            let equal = t1.equal_for_f(t1_value);
+
+            equal.express_to_script(&mut stack, &bmap);
+
+            let res = stack.run();
+            assert!(res.success);
+        }
     }
 }
