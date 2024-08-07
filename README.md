@@ -15,17 +15,18 @@ Bf-Stark does not need to depend on the implementation of OP_CAT.
     - [x] compute selector script_expr 
     - [x] compute quotient script_expr
     - [x] compute constraints script_expr
-- [ ] two-adic-pcs script_expr 
-- [ ] fri script_expr 
+- [x] two-adic-pcs script_expr 
+- [x] fri script_expr 
 - [ ] challenge script_expr
 
 ### ScriptExpr
 - [x] support input variable 
-- [ ] automatic management of input variables
-- [ ] implement copy variable to optimize the compiler
+- [x] automatic management of input variables
+    - [ ] automatic computation of the number of inputs 
+- [x] implement copy variable to optimize the compiler
 - [ ] Implementing automatic segmentation tool 
     - [ ] bitcommitment assign
     - [ ] extract intermidiate value 
-- [ ] add verify hint gadget
+- [x] add verify hint gadget
 
 
