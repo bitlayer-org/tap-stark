@@ -299,8 +299,8 @@ where
         } // no other implementation yet
         self.record_sample(&sample_input, &res);
 
-        //adapt our challenger expr implementation
-        self.output_buffer.clear();
+        //TODO:adapt our challenger expr implementation
+        //self.output_buffer.clear();
         res
     }
 }

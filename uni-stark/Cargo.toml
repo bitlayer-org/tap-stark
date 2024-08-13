@@ -17,6 +17,7 @@ p3-dft = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git" }
 itertools = "0.13.0"
 tracing = "0.1.37"
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
@@ -29,7 +30,6 @@ common = {path = "../common"}
 script_expr = {path = "../script_expr"}
 
 [dev-dependencies]
-p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-circle = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-fri = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-keccak = { git = "https://github.com/Plonky3/Plonky3.git" }

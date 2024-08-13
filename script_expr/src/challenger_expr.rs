@@ -1,10 +1,12 @@
 use std::any::TypeId;
+use std::marker::PhantomData;
 
 use common::BinomialExtensionField;
 use p3_baby_bear::BabyBear;
 use p3_challenger::{CanObserve, CanSample};
 use p3_field::AbstractField;
-use primitives::challenger::chan_field::U32;
+use p3_symmetric::Hash;
+use primitives::challenger::chan_field::{PermutationField, U32};
 use primitives::challenger::BitExtractor;
 use primitives::field::BfField;
 use scripts::blake3;
@@ -14,9 +16,10 @@ use crate::Dsl;
 // BASE is the base field of F when F is a extension field
 // And BASE is exactly same with F when F is a prime field
 #[derive(Clone, Debug)]
-pub struct BfChallengerExpr<F, const WIDTH: usize>
+pub struct BfChallengerExpr<F, PF, const WIDTH: usize>
 where
-    F: BfField + BitExtractor,
+    F: BfField,
+    PF: PermutationField<4>,
 {
     sponge_state: Vec<Dsl<F>>,
     input_buffer: Vec<Dsl<F>>,
@@ -26,11 +29,13 @@ where
     pub grind_output: F,
     pub sample_input: Vec<Vec<Dsl<F>>>,
     pub sample_output: Vec<Dsl<F>>,
+    phantom_data: PhantomData<PF>,
 }
 
-impl<F, const WIDTH: usize> BfChallengerExpr<F, WIDTH>
+impl<F, PF, const WIDTH: usize> BfChallengerExpr<F, PF, WIDTH>
 where
-    F: BfField + BitExtractor,
+    F: BfField,
+    PF: PermutationField<4>,
 {
     pub fn new() -> Result<Self, String> {
         let mut u8_state = vec![];
@@ -47,6 +52,7 @@ where
             grind_output: F::default(),
             sample_input: vec![],
             sample_output: vec![],
+            phantom_data: PhantomData::default(),
         })
     }
 
@@ -56,9 +62,10 @@ where
     }
 }
 
-impl<F, const WIDTH: usize> BfChallengerExpr<F, WIDTH>
+impl<F, PF, const WIDTH: usize> BfChallengerExpr<F, PF, WIDTH>
 where
-    F: BfField + BitExtractor,
+    F: BfField,
+    PF: PermutationField<4>,
 {
     fn duplexing(&mut self) {
         assert!(self.input_buffer.len() <= WIDTH / 2);
@@ -84,15 +91,16 @@ where
     }
 }
 
-impl<F, const WIDTH: usize> CanObserve<U32> for BfChallengerExpr<F, WIDTH>
+impl<F, PF, const WIDTH: usize> CanObserve<PF> for BfChallengerExpr<F, PF, WIDTH>
 where
-    F: BfField + BitExtractor,
+    F: BfField,
+    PF: PermutationField<4>,
 {
-    fn observe(&mut self, value: U32) {
+    fn observe(&mut self, value: PF) {
         // Any buffered output is now invalid.
         self.output_buffer.clear();
 
-        for elem in value {
+        for elem in value.as_u8_array() {
             self.input_buffer.push(Dsl::constant_u32(elem as u32));
         }
 
@@ -102,11 +110,13 @@ where
     }
 }
 
-impl<F, const N: usize, const WIDTH: usize> CanObserve<[U32; N]> for BfChallengerExpr<F, WIDTH>
+impl<F, PF, const N: usize, const WIDTH: usize> CanObserve<[PF; N]>
+    for BfChallengerExpr<F, PF, WIDTH>
 where
-    F: BfField + BitExtractor,
+    F: BfField,
+    PF: PermutationField<4>,
 {
-    fn observe(&mut self, values: [U32; N]) {
+    fn observe(&mut self, values: [PF; N]) {
         for value in values {
             self.observe(value);
         }
@@ -114,11 +124,12 @@ where
 }
 
 // for TrivialPcs
-impl<F, const WIDTH: usize> CanObserve<Vec<Vec<U32>>> for BfChallengerExpr<F, WIDTH>
+impl<F, PF, const WIDTH: usize> CanObserve<Vec<Vec<PF>>> for BfChallengerExpr<F, PF, WIDTH>
 where
-    F: BfField + BitExtractor,
+    F: BfField,
+    PF: PermutationField<4>,
 {
-    fn observe(&mut self, valuess: Vec<Vec<U32>>) {
+    fn observe(&mut self, valuess: Vec<Vec<PF>>) {
         for values in valuess {
             for value in values {
                 self.observe(value);
@@ -127,9 +138,23 @@ where
     }
 }
 
-impl<F, const WIDTH: usize> CanSample<Dsl<F>> for BfChallengerExpr<F, WIDTH>
+impl<F, PF, const N: usize, const WIDTH: usize> CanObserve<Hash<PF, PF, N>>
+    for BfChallengerExpr<F, PF, WIDTH>
 where
     F: BfField + BitExtractor,
+    PF: PermutationField<4>,
+{
+    fn observe(&mut self, values: Hash<PF, PF, N>) {
+        for pf_val in values {
+            self.observe(pf_val);
+        }
+    }
+}
+
+impl<F, PF, const WIDTH: usize> CanSample<Dsl<F>> for BfChallengerExpr<F, PF, WIDTH>
+where
+    F: BfField,
+    PF: PermutationField<4>,
 {
     fn sample(&mut self) -> Dsl<F> {
         // if BASE is the same with F
@@ -198,7 +223,7 @@ mod tests {
             let mut var_getter = BTreeMap::new();
             let mut optimize = BTreeMap::new();
 
-            let mut challenger = BfChallengerExpr::<BabyBear, 64>::new().unwrap();
+            let mut challenger = BfChallengerExpr::<BabyBear, U32, 64>::new().unwrap();
 
             let value = [1 as u8; 4];
             challenger.observe(value.clone());
@@ -230,7 +255,7 @@ mod tests {
             let mut optimize = BTreeMap::new();
 
             let mut challenger =
-                BfChallengerExpr::<BinomialExtensionField<BabyBear, 4>, 64>::new().unwrap();
+                BfChallengerExpr::<BinomialExtensionField<BabyBear, 4>, U32, 64>::new().unwrap();
 
             let value = [1 as u8, 2 as u8, 3 as u8, 4 as u8];
             challenger.observe(value.clone());

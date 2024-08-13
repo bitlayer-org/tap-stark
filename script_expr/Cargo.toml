@@ -17,6 +17,7 @@ p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-symmetric ={ git = "https://github.com/Plonky3/Plonky3.git" }
 primitives = { path = "../primitives" }
 scripts = {path = "../scripts"}
 common ={ path = "../common" }
