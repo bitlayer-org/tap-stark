@@ -4,12 +4,15 @@ use bitcoin_script::script;
 use bitcoin_script_stack::stack::StackTracker;
 use p3_util::log2_strict_usize;
 use primitives::field::BfField;
+use scripts::blake3::blake3;
+use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4ROLL, OP_4TOALTSTACK};
 use scripts::treepp::*;
 use scripts::u31_lib::{
     u31_add, u31_double, u31_mul, u31_neg, u31_square, u31_sub, u31_sub_u31ext, u31_to_u31ext,
     u31ext_add, u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
     u31ext_neg, u31ext_square, u31ext_sub, u31ext_sub_u31, u32_to_u31, BabyBear4, BabyBearU31,
 };
+use scripts::u32_std::u32_compress;
 
 use crate::script_helper::{index_to_rou, value_exp_n};
 use crate::{StackVariable, Variable};
@@ -32,6 +35,10 @@ pub(crate) enum StandardOpcodeId {
     Table,
     Square,
     Double,
+    Blake3Perm,
+    ToSample,
+    SampleBase,
+    SampleExt,
 }
 
 pub(crate) type StandardOpScriptGen = dyn Fn(Vec<u32>, &mut StackTracker, &BTreeMap<Variable, StackVariable>) -> Vec<StackVariable>
@@ -48,6 +55,10 @@ pub(crate) fn standard_script_genreator(opid: StandardOpcodeId) -> Box<StandardO
         StandardOpcodeId::NumToField => Box::new(op_num_to_field),
         StandardOpcodeId::Square => Box::new(op_square),
         StandardOpcodeId::Double => Box::new(op_double),
+        StandardOpcodeId::Blake3Perm => Box::new(op_blake3),
+        StandardOpcodeId::ToSample => Box::new(op_tosample),
+        StandardOpcodeId::SampleBase => Box::new(op_samplebase),
+        StandardOpcodeId::SampleExt => Box::new(op_sampleext),
         _ => panic!("not support"),
     }
 }
@@ -566,5 +577,111 @@ pub(crate) fn op_mul(
             )
             .unwrap();
     }
+    vars
+}
+
+pub(crate) fn op_blake3(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 33);
+    let mut vars = vec![];
+    vars = stack
+        .custom1(
+            script! {
+                {blake3()}
+                for i in 0..7{
+                    {(i+1)*4} OP_4ROLL
+                }
+            },
+            64,
+            32,
+            0,
+            1,
+            "ExprBlake3Perm_Result",
+        )
+        .unwrap();
+    vars
+}
+
+pub(crate) fn op_samplebase(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size[0], 1);
+    let mut vars = vec![];
+    vars = stack
+        .custom1(
+            script! {
+                OP_TOALTSTACK
+                for _ in 0..7 {
+                    OP_DROP
+                }
+                OP_FROMALTSTACK
+            },
+            8 as u32,
+            1,
+            0,
+            1,
+            "ExprSampleF_Result",
+        )
+        .unwrap();
+    vars
+}
+
+pub(crate) fn op_sampleext(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    let mut vars = vec![];
+    vars = stack
+        .custom1(
+            script! {
+                OP_4TOALTSTACK
+                OP_4DROP
+                OP_4FROMALTSTACK
+            },
+            8 as u32,
+            1,
+            0,
+            4,
+            "ExprSampleEF_Result",
+        )
+        .unwrap();
+    vars
+}
+
+pub(crate) fn op_tosample(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 1);
+    let mut vars = vec![];
+    vars = stack
+        .custom1(
+            script! {
+                for _ in 0..8 {
+                    {u32_compress()}
+                    {u32_to_u31()}
+                    OP_TOALTSTACK
+                }
+                for _ in 0..8 {
+                    OP_FROMALTSTACK
+                }
+                for i in 0..7{
+                    {i+1} OP_ROLL
+                }
+            },
+            32 as u32,
+            8,
+            0,
+            1,
+            "ExprToF_Result",
+        )
+        .unwrap();
     vars
 }

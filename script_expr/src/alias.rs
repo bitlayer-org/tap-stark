@@ -206,6 +206,24 @@ impl<F: BfField> Dsl<F> {
         )
     }
 
+    pub fn sponge_state_init() -> Self {
+        let vs = (0..32).map(|x| vec![0]).collect::<Vec<_>>();
+        Self(
+            Arc::new(RwLock::new(Box::new(CustomOpcode::<
+                0,
+                DYNAMIC_INPUT_OR_OUTPUT,
+                F,
+            >::new(
+                get_opid(),
+                vs,
+                vec![],
+                1,
+                StandardOpcodeId::Table,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
     pub fn add_ext<EF: BfField>(self, rhs: Dsl<EF>) -> Dsl<EF> {
         assert_eq!(F::U32_SIZE, 1);
         assert_eq!(EF::U32_SIZE, 4);
@@ -325,6 +343,55 @@ impl<F: BfField> Dsl<F> {
 
     pub fn constant_u32(value: u32) -> Self {
         Self::constant(vec![value])
+    }
+
+    pub fn blake3(state: &[Self]) -> Self {
+        let state = state.iter().map(|x| x.clone().into()).collect::<Vec<_>>();
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<33, 32>::new(
+                get_opid(),
+                state,
+                F::U32_SIZE as u32,
+                StandardOpcodeId::Blake3Perm,
+            )))),
+            PhantomData,
+        )
+    }
+
+    pub fn to_sample(self) -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 8>::new(
+                get_opid(),
+                vec![self.into()],
+                F::U32_SIZE as u32,
+                StandardOpcodeId::ToSample,
+            )))),
+            PhantomData,
+        )
+    }
+
+    pub fn sample_base(self) -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 1>::new(
+                get_opid(),
+                vec![self.into()],
+                1,
+                StandardOpcodeId::SampleBase,
+            )))),
+            PhantomData,
+        )
+    }
+
+    pub fn sample_ext(self) -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 1>::new(
+                get_opid(),
+                vec![self.into()],
+                4,
+                StandardOpcodeId::SampleExt,
+            )))),
+            PhantomData,
+        )
     }
 }
 

@@ -30,6 +30,8 @@ pub use input_manager::*;
 pub mod value_manager;
 pub use value_manager::*;
 
+mod challenger_expr;
+
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptExprError {
     DoubleCopy,
