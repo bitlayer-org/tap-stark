@@ -169,9 +169,9 @@ fn test_generate_script_expr() {
     let dft = Dft {};
     let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
     let fri_config = FriConfig {
-        log_blowup: 4,
+        log_blowup: 2,
         num_queries: 16,
-        proof_of_work_bits: 26,
+        proof_of_work_bits: 8,
         mmcs: challenge_mmcs,
     };
     let pcs = MyPcs::new(dft, val_mmcs, fri_config);
