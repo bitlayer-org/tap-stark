@@ -9,6 +9,7 @@ use primitives::field::BfField;
 use scripts::treepp::*;
 
 use super::{Dsl, ValueVariable, Variable};
+use crate::ValueCounter;
 
 pub struct ScriptConstraintBuilder<F: BfField> {
     pub main: RowMajorMatrix<ValueVariable<F>>,
@@ -122,6 +123,20 @@ impl<F: BfField> ScriptConstraintBuilder<F> {
                     ),
                 ),
             );
+        }
+    }
+
+    pub fn set_value_count(&self, vc: &mut ValueCounter) {
+        // for i in 0..self.public_values().len() {
+        //     let value = self.var
+        //     vc.get_or_set(self.public_values()[i].as_u32());
+        // }
+
+        for i in 0..self.main().values.len() {
+            let fvalue = self.main.values[i].get_value().unwrap().as_u32_vec();
+            for j in 0..fvalue.len() {
+                vc.get_or_set(fvalue[j]);
+            }
         }
     }
 

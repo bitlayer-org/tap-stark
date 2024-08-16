@@ -27,6 +27,8 @@ pub mod alias;
 pub use alias::*;
 pub mod input_manager;
 pub use input_manager::*;
+pub mod value_manager;
+pub use value_manager::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptExprError {

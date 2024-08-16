@@ -15,7 +15,9 @@ use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::field::BfField;
 use script_expr::{
     selectors_at_point_expr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
+    ValueCounter,
 };
+use serde::de::value;
 use tracing::instrument;
 
 use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
@@ -180,7 +182,8 @@ where
 
     let quotient_chunk_nums = quotient_chunks_domains.len();
 
-    let manager_for_quotient = manager_assign.next_manager();
+    let manager_for_quotient =
+        manager_assign.next_manager_with_name("[compute quotient]".to_string());
     {
         let manager = manager_for_quotient.lock().unwrap();
         compute_quotient_expr::<Val<SC>, SC::Challenge>(
@@ -195,18 +198,20 @@ where
         );
     }
 
-    manager_assign
-        .managers()
-        .iter()
-        .enumerate()
-        .for_each(|(manager_index, manager)| {
-            manager.lock().unwrap().embed_hint_verify::<Val<SC>>();
-            manager.lock().unwrap().run(false);
-            println!(
-                "||optimize script_len {}-kb ||",
-                manager.lock().unwrap().get_script_len() / 1024
-            );
-        });
+    let total_script_len =
+        manager_assign
+            .managers()
+            .iter()
+            .enumerate()
+            .fold(0, |acc, (manager_index, manager)| {
+                manager.lock().unwrap().embed_hint_verify::<Val<SC>>();
+                manager.lock().unwrap().run(false);
+                acc + manager.lock().unwrap().print_script_len()
+            });
+    println!("total script: {:?}-kb", total_script_len);
+    let mut value_count = ValueCounter::new();
+    manager_assign.set_value_count(&mut value_count);
+    println!("u32_count: {}", value_count.get_value_num());
 
     let sels = trace_domain.selectors_at_point(zeta);
 
@@ -263,6 +268,9 @@ where
         "[compute trace open] optimize script: {:?}-kb",
         stack.get_script().len() / 1024
     );
+
+    script_folder.set_value_count(&mut value_count);
+    println!("value_count: {}", value_count.get_value_num());
     Ok(())
 }
 

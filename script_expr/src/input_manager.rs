@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 
+use bitcoin::hashes::serde::de::value;
 use bitcoin_script_stack::stack::StackTracker;
 use lazy_static::lazy_static;
 use primitives::field::BfField;
@@ -14,7 +15,7 @@ use crate::script_gen::*;
 use crate::variable::VarWithValue;
 use crate::{
     get_opid, Dsl, ExprPtr, Expression, IdCount, InputOpcode, ScriptExprError, StackVariable,
-    ValueVariable, Variable, DYNAMIC_INPUT_OR_OUTPUT,
+    ValueCounter, ValueVariable, Variable, DYNAMIC_INPUT_OR_OUTPUT,
 };
 
 pub struct ManagerAssign {
@@ -54,6 +55,13 @@ impl ManagerAssign {
         manager
     }
 
+    pub fn add_manager_with_name(&mut self, name: String) -> Arc<Mutex<Box<InputManager>>> {
+        let manager: Arc<Mutex<Box<InputManager>>> =
+            Arc::new(Mutex::new(Box::new(InputManager::new_with_name(name))));
+        self.managers.push(manager.clone());
+        manager
+    }
+
     pub fn next_manager(&mut self) -> Arc<Mutex<Box<InputManager>>> {
         if self.current_index.is_none() {
             self.current_index = Some(0);
@@ -61,6 +69,15 @@ impl ManagerAssign {
             self.current_index = Some(self.current_index.unwrap() + 1);
         }
         self.add_manager()
+    }
+
+    pub fn next_manager_with_name(&mut self, name: String) -> Arc<Mutex<Box<InputManager>>> {
+        if self.current_index.is_none() {
+            self.current_index = Some(0);
+        } else {
+            self.current_index = Some(self.current_index.unwrap() + 1);
+        }
+        self.add_manager_with_name(name)
     }
 
     pub fn current_manager(&self) -> Arc<Mutex<Box<InputManager>>> {
@@ -81,15 +98,6 @@ impl ManagerAssign {
         self.managers.get(index).unwrap().clone()
     }
 
-    pub fn next(&mut self) {
-        if self.current_index.is_none() {
-            panic!("current_index no set");
-        } else {
-            self.current_index = Some(self.current_index.unwrap() + 1);
-        }
-        assert!(self.current_index.unwrap() <= self.managers.len());
-    }
-
     pub fn assign_input<EF: BfField>(&self, value: Vec<u32>) -> Dsl<EF> {
         self.current_manager().lock().unwrap().assign_input(value)
     }
@@ -106,9 +114,21 @@ impl ManagerAssign {
         let (stack, var_getter) = binding.lock().unwrap().simulate_input();
         (stack, var_getter)
     }
+
+    pub fn set_value_count(&self, value_count: &mut ValueCounter) {
+        self.managers.iter().for_each(|manager| {
+            let manager = manager.lock().unwrap();
+            manager.input_var.iter().for_each(|var| {
+                var.value.iter().for_each(|value| {
+                    value_count.get_or_set(*value);
+                });
+            });
+        });
+    }
 }
 
 pub struct InputManager {
+    name: String,
     counter: usize,
     input_var: Vec<VarWithValue>,
     input_hint: Vec<VarWithValue>,
@@ -121,7 +141,12 @@ pub struct InputManager {
 
 impl InputManager {
     pub(crate) fn new() -> Self {
+        Self::new_with_name("".to_string())
+    }
+
+    pub(crate) fn new_with_name(name: String) -> Self {
         Self {
+            name: name,
             counter: 0,
             input_var: vec![],
             input_hint: vec![],
@@ -131,6 +156,10 @@ impl InputManager {
             stack: StackTracker::new(),
             id_mapper: BTreeMap::new(),
         }
+    }
+
+    fn set_name(&mut self, name: String) {
+        self.name = name;
     }
 
     pub fn set_exec_dsl(&mut self, exec_dsl: ExprPtr) {
@@ -251,38 +280,11 @@ impl InputManager {
         self.stack.get_script().len()
     }
 
-    // pub(crate) fn assign_public_exprs(&mut self, value: Vec<u32>) -> Dsl<F> {
-    //     Dsl::new(Arc::new(RwLock::new(Box::new(
-    //         self.assign_input_opcode(value),
-    //     ))))
-    // }
-
-    // pub(crate) fn assign_trace_exprs(&mut self, local: Vec<F>, next: Vec<F>) {
-    //     let width = local.len();
-    //     let main_variables: Vec<ValueVariable<F>> = [local, next]
-    //         .into_iter()
-    //         .enumerate()
-    //         .flat_map(|(row_index, row_values)| {
-    //             (0..width).map(move |column_index| {
-    //                 ValueVariable::new(
-    //                     Variable::new(row_index, column_index),
-    //                     row_values[column_index],
-    //                 )
-    //             })
-    //         })
-    //         .collect();
-    //     self.trace_open = main_variables;
-    // }
-
-    // pub(crate) fn end(&mut self, stack: &mut StackTracker){
-    //     self.input_vars.iter().for_each(|var|{
-    //         let stack_var = self.var_getter.get(&var.var).unwrap();
-    //         println!("Dropping {:?}",stack_var);
-    //         stack.drop(stack_var.clone());
-    //     });
-    // }
-
-    fn generate_input(&self) {}
+    pub fn print_script_len(&self) -> usize {
+        let sl = self.get_script_len() / 1024;
+        println!("name:{} ; script_len: {}-kb", self.name, sl);
+        sl
+    }
 }
 
 #[cfg(test)]
@@ -293,7 +295,7 @@ mod tests {
     use scripts::u31_lib::BabyBearU31;
 
     use super::InputManager;
-    use crate::{Dsl, ManagerAssign};
+    use crate::{Dsl, ManagerAssign, ValueCounter};
 
     #[test]
     fn test_input_manager_assign() {
@@ -356,5 +358,10 @@ mod tests {
             equal.express1(&mut stack, &var_getter, true);
             assert!(stack.run().success);
         }
+
+        let mut vc = ValueCounter::new();
+        manager_assign.set_value_count(&mut vc);
+        println!("value count: {}", vc.get_value_num());
+        assert_eq!(vc.get_value_num(), 2);
     }
 }

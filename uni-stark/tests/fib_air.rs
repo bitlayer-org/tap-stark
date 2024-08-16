@@ -145,11 +145,16 @@ fn test_public_value() {
     let config = MyConfig::new(pcs);
     let permutation = Blake3Permutation {};
     let mut challenger = Challenger::new(permutation).unwrap();
+
+    let len = trace.values.len();
+    let output = trace.values[len - 1].clone();
     let pis = vec![
         BabyBear::from_canonical_u64(0),
         BabyBear::from_canonical_u64(1),
-        BabyBear::from_canonical_u64(21),
+        output,
     ];
+
+    // assert_eq!(BabyBear::from_canonical_u64(21),trace.clone().values[len-1]);
     let proof = prove(&config, &FibonacciAir {}, &mut challenger, trace, &pis);
 
     let permutation = Blake3Permutation {};
@@ -164,20 +169,24 @@ fn test_generate_script_expr() {
     let dft = Dft {};
     let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
     let fri_config = FriConfig {
-        log_blowup: 2,
-        num_queries: 28,
-        proof_of_work_bits: 8,
+        log_blowup: 4,
+        num_queries: 16,
+        proof_of_work_bits: 26,
         mmcs: challenge_mmcs,
     };
     let pcs = MyPcs::new(dft, val_mmcs, fri_config);
     let config = MyConfig::new(pcs);
     let permutation = Blake3Permutation {};
     let mut challenger = Challenger::new(permutation).unwrap();
+
+    let len = trace.values.len();
+    let output = trace.values[len - 1].clone();
     let pis = vec![
         BabyBear::from_canonical_u64(0),
         BabyBear::from_canonical_u64(1),
-        BabyBear::from_canonical_u64(21),
+        output,
     ];
+
     let proof = prove(&config, &FibonacciAir {}, &mut challenger, trace, &pis);
 
     let permutation = Blake3Permutation {};

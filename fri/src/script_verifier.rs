@@ -38,7 +38,8 @@ where
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
     let mut manager_assign = ManagerAssign::new();
     for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
-        let cur_manager = manager_assign.next_manager();
+        let cur_manager = manager_assign
+            .next_manager_with_name(format!("[fri-pcs-verify query_index:{}] ", index));
         let ro = {
             let mut manager: std::sync::MutexGuard<Box<InputManager>> = cur_manager.lock().unwrap();
             open_input(index, &query_proof.input_proof, manager)
@@ -58,7 +59,8 @@ where
 
         {
             let mut manager = cur_manager.lock().unwrap();
-            manager.set_exec_dsl(folded_eval.equal_for_f(proof.final_poly).into());
+            let final_poly_input = manager.assign_input_f::<F>(proof.final_poly);
+            manager.set_exec_dsl(folded_eval.equal(final_poly_input).into());
         }
     }
 
