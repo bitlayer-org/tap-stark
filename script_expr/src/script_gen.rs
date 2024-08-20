@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bitcoin_script::script;
 use bitcoin_script_stack::stack::StackTracker;
-use p3_util::log2_strict_usize;
+use p3_util::{log2_strict_usize, reverse_bits_len};
 use primitives::field::BfField;
 use scripts::blake3::blake3;
 use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4ROLL, OP_4TOALTSTACK};
@@ -14,7 +14,7 @@ use scripts::u31_lib::{
 };
 use scripts::u32_std::u32_compress;
 
-use crate::script_helper::{index_to_rou, value_exp_n};
+use crate::script_helper::{index_to_rou, reverse_bits_len_script_with_input, value_exp_n};
 use crate::{StackVariable, Variable};
 
 #[derive(Debug, Clone, Copy)]
@@ -39,6 +39,7 @@ pub(crate) enum StandardOpcodeId {
     ToSample,
     SampleBase,
     SampleExt,
+    ReverseBitslen,
 }
 
 pub(crate) type StandardOpScriptGen = dyn Fn(Vec<u32>, &mut StackTracker, &BTreeMap<Variable, StackVariable>) -> Vec<StackVariable>
@@ -80,6 +81,13 @@ pub(crate) fn custom_script_generator<F: BfField>(
                   stack: &mut StackTracker,
                   var_getter: &BTreeMap<Variable, StackVariable>| {
                 op_indextorou::<F>(custom_data.clone(), vars_size, stack, var_getter)
+            },
+        ),
+        StandardOpcodeId::ReverseBitslen => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_reversebitslen::<F>(custom_data.clone(), vars_size, stack, var_getter)
             },
         ),
         StandardOpcodeId::Constant => Box::new(
@@ -240,6 +248,26 @@ pub(crate) fn op_indextorou<F: BfField>(
             0,
             F::U32_SIZE as u32,
             "FieldExpr::IndexToROU",
+        )
+        .unwrap();
+
+    vars
+}
+pub(crate) fn op_reversebitslen<F: BfField>(
+    indexandbits: Vec<Vec<u32>>,
+    _vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    //assert_eq!(indexandbits[0].len(), 1);
+    let vars = stack
+        .custom1(
+            reverse_bits_len_script_with_input(indexandbits[0][0], indexandbits[1][0] as usize),
+            1,
+            1,
+            0,
+            1,
+            "FieldExpr::ReverseBitsLen",
         )
         .unwrap();
 

@@ -120,6 +120,34 @@ impl<F: BfField> Dsl<F> {
         )
     }
 
+    pub fn index_to_rou_dsl(self, sub_group_bits: u32) -> Self {
+        assert_eq!(F::U32_SIZE, 1);
+        Self(
+            Arc::new(RwLock::new(Box::new(CustomOpcode::<1, 1, F>::new(
+                get_opid(),
+                vec![vec![sub_group_bits]],
+                vec![self.into()],
+                F::U32_SIZE as u32, // the var size must be 1 for equal op_code
+                StandardOpcodeId::IndexToRou,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
+    pub fn reverse_bits_len<Base: BfField>(index:u32, bit_len: u32)  -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(CustomOpcode::<1, 1, F>::new(
+                get_opid(),
+                vec![vec![index], vec![bit_len]],
+                vec![Dsl::<Base>::constant_u32(index).into()],
+                1, // the var size must be 1 for equal op_code
+                StandardOpcodeId::ReverseBitslen,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
+
     pub(crate) fn new_equal_verify(lhs: Self, rhs: Self) -> Dsl<F> {
         Self(
             Arc::new(RwLock::new(Box::new(StandardOpcode::<2, 0>::new(
@@ -752,6 +780,7 @@ mod tests {
     use alloc::collections::BTreeMap;
     use alloc::sync::Arc;
     use alloc::vec::Vec;
+    use p3_util::reverse_bits_len;
     use core::cell::{self, Cell};
 
     use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
@@ -1269,6 +1298,29 @@ mod tests {
         stack.op_true();
         let res = stack.run();
         assert!(res.success);
+    }
+
+    #[test]
+    fn test_reverse_bits_len(){
+        let index = 652893;
+        let bit_len = 26;
+        let mut stack = StackTracker::new();
+        let bmap = BTreeMap::new();
+
+        let rev_index = Dsl::<BabyBear>::reverse_bits_len::<BabyBear>(index, bit_len.clone());
+
+
+        let script = rev_index.express(&mut stack, &bmap);
+
+        let expected = reverse_bits_len(index as usize, bit_len as usize);
+
+        stack.number(expected as u32);
+
+        stack.custom(u31_equalverify(), 2, false, 0, "u31_equalverify");
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+        
     }
 }
 

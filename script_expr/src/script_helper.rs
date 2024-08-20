@@ -289,7 +289,7 @@ mod tests {
     type EF = BinomialExtensionField<BabyBear, 4>;
 
     // #[test]
-    // fn test_reverse_bits_20() {
+    // fn test_ts_20() {
     //     for bits in 1..31 {
     //         for _ in 0..30 {
     //             let x: u32 = rand::thread_rng().gen();

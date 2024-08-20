@@ -42,6 +42,7 @@ where
         for _ in 0..32 {
             u8_state.push(Dsl::constant_u32(0));
         }
+        //last 32bytes init as one dsl to adapt blake3_res dsl
         u8_state.push(Dsl::sponge_state_init());
         Ok(Self {
             sponge_state: u8_state,
