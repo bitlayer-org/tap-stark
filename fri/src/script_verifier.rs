@@ -91,9 +91,9 @@ where
     let mut x = rev_index.index_to_rou_dsl(log_max_height as u32);
 
     //TODO: compute hint
-    // let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
+    let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(reverse_bits_len(index, log_max_height) as u64);
 
-    
+
     // let mut x = manager
     //     .lock()
     //     .unwrap()
