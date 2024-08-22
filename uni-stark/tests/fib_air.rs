@@ -22,7 +22,7 @@ use primitives::field::BfField;
 use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::{thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::{Expression, ManagerAssign};
+use script_expr::{BfChallengerExpr, Dsl, Expression, ManagerAssign};
 use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::execute_script_with_inputs;
 use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
@@ -127,7 +127,7 @@ type Challenger = BfChallenger<Challenge, PF, Blake3Permutation, WIDTH>;
 
 type Dft = Radix2DitParallel;
 type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
-type MyConfig = StarkConfig<MyPcs, Challenge, Challenger>;
+type MyConfig = StarkConfig<MyPcs, Challenge, Challenger, BfChallengerExpr<Challenge, U32, 64>>;
 
 #[test]
 fn test_public_value() {
@@ -181,6 +181,8 @@ fn test_generate_script_expr() {
 
     let len = trace.values.len();
     let output = trace.values[len - 1].clone();
+    let mut challenger_dsl = BfChallengerExpr::<Challenge, U32, 64>::new().unwrap();
+
     let pis = vec![
         BabyBear::from_canonical_u64(0),
         BabyBear::from_canonical_u64(1),
@@ -191,8 +193,15 @@ fn test_generate_script_expr() {
 
     let permutation = Blake3Permutation {};
     let mut challenger = Challenger::new(permutation).unwrap();
-    generate_script_verifier(&config, &FibonacciAir {}, &mut challenger, &proof, &pis)
-        .expect("verification failed");
+    generate_script_verifier(
+        &config,
+        &FibonacciAir {},
+        &mut challenger,
+        &mut challenger_dsl,
+        &proof,
+        &pis,
+    )
+    .expect("verification failed");
 }
 
 #[test]
@@ -303,8 +312,9 @@ fn test_quotient_zeta() {
     let mut manager_assign = ManagerAssign::new();
     let manager = manager_assign.next_manager();
 
+    let zeta_dsl = Dsl::from(zeta);
     compute_quotient_expr::<Val, Challenge>(
-        zeta,
+        zeta_dsl,
         degree,
         generator,
         quotient_chunk_nums,

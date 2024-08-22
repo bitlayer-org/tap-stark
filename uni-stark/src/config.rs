@@ -46,18 +46,23 @@ pub trait StarkGenericConfig {
     type Challenger: BfGrindingChallenger
         + CanObserve<<Self::Pcs as Pcs<Self::Challenge, Self::Challenger>>::Commitment>
         + CanSample<Self::Challenge>;
+
+    type ChallengerDsl: CanObserve<<Self::Pcs as Pcs<Self::Challenge, Self::Challenger>>::Commitment>
+        + CanSample<Dsl<Self::Challenge>>;
     // + CanObserve<<<Self::Pcs as Pcs<Self::Challenge, Self::Challenger>>::Domain as PolynomialSpace>::Val>
 
     fn pcs(&self) -> &Self::Pcs;
 }
 
 #[derive(Debug)]
-pub struct StarkConfig<Pcs, Challenge, Challenger> {
+pub struct StarkConfig<Pcs, Challenge, Challenger, ChallengerDsl> {
     pcs: Pcs,
-    _phantom: PhantomData<(Challenge, Challenger)>,
+    _phantom: PhantomData<(Challenge, Challenger, ChallengerDsl)>,
 }
 
-impl<Pcs, Challenge, Challenger> StarkConfig<Pcs, Challenge, Challenger> {
+impl<Pcs, Challenge, Challenger, ChallengerDsl>
+    StarkConfig<Pcs, Challenge, Challenger, ChallengerDsl>
+{
     pub const fn new(pcs: Pcs) -> Self {
         Self {
             pcs,
@@ -66,17 +71,21 @@ impl<Pcs, Challenge, Challenger> StarkConfig<Pcs, Challenge, Challenger> {
     }
 }
 
-impl<Pcs, Challenge, Challenger> StarkGenericConfig for StarkConfig<Pcs, Challenge, Challenger>
+impl<Pcs, Challenge, Challenger, ChallengerDsl> StarkGenericConfig
+    for StarkConfig<Pcs, Challenge, Challenger, ChallengerDsl>
 where
     Challenge: ExtensionField<<Pcs::Domain as PolynomialSpace>::Val> + BfField,
     Pcs: PcsExpr<Challenge, Challenger, ManagerAssign>,
     Challenger: BfGrindingChallenger
         + CanObserve<<Pcs as bf_pcs::Pcs<Challenge, Challenger>>::Commitment>
         + CanSample<Challenge>,
+    ChallengerDsl: CanObserve<<Pcs as bf_pcs::Pcs<Challenge, Challenger>>::Commitment>
+        + CanSample<Dsl<Challenge>>,
 {
     type Pcs = Pcs;
     type Challenge = Challenge;
     type Challenger = Challenger;
+    type ChallengerDsl = ChallengerDsl;
 
     fn pcs(&self) -> &Self::Pcs {
         &self.pcs

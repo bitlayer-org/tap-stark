@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use alloc::{format, vec};
 
+use bitcoin::opcodes::{OP_FROMALTSTACK, OP_TOALTSTACK};
 use primitives::field::BfField;
 use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
 use scripts::treepp::*;
@@ -13,6 +14,7 @@ use scripts::u31_lib::{
 /// constraint: bits <= 31
 /// input: [b_{0}, b_{1}, ..., b_{bits-1}]
 pub fn compress_bits(bits: usize) -> Script {
+    println!("bits len{:?}", bits);
     assert!(bits <= 31);
     let script = script! {
         for _ in 0..bits-1 {
@@ -59,6 +61,25 @@ pub fn reverse_bits_len_script_with_input(input_index: u32, bits: usize) -> Scri
             {bit}
         }
         {reverse_bits_len_script(bits)}
+    }
+}
+
+// input stack:
+// index <-- top
+// output stack:
+// rev_index <-- top
+pub(crate) fn index_to_reverse_index(bits_len: u32) -> Script {
+    script! {
+        {value_to_bits_format(bits_len)}
+        for i in 0..bits_len {
+            {i*2} OP_PICK
+        }
+        {compress_bits(bits_len as usize)}
+        OP_TOALTSTACK
+        for _ in 0..bits_len {
+            OP_DROP
+        }
+        OP_FROMALTSTACK
     }
 }
 
@@ -119,12 +140,13 @@ pub(crate) fn value_to_bits_format(bits_len_conf: u32) -> Script {
         for i in (0..bits_len_conf).rev(){
             {value_bit_to_altstack(i)}
         }
-
+        OP_DROP
         for _ in 0..bits_len_conf{
             OP_FROMALTSTACK
         }
     }
 }
+//11
 
 // value_bits_len
 fn value_bit_to_altstack(bits: u32) -> Script {
@@ -281,6 +303,7 @@ pub(crate) fn value_exp_n<F: BfField>(log_n: usize) -> Script {
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::opcodes::{OP_DROP, OP_EQUAL};
     use p3_baby_bear::BabyBear;
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};
@@ -309,6 +332,23 @@ mod tests {
     //         }
     //     }
     // }
+
+    #[test]
+    fn test_value_to_bits() {
+        let index = 6;
+        let bits_len = 3;
+        let script = script! {
+            {index as u32}
+            // {index_to_reverse_index(3)}
+            {value_to_bits_format(bits_len)}
+            {compress_bits(bits_len as usize)}
+            {6}
+            OP_EQUAL
+        };
+        let res = execute_script(script);
+        println!("{:?}", res);
+        assert_eq!(res.success, true);
+    }
 
     #[test]
     fn test_index_to_rou() {

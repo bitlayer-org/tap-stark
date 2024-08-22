@@ -14,7 +14,9 @@ use scripts::u31_lib::{
 };
 use scripts::u32_std::u32_compress;
 
-use crate::script_helper::{index_to_rou, reverse_bits_len_script_with_input, value_exp_n};
+use crate::script_helper::{
+    index_to_reverse_index, index_to_rou, reverse_bits_len_script_with_input, value_exp_n,
+};
 use crate::{StackVariable, Variable};
 
 #[derive(Debug, Clone, Copy)]
@@ -254,7 +256,7 @@ pub(crate) fn op_indextorou<F: BfField>(
     vars
 }
 pub(crate) fn op_reversebitslen<F: BfField>(
-    indexandbits: Vec<Vec<u32>>,
+    bits_len: Vec<Vec<u32>>,
     _vars_size: Vec<u32>,
     stack: &mut StackTracker,
     var_getter: &BTreeMap<Variable, StackVariable>,
@@ -262,7 +264,7 @@ pub(crate) fn op_reversebitslen<F: BfField>(
     //assert_eq!(indexandbits[0].len(), 1);
     let vars = stack
         .custom1(
-            reverse_bits_len_script_with_input(indexandbits[0][0], indexandbits[1][0] as usize),
+            index_to_reverse_index(bits_len[0][0]),
             1,
             1,
             0,
@@ -270,7 +272,6 @@ pub(crate) fn op_reversebitslen<F: BfField>(
             "FieldExpr::ReverseBitsLen",
         )
         .unwrap();
-
     vars
 }
 
@@ -338,6 +339,7 @@ pub(crate) fn op_euqalverify(
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], vars_size[1]);
     assert_eq!(vars_size.len(), 2);
+    stack.debug();
     if vars_size[0] == 1 {
         stack.op_equalverify();
     } else {

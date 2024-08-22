@@ -12,7 +12,7 @@ use scripts::u31_lib::u31_equalverify;
 use crate::get_table;
 
 pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<Val>>(
-    zeta: Challenge,
+    zeta_dsl: Dsl<Challenge>,
     trace_degree: usize,
     generator: Val,
     quotient_chunk_nums: usize,
@@ -42,7 +42,7 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
 
     // todo: replace the constant as input
     // let zeta_dsl = manager.assign_input_f(zeta);
-    let zeta_dsl = Dsl::from(zeta);
+    // let zeta_dsl = Dsl::from(zeta);
     //babybear generator inverse constant
     let inverse_a = Dsl::from(Val::from_u32(64944062 as u32));
     let zeta_div_a = inverse_a.mul_ext(zeta_dsl);

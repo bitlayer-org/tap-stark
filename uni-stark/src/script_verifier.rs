@@ -12,9 +12,10 @@ use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
 use p3_util::log2_strict_usize;
 use primitives::bf_pcs::{Pcs, PcsExpr};
+use primitives::challenger::chan_field::U32;
 use primitives::field::BfField;
 use script_expr::{
-    selectors_at_point_expr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
+    selectors_at_point_expr, BfChallengerExpr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
     ValueCounter,
 };
 use serde::de::value;
@@ -30,6 +31,7 @@ pub fn generate_script_verifier<SC, A>(
     config: &SC,
     air: &A,
     challenger: &mut SC::Challenger,
+    challenger_dsl: &mut SC::ChallengerDsl,
     proof: &Proof<SC>,
     public_values: &Vec<Val<SC>>,
 ) -> Result<(), VerificationError<PcsError<SC>>>
@@ -79,11 +81,16 @@ where
     // collision, since most such changes would completely change the set of satisfying witnesses.
 
     challenger.observe(commitments.trace.clone());
+    challenger_dsl.observe(commitments.trace.clone());
     // challenger.observe_slice(public_values);
     let alpha: SC::Challenge = challenger.sample();
+    let alpha_dsl = challenger_dsl.sample();
+
     challenger.observe(commitments.quotient_chunks.clone());
+    challenger_dsl.observe(commitments.quotient_chunks.clone());
 
     let zeta: SC::Challenge = challenger.sample();
+    let zeta_dsl = challenger_dsl.sample();
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
     let mut manager_assign = pcs
@@ -187,7 +194,7 @@ where
     {
         let manager = manager_for_quotient.lock().unwrap();
         compute_quotient_expr::<Val<SC>, SC::Challenge>(
-            zeta,
+            zeta_dsl,
             degree,
             generator,
             quotient_chunk_nums,
