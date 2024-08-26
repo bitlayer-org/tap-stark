@@ -229,48 +229,36 @@ pub fn index_to_rou<F: BfField>(sub_group_bits: u32) -> Script {
     assert!(sub_group_bits <= 27);
     // 0..27
     script! {
+        for i in (0..sub_group_bits).rev(){
+            {value_to_generator_bit_altstack(i, sub_group_bits)}
+        }
 
-        OP_DUP
-        0
-        OP_EQUAL
-        OP_IF
-            // case: deal index is equal to 0
-            OP_DROP
-            for j in (0..F::U32_SIZE).rev(){
-                {F::one().as_u32_vec()[j]}
-            }
-        OP_ELSE
-            for i in (0..sub_group_bits).rev(){
-                {value_to_generator_bit_altstack(i, sub_group_bits)}
-            }
+        // drop the 0
+        OP_0
+        OP_EQUALVERIFY
 
-            // drop the 0
-            OP_0
-            OP_EQUALVERIFY
+        for j in (0..F::U32_SIZE).rev(){
+            {F::one().as_u32_vec()[j]}
+        }
 
-            for j in (0..F::U32_SIZE).rev(){
-                {F::one().as_u32_vec()[j]}
-            }
+        for _i in 0..sub_group_bits{
+            OP_FROMALTSTACK
 
-            for _i in 0..sub_group_bits{
-                OP_FROMALTSTACK
-
-                // bit-size
-                OP_DUP
-                {33}
-                OP_EQUAL
-                OP_IF
-                    OP_DROP
-                OP_ELSE
-                    {get_generator::<F>()}
-                    if F::U32_SIZE == 1{
-                        {u31_mul::<BabyBearU31>()}
-                    }else{
-                        {u31ext_mul::<BabyBear4>()}
-                    }
-                OP_ENDIF
-            }
-        OP_ENDIF
+            // bit-size
+            OP_DUP
+            {33}
+            OP_EQUAL
+            OP_IF
+                OP_DROP
+            OP_ELSE
+                {get_generator::<F>()}
+                if F::U32_SIZE == 1{
+                    {u31_mul::<BabyBearU31>()}
+                }else{
+                    {u31ext_mul::<BabyBear4>()}
+                }
+            OP_ENDIF
+        }
 
     }
 }

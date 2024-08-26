@@ -1498,5 +1498,25 @@ mod tests2 {
             assert!(res.success);
             println!("script_len: {:?}", stack.get_script_len());
         }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let sub_group_bits = 10u32;
+            let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
+            let index = 0u32;
+            let res = generator.exp_u64(index as u64);
+
+            let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
+            let b_2 = b.clone() * b;
+            let res_expr = Dsl::constant_f(res * res);
+            let equal = b_2.equal_verify(res_expr);
+            equal.express(&mut stack, &bmap);
+            stack.op_true();
+
+            let res = stack.run();
+            assert!(res.success);
+            println!("script_len: {:?}", stack.get_script_len());
+        }
     }
 }
