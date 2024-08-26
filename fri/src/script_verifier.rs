@@ -89,18 +89,17 @@ where
     let mut ro_iter = reduced_openings.into_iter().peekable();
     let mut folded_eval = Dsl::<F>::zero();
 
-    // //TODO: fix index to rou bug and use dsl version
-    // let rev_index = Dsl::<F>::reverse_bits_len::<BabyBear>(index as u32, log_max_height as u32);
+    let rev_index_dsl = Dsl::<F>::reverse_bits_len::<BabyBear>(index as u32, log_max_height as u32);
 
-    // let mut x = rev_index.index_to_rou_dsl(log_max_height as u32);
+    let mut x = rev_index_dsl.index_to_rou_dsl(log_max_height as u32);
 
     let rev_index = reverse_bits_len(index, log_max_height);
     let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
 
-    let mut x = manager
-        .lock()
-        .unwrap()
-        .assign_input::<F>(x_hint.as_u32_vec());
+    // let mut x = manager
+    //     .lock()
+    //     .unwrap()
+    //     .assign_input::<F>(x_hint.as_u32_vec());
 
     for (log_folded_height, commit, step, &beta) in izip!(
         (0..log_max_height).rev(),

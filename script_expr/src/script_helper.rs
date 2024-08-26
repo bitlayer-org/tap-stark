@@ -241,12 +241,16 @@ pub fn index_to_rou<F: BfField>(sub_group_bits: u32) -> Script {
             }
         OP_ELSE
             for i in (0..sub_group_bits).rev(){
-                {value_to_generator_bit_altstack(i,sub_group_bits)}
+                {value_to_generator_bit_altstack(i, sub_group_bits)}
             }
 
             // drop the 0
             OP_0
             OP_EQUALVERIFY
+
+            for j in (0..F::U32_SIZE).rev(){
+                {F::one().as_u32_vec()[j]}
+            }
 
             for _i in 0..sub_group_bits{
                 OP_FROMALTSTACK
@@ -259,20 +263,11 @@ pub fn index_to_rou<F: BfField>(sub_group_bits: u32) -> Script {
                     OP_DROP
                 OP_ELSE
                     {get_generator::<F>()}
-                        if F::U32_SIZE == 1{
-                            OP_DEPTH
-                            OP_2
-                            OP_EQUAL
-                            OP_IF
-                            {u31_mul::<BabyBearU31>()}
-                        }else{
-                            OP_DEPTH
-                            OP_8
-                            OP_EQUAL
-                            OP_IF
-                            {u31ext_mul::<BabyBear4>()}
-                        }
-                    OP_ENDIF
+                    if F::U32_SIZE == 1{
+                        {u31_mul::<BabyBearU31>()}
+                    }else{
+                        {u31ext_mul::<BabyBear4>()}
+                    }
                 OP_ENDIF
             }
         OP_ENDIF
