@@ -12,9 +12,10 @@ use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
 use p3_util::log2_strict_usize;
 use primitives::bf_pcs::{Pcs, PcsExpr};
+use primitives::challenger::chan_field::U32;
 use primitives::field::BfField;
 use script_expr::{
-    selectors_at_point_expr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
+    selectors_at_point_expr, BfChallengerExpr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
     ValueCounter,
 };
 use serde::de::value;
@@ -30,6 +31,7 @@ pub fn generate_script_verifier<SC, A>(
     config: &SC,
     air: &A,
     challenger: &mut SC::Challenger,
+    challenger_dsl: &mut SC::ChallengerDsl,
     proof: &Proof<SC>,
     public_values: &Vec<Val<SC>>,
 ) -> Result<(), VerificationError<PcsError<SC>>>
@@ -53,7 +55,7 @@ where
     let quotient_degree = 1 << log_quotient_degree;
 
     let pcs = config.pcs();
-    let trace_domain = pcs.natural_domain_for_degree(degree);
+    let trace_domain = pcs.natural_domain_for_degree(degree.clone());
     let quotient_domain =
         trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
@@ -72,6 +74,7 @@ where
 
     // Observe the instance.    // TODO: recover observe when we have CanObserve<F> trait
     // challenger.observe(Val::<SC>::from_canonical_usize(proof.degree_bits));
+
     // TODO: Might be best practice to include other instance data here in the transcript, like some
     // encoding of the AIR. This protects against transcript collisions between distinct instances.
     // Practically speaking though, the only related known attack is from failing to include public
@@ -79,12 +82,23 @@ where
     // collision, since most such changes would completely change the set of satisfying witnesses.
 
     challenger.observe(commitments.trace.clone());
+    challenger_dsl.observe(commitments.trace.clone());
     // challenger.observe_slice(public_values);
     let alpha: SC::Challenge = challenger.sample();
+    let alpha_dsl = challenger_dsl.sample();
+
     challenger.observe(commitments.quotient_chunks.clone());
+    challenger_dsl.observe(commitments.quotient_chunks.clone());
 
     let zeta: SC::Challenge = challenger.sample();
+    let zeta_dsl = challenger_dsl.sample();
+
     let zeta_next = trace_domain.next_point(zeta).unwrap();
+
+    let zeta_next_dsl = zeta_dsl.clone().mul_base(Dsl::<Val<SC>>::index_to_rou(
+        1,
+        (*degree_bits).try_into().unwrap(),
+    ));
 
     let mut manager_assign = pcs
         .generate_verify_expr(
@@ -187,7 +201,7 @@ where
     {
         let manager = manager_for_quotient.lock().unwrap();
         compute_quotient_expr::<Val<SC>, SC::Challenge>(
-            zeta,
+            zeta_dsl.clone(),
             degree,
             generator,
             quotient_chunk_nums,
@@ -198,6 +212,16 @@ where
         );
     }
 
+    //verify hint of challenger equal to challenger_dsl
+    let manager_for_challenger = manager_assign.next_manager();
+    {
+        let mut manager = manager_for_challenger.lock().unwrap();
+        let hint_zeta = zeta_dsl.equal_for_f(zeta);
+        let hint_zeta_next = zeta_next_dsl.equal_for_f(zeta_next);
+        manager.add_hint_verify(hint_zeta.into());
+        manager.add_hint_verify(hint_zeta_next.into());
+        manager.set_exec_dsl(alpha_dsl.equal_for_f(alpha).into());
+    }
     let total_script_len =
         manager_assign
             .managers()

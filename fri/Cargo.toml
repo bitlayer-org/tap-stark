@@ -8,7 +8,8 @@ license = "MIT OR Apache-2.0"
 bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
 bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
 bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
-bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git"}
+#bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git"}
+bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git", branch = "bf-stark"}
 
 p3-commit ={ git = "https://github.com/Plonky3/Plonky3.git" }
 p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git" }

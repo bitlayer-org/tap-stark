@@ -120,6 +120,33 @@ impl<F: BfField> Dsl<F> {
         )
     }
 
+    pub fn index_to_rou_dsl(self, sub_group_bits: u32) -> Self {
+        //assert_eq!(F::U32_SIZE, 1);
+        Self(
+            Arc::new(RwLock::new(Box::new(CustomOpcode::<1, 1, F>::new(
+                get_opid(),
+                vec![vec![sub_group_bits]],
+                vec![self.into()],
+                F::U32_SIZE as u32, // the var size must be 1 for equal op_code
+                StandardOpcodeId::IndexToRou,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
+    pub fn reverse_bits_len<Base: BfField>(index: u32, bit_len: u32) -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(CustomOpcode::<1, 1, F>::new(
+                get_opid(),
+                vec![vec![bit_len]],
+                vec![Dsl::<Base>::constant_u32(index).into()],
+                1, // the var size must be 1 for equal op_code
+                StandardOpcodeId::ReverseBitslen,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
     pub(crate) fn new_equal_verify(lhs: Self, rhs: Self) -> Dsl<F> {
         Self(
             Arc::new(RwLock::new(Box::new(StandardOpcode::<2, 0>::new(
@@ -200,6 +227,24 @@ impl<F: BfField> Dsl<F> {
                 vs,
                 vec![],
                 F::U32_SIZE as u32,
+                StandardOpcodeId::Table,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
+    pub fn sponge_state_init() -> Self {
+        let vs = (0..32).map(|x| vec![0]).collect::<Vec<_>>();
+        Self(
+            Arc::new(RwLock::new(Box::new(CustomOpcode::<
+                0,
+                DYNAMIC_INPUT_OR_OUTPUT,
+                F,
+            >::new(
+                get_opid(),
+                vs,
+                vec![],
+                1,
                 StandardOpcodeId::Table,
             )))),
             PhantomData::<F>,
@@ -325,6 +370,55 @@ impl<F: BfField> Dsl<F> {
 
     pub fn constant_u32(value: u32) -> Self {
         Self::constant(vec![value])
+    }
+
+    pub fn blake3(state: &[Self]) -> Self {
+        let state = state.iter().map(|x| x.clone().into()).collect::<Vec<_>>();
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<33, 32>::new(
+                get_opid(),
+                state,
+                F::U32_SIZE as u32,
+                StandardOpcodeId::Blake3Perm,
+            )))),
+            PhantomData,
+        )
+    }
+
+    pub fn to_sample(self) -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 8>::new(
+                get_opid(),
+                vec![self.into()],
+                F::U32_SIZE as u32,
+                StandardOpcodeId::ToSample,
+            )))),
+            PhantomData,
+        )
+    }
+
+    pub fn sample_base(self) -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 1>::new(
+                get_opid(),
+                vec![self.into()],
+                1,
+                StandardOpcodeId::SampleBase,
+            )))),
+            PhantomData,
+        )
+    }
+
+    pub fn sample_ext(self) -> Self {
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 1>::new(
+                get_opid(),
+                vec![self.into()],
+                4,
+                StandardOpcodeId::SampleExt,
+            )))),
+            PhantomData,
+        )
     }
 }
 
@@ -692,6 +786,7 @@ mod tests {
     use p3_air::AirBuilder;
     use p3_field::TwoAdicField;
     use p3_matrix::Matrix;
+    use p3_util::reverse_bits_len;
     use primitives::field::BfField;
     use scripts::treepp::*;
     use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
@@ -1197,6 +1292,29 @@ mod tests {
         let script = m.express(&mut stack, &bmap);
 
         stack.number(5 as u32);
+
+        stack.custom(u31_equalverify(), 2, false, 0, "u31_equalverify");
+        stack.op_true();
+        let res = stack.run();
+        assert!(res.success);
+    }
+
+    #[test]
+    fn test_reverse_bits_len() {
+        let index = 6892339;
+        let bit_len = 25;
+        let mut stack = StackTracker::new();
+        let bmap = BTreeMap::new();
+
+        let rev_index = Dsl::<BabyBear>::reverse_bits_len::<BabyBear>(index, bit_len.clone());
+
+        let script = rev_index.express(&mut stack, &bmap);
+
+        let expected = reverse_bits_len(index as usize, bit_len as usize);
+
+        stack.number(expected as u32);
+
+        stack.debug();
 
         stack.custom(u31_equalverify(), 2, false, 0, "u31_equalverify");
         stack.op_true();

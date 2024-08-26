@@ -1,9 +1,11 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::panic;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use bitcoin::taproot::TapLeaf;
+use bitcoin_script_stack::stack::StackTracker;
 use itertools::izip;
 use p3_field::AbstractField;
 use p3_util::reverse_bits_len;
@@ -12,7 +14,8 @@ use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use script_expr::{Dsl, InputManager, ManagerAssign};
-use scripts::execute_script_with_inputs;
+use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
+use scripts::{execute_script_with_inputs, BabyBear};
 use tracing::{instrument, trace};
 
 use crate::error::{FriError, SVError};
@@ -85,13 +88,15 @@ where
 {
     let mut ro_iter = reduced_openings.into_iter().peekable();
     let mut folded_eval = Dsl::<F>::zero();
-    // todo: replace the rust version of reverse_bits_len as dsl version
+
+    // //TODO: fix index to rou bug and use dsl version
+    // let rev_index = Dsl::<F>::reverse_bits_len::<BabyBear>(index as u32, log_max_height as u32);
+
+    // let mut x = rev_index.index_to_rou_dsl(log_max_height as u32);
+
     let rev_index = reverse_bits_len(index, log_max_height);
-
-    // todo: active dsl::index_to_rou()
-    // let mut x = Dsl::<F>::index_to_rou(rev_index as u32, log_max_height as u32 );
-
     let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
+
     let mut x = manager
         .lock()
         .unwrap()
