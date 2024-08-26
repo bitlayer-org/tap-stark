@@ -237,6 +237,7 @@ pub fn index_to_rou<F: BfField>(sub_group_bits: u32) -> Script {
         OP_0
         OP_EQUALVERIFY
 
+        //init res acc to F::one()
         for j in (0..F::U32_SIZE).rev(){
             {F::one().as_u32_vec()[j]}
         }
