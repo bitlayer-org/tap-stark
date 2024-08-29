@@ -1,19 +1,14 @@
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
 use bitcoin_script_stack::stack::StackTracker;
 use primitives::field::BfField;
 
 use crate::script_gen::*;
-use crate::variable::VarWithValue;
-use crate::{
-    get_opid, Dsl, ExprPtr, Expression, IdCount, ScriptExprError, StackVariable, ValueVariable,
-    Variable, DYNAMIC_INPUT_OR_OUTPUT,
-};
+use crate::{ExprPtr, Expression, StackVariable, Variable};
 
 fn to_copy(
     low_var: StackVariable,

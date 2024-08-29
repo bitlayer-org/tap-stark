@@ -307,8 +307,6 @@ pub fn equivocation(_pub_key: &[Vec<u8>]) -> Script {
 #[cfg(test)]
 mod test {
 
-    use p3_baby_bear::BabyBear;
-
     use super::*;
     use crate::execute_script_with_inputs;
 

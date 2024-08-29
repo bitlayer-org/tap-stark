@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use bitcoin::{Script, ScriptBuf};
-use bitcoin_script::{define_pushable, script};
+use bitcoin::ScriptBuf;
+use bitcoin_script::script;
 use scripts::{pushable, unroll, AsU32Vec};
 
 use crate::bc_assignment::DefaultBCAssignment;
@@ -212,15 +212,12 @@ macro_rules! script_info {
 mod test {
     use std::ops::Mul;
 
-    use bitcoin::opcodes::{OP_FROMALTSTACK, OP_TOALTSTACK};
     use bitcoin_script::script;
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use primitives::field::BinomialExtensionField;
-    use scripts::bit_comm::bit_comm::BitCommitment;
     use scripts::bit_comm_u32::pushable;
     use scripts::execute_script_with_inputs;
-    use scripts::secret_generator::ThreadSecretGen;
     use scripts::u31_lib::{u31ext_mul, BabyBear4};
 
     use super::ScriptInfo;

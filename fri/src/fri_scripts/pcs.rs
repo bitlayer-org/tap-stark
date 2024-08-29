@@ -1,19 +1,12 @@
-use std::marker::PhantomData;
-use std::ops::Add;
-
-use bitcoin::opcodes::{OP_SUB, OP_TOALTSTACK, OP_TRUE};
-use bitcoin::{script, ScriptBuf as Script};
+use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use itertools::izip;
 use primitives::field::BfField;
-use script_manager::script_info::{self, ScriptInfo};
-use scripts::pseudo::{
-    OP_4DROP, OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4ROLL, OP_4TOALTSTACK, OP_NDUP,
-};
+use script_manager::script_info::ScriptInfo;
+use scripts::pseudo::{OP_4DROP, OP_4DUP, OP_4FROMALTSTACK, OP_4ROLL, OP_4TOALTSTACK};
 use scripts::u31_lib::{
-    u31_add, u31_double, u31_mul, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add,
-    u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31, u31ext_mul_u31_by_constant,
-    u31ext_sub, u31ext_sub_u31, BabyBear4, BabyBearU31,
+    u31_mul, u31_sub_u31ext, u31ext_add, u31ext_equalverify, u31ext_mul, u31ext_sub, BabyBear4,
+    BabyBearU31,
 };
 
 define_pushable!();
@@ -282,7 +275,6 @@ pub fn verify_quotient<Val: BfField, Challenge: BfField>(matrix_width: usize) ->
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::opcodes::{OP_FROMALTSTACK, OP_TRUE};
     use bitcoin::ScriptBuf as Script;
     use bitcoin_script::{define_pushable, script};
     use itertools::izip;

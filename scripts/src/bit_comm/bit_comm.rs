@@ -1,8 +1,7 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use bitcoin::ScriptBuf as Script;
-use bitcoin_script::{define_pushable, script};
+use bitcoin_script::script;
 use common::AsU32Vec;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -156,18 +155,16 @@ impl<F: AsU32Vec + ?Sized> BitCommitment<F> {
 #[cfg(test)]
 mod test {
 
-    use core::ops::{Add, Mul, Neg};
+    use core::ops::Add;
 
-    use bitcoin_script::{define_pushable, script};
+    use bitcoin_script::script;
     use p3_baby_bear::BabyBear;
-    use p3_field::{AbstractExtensionField, AbstractField, PrimeField32};
+    use p3_field::{AbstractExtensionField, PrimeField32};
     use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
-    use crate::u31_lib::{
-        u31_equalverify, u31ext_add, u31ext_double, u31ext_equalverify, BabyBear4,
-    };
+    use crate::u31_lib::{u31_equalverify, u31ext_add, u31ext_equalverify, BabyBear4};
     use crate::{execute_script, execute_script_with_inputs};
 
     // signuture is the input of this script

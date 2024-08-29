@@ -4,12 +4,10 @@ use std::marker::PhantomData;
 use common::BinomialExtensionField;
 use p3_baby_bear::BabyBear;
 use p3_challenger::{CanObserve, CanSample};
-use p3_field::AbstractField;
 use p3_symmetric::Hash;
-use primitives::challenger::chan_field::{PermutationField, U32};
+use primitives::challenger::chan_field::PermutationField;
 use primitives::challenger::BitExtractor;
 use primitives::field::BfField;
-use scripts::blake3;
 
 use crate::Dsl;
 

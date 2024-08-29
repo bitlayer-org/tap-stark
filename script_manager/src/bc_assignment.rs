@@ -70,12 +70,9 @@ impl<S: SecretGen> BCAssignment<S> {
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
+
     use p3_baby_bear::BabyBear;
-    use p3_field::{AbstractField, PackedValue};
-    use primitives::field::BfField;
-    use rand::{Rng, SeedableRng};
-    use rand_chacha::ChaCha20Rng;
+    use p3_field::AbstractField;
     use scripts::secret_generator::ThreadSecretGen;
 
     use super::*;

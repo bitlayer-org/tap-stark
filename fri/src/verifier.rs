@@ -2,17 +2,13 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use bitcoin::taproot::TapLeaf;
-use bitcoin::Script;
 use itertools::izip;
 use p3_challenger::{CanObserve, CanSample};
-use p3_util::reverse_bits_len;
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::error::BfError;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
-use script_manager::script_info::ScriptInfo;
 use scripts::execute_script_with_inputs;
 use tracing::trace;
 

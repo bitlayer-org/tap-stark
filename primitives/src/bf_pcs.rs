@@ -2,12 +2,10 @@
 
 use core::fmt::Debug;
 
-use bitcoin::script;
 use p3_commit::PolynomialSpace;
 use p3_field::ExtensionField;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
-use script_manager::script_info::ScriptInfo;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 

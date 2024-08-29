@@ -1,7 +1,4 @@
-use std::collections::VecDeque;
-
-use bitcoin::opcodes::{OP_RESERVED, OP_TOALTSTACK};
-use bitcoin::{witness, ScriptBuf};
+use bitcoin::ScriptBuf;
 use bitcoin_script::script;
 use scripts::pushable;
 
@@ -258,10 +255,9 @@ impl Planner for SimplePlanner {
 #[cfg(test)]
 mod test {
     use bitcoin_script::script;
-    use rand_chacha::rand_core::le;
     use scripts::{execute_script_with_inputs, pushable};
 
-    use crate::bc_assignment::{self, DefaultBCAssignment};
+    use crate::bc_assignment::DefaultBCAssignment;
     use crate::planner::{Planner, SimplePlanner};
     use crate::script_info;
     use crate::script_info::ScriptInfo;
@@ -270,7 +266,7 @@ mod test {
     #[test]
     fn test_simple_planner() {
         let mut bc_assigner = DefaultBCAssignment::new();
-        let mut script1 = script_info!(
+        let script1 = script_info!(
             "add1",
             script! {
                 OP_ADD
@@ -280,7 +276,7 @@ mod test {
             [3]
         );
 
-        let mut script2 = script_info!(
+        let script2 = script_info!(
             "add1",
             script! {
                 OP_ADD
@@ -300,7 +296,7 @@ mod test {
     #[test]
     fn test_simple_planner2() {
         let mut bc_assigner = DefaultBCAssignment::new();
-        let mut script1 = script_info!(
+        let script1 = script_info!(
             "add1",
             script! {
                 OP_ADD
@@ -310,7 +306,7 @@ mod test {
             [33]
         );
 
-        let mut script2 = script_info!(
+        let script2 = script_info!(
             "add1",
             script! {
                 OP_ADD

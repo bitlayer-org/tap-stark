@@ -1,21 +1,14 @@
-use std::cell::{Cell, Ref, RefCell};
 use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 
-use bitcoin::hashes::serde::de::value;
 use bitcoin_script_stack::stack::StackTracker;
-use lazy_static::lazy_static;
 use primitives::field::BfField;
 use tracing::warn;
 
 use crate::script_gen::*;
 use crate::variable::VarWithValue;
 use crate::{
-    get_opid, Dsl, ExprPtr, Expression, IdCount, InputOpcode, ScriptExprError, StackVariable,
-    ValueCounter, ValueVariable, Variable, DYNAMIC_INPUT_OR_OUTPUT,
+    get_opid, Dsl, ExprPtr, Expression, IdCount, InputOpcode, StackVariable, ValueCounter, Variable,
 };
 
 pub struct ManagerAssign {
@@ -292,7 +285,6 @@ mod tests {
     use common::{BabyBear, BinomialExtensionField};
     use p3_field::AbstractField;
     use primitives::field::BfField;
-    use scripts::u31_lib::BabyBearU31;
 
     use super::InputManager;
     use crate::{Dsl, ManagerAssign, ValueCounter};

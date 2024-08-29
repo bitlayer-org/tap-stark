@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use bitcoin::hex::DisplayHex;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 
 pub trait SecretGen: Debug + Clone + Default + PartialEq + Eq {
     fn gen() -> String;

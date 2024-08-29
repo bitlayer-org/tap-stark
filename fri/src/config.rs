@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use core::fmt::Debug;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::MutexGuard;
 
 use p3_field::Field;
 use p3_matrix::Matrix;

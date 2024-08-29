@@ -1,9 +1,7 @@
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use primitives::field::BfField;
-use scripts::pseudo::{
-    OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4ROLL, OP_4TOALTSTACK, OP_NDUP,
-};
+use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4ROLL, OP_4TOALTSTACK};
 use scripts::u31_lib::{
     u31_add, u31_double, u31_mul, u31_sub, u31ext_add, u31ext_double, u31ext_equalverify,
     u31ext_mul, u31ext_sub, BabyBear4, BabyBearU31,
@@ -277,7 +275,6 @@ pub fn value_square_with_input<F: BfField>() -> Script {
 #[cfg(test)]
 mod tests {
 
-    use bitcoin::opcodes::{OP_DEPTH, OP_EQUAL};
     use p3_baby_bear::BabyBear;
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};
@@ -1029,13 +1026,13 @@ pub fn fold_degree_with_input<F: BfField>() -> Script {
 
 #[cfg(test)]
 mod tests2 {
-    use bitcoin::opcodes::{OP_DROP, OP_EQUAL, OP_EQUALVERIFY, OP_FROMALTSTACK, OP_TOALTSTACK};
     use bitcoin::Script;
     use p3_baby_bear::BabyBear;
     use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
     use scripts::execute_script;
+    use scripts::pseudo::OP_NDUP;
 
     use super::*;
 

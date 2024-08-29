@@ -1,4 +1,3 @@
-use bitcoin::opcodes::{OP_ADD, OP_DROP, OP_SUB, OP_SWAP, OP_TOALTSTACK, OP_TRUE};
 use bitcoin::{script, ScriptBuf as Script};
 use bitcoin_script::{define_pushable, script};
 use primitives::field::BfField;
