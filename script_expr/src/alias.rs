@@ -1438,26 +1438,46 @@ mod tests2 {
     #[test]
     fn test_index_to_rou_bug() {
         // todo: the test below happens bug, to fix
-        // {
-        //     let bmap = BTreeMap::new();
-        //     let mut stack = StackTracker::new();
-        //     let sub_group_bits = 10u32;
-        //     let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
-        //     let index = 7u32;
-        //     let res = generator.exp_u64(index as u64);
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let sub_group_bits = 10u32;
+            let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
+            let index = 7u32;
+            let res = generator.exp_u64(index as u64);
 
-        //     let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
-        //     b.set_debug();
-        //     let b_2 = b.clone() * b;
-        //     //  let b_2 = b.square();
-        //     let res_expr = Dsl::constant_f(res * res);
-        //     let equal = b_2.equal_verify(res_expr);
-        //     equal.express1(&mut stack, &bmap,false);
-        //     stack.op_true();
-        //     let res = stack.run();
-        //     assert!(res.success);
-        //     println!("script_len: {:?}", stack.get_script_len());
-        // }
+            let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
+            b.set_debug();
+            let b_2 = b.clone() * b;
+            //  let b_2 = b.square();
+            let res_expr = Dsl::constant_f(res * res);
+            let equal = b_2.equal_verify(res_expr);
+            equal.express1(&mut stack, &bmap,false);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+            println!("script_len: {:?}", stack.get_script_len());
+        }
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let sub_group_bits = 10u32;
+            let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
+            let index = 7u32;
+            let res = generator.exp_u64(index as u64);
+
+            let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
+            b.set_debug();
+            //let b_2 = b.clone() * b;
+            //  let b_2 = b.square();
+            let res_expr = Dsl::constant_f(res);
+            let equal = res_expr.equal_verify(b);
+            equal.express1(&mut stack, &bmap,false);
+            stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+            println!("script_len: {:?}", stack.get_script_len());
+        }
 
         {
             let bmap = BTreeMap::new();
@@ -1465,6 +1485,26 @@ mod tests2 {
             let sub_group_bits = 10u32;
             let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
             let index = 7u32;
+            let res = generator.exp_u64(index as u64);
+
+            let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
+            let b_2 = b.clone() * b;
+            let res_expr = Dsl::constant_f(res * res);
+            let equal = b_2.equal_verify(res_expr);
+            equal.express(&mut stack, &bmap);
+            stack.op_true();
+
+            let res = stack.run();
+            assert!(res.success);
+            println!("script_len: {:?}", stack.get_script_len());
+        }
+
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let sub_group_bits = 10u32;
+            let generator = BabyBear::two_adic_generator(sub_group_bits as usize);
+            let index = 0u32;
             let res = generator.exp_u64(index as u64);
 
             let b = Dsl::<BabyBear>::index_to_rou(index, sub_group_bits);
