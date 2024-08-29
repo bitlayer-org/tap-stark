@@ -17,6 +17,7 @@
 //
 
 pub use bitcoin_script::{define_pushable, script};
+use serde::{Deserialize, Serialize};
 
 pub use crate::execute_script;
 
@@ -54,7 +55,7 @@ pub const N1: usize = 2;
 //
 // Helper functions
 //
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub struct Winternitz {
     secret_key: String,
     pub_key: Vec<Vec<u8>>,

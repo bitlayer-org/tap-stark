@@ -5,11 +5,13 @@ use bitcoin_script::{define_pushable, script};
 use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::secret_generator::ConstantSecretGen;
+use serde::{Deserialize, Serialize};
 
 use crate::field::BfField;
 define_pushable!();
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(bound = "")]
 pub struct PointsLeaf<F: BfField> {
     leaf_index: usize,
     leaf_evals: Points<F>,
@@ -62,7 +64,8 @@ impl<F: BfField> PointsLeaf<F> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(bound = "")]
 pub struct Points<F: BfField> {
     pub points: Vec<Point<F>>,
 }
@@ -99,7 +102,8 @@ impl<F: BfField> Points<F> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(bound = "")]
 pub struct Point<F: BfField> {
     pub x: F,
     pub y: F,

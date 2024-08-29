@@ -22,13 +22,13 @@ where
     type Domain: PolynomialSpace;
 
     /// The commitment that's sent to the verifier.
-    type Commitment: Clone;
+    type Commitment: Clone + Serialize + DeserializeOwned;
 
     /// Data that the prover stores for committed polynomials, to help the prover with opening.
     type ProverData;
 
     /// The opening argument.
-    type Proof: Clone;
+    type Proof: Clone + Serialize + DeserializeOwned;
 
     type Error: Debug;
 

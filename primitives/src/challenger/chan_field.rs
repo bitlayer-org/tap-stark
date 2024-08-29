@@ -2,6 +2,8 @@ use core::array;
 
 use p3_baby_bear::BabyBear;
 use p3_field::PrimeField32;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 pub trait ChallengeField<const U8_NUM: usize>: PrimeField32 + Clone + Default + Copy + Ord {
     fn u8_num() -> usize {
         U8_NUM
@@ -20,7 +22,7 @@ impl ChallengeField<4> for BabyBear {}
 // the PremutationField only support U8_NUM<=8
 // Use LittleEndian
 pub trait PermutationField<const U8_NUM: usize>:
-    Clone + Default + Copy + Ord + Sized + Send + Sync
+    Clone + Default + Copy + Ord + Sized + Send + Sync + Serialize + DeserializeOwned
 {
     fn u8_num() -> usize {
         U8_NUM

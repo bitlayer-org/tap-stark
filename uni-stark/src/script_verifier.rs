@@ -15,8 +15,8 @@ use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::challenger::chan_field::U32;
 use primitives::field::BfField;
 use script_expr::{
-    selectors_at_point_expr, BfChallengerExpr, Dsl, InputManager, ManagerAssign, ScriptConstraintBuilder,
-    ValueCounter,
+    selectors_at_point_expr, BfChallengerExpr, Dsl, InputManager, ManagerAssign,
+    ScriptConstraintBuilder, ValueCounter,
 };
 use serde::de::value;
 use tracing::instrument;
