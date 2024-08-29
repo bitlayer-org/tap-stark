@@ -28,6 +28,7 @@ use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
 use script_expr::{Dsl, InputManager, ManagerAssign};
+use serde::{Deserialize, Serialize};
 use tracing::{debug_span, info_span, instrument};
 
 use crate::error::{self, FriError};
@@ -62,7 +63,8 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(bound = "")]
 pub struct BatchOpening<Val: BfField, InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>> {
     pub opened_values: Vec<Vec<Val>>,
     pub opening_proof: <InputMmcs as BFMmcs<Val>>::Proof,

@@ -4,8 +4,8 @@ use core::fmt::Debug;
 use std::borrow::Borrow;
 
 use p3_matrix::dense::RowMajorMatrix;
-// use serde::de::DeserializeOwned;
-// use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 /// A "Mixed Matrix Commitment Scheme" (MMCS) is a generalization of a vector commitment scheme; it
 /// supports committing to matrices and then opening rows. It is also batch-oriented; one can commit
@@ -17,10 +17,8 @@ use p3_matrix::dense::RowMajorMatrix;
 /// useful in the FRI protocol. See the documentation for `open_batch` for more details.
 pub trait BFMmcs<T: Send + Sync>: Clone {
     type ProverData;
-    // type Commitment: Clone + Serialize + DeserializeOwned;
-    // type Proof: Clone + Serialize + DeserializeOwned;
-    type Commitment: Clone;
-    type Proof: Clone;
+    type Commitment: Clone + Serialize + DeserializeOwned;
+    type Proof: Clone + Serialize + DeserializeOwned;
     type Error: Debug;
 
     fn commit(&self, inputs: Vec<RowMajorMatrix<T>>) -> (Self::Commitment, Self::ProverData);

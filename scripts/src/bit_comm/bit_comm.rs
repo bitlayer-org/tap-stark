@@ -5,6 +5,7 @@ use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
 use common::AsU32Vec;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 
 use super::bit_comm_u32::BitCommitmentU32;
 use super::secret_generator::{SecretGen, ThreadSecretGen};
@@ -17,7 +18,7 @@ use crate::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
 // 2. after run this `execute_script_with_input(bc.check_and_recover(), bc.witness())`,
 //    the u32 values should be placed on the stack for any bc.
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct BitCommitment<F: AsU32Vec + ?Sized + 'static> {
     pub u32_values: Vec<u32>,
     pub commitments: Vec<BitCommitmentU32>,

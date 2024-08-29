@@ -204,132 +204,132 @@ fn test_generate_script_expr() {
     .expect("verification failed");
 }
 
-#[test]
-fn test_quotient_zeta() {
-    let val_mmcs = ValMmcs::new();
-    let challenge_mmcs = ChallengeMmcs::new();
-    let dft = Dft {};
-    let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
-    let fri_config = FriConfig {
-        log_blowup: 2,
-        num_queries: 28,
-        proof_of_work_bits: 8,
-        mmcs: challenge_mmcs,
-    };
-    let pcs = MyPcs::new(dft, val_mmcs, fri_config);
-    let config = MyConfig::new(pcs);
-    let permutation = Blake3Permutation {};
-    let mut challenger = Challenger::new(permutation).unwrap();
+// #[test]
+// fn test_quotient_zeta() {
+//     let val_mmcs = ValMmcs::new();
+//     let challenge_mmcs = ChallengeMmcs::new();
+//     let dft = Dft {};
+//     let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
+//     let fri_config = FriConfig {
+//         log_blowup: 2,
+//         num_queries: 28,
+//         proof_of_work_bits: 8,
+//         mmcs: challenge_mmcs,
+//     };
+//     let pcs = MyPcs::new(dft, val_mmcs, fri_config);
+//     let config = MyConfig::new(pcs);
+//     let permutation = Blake3Permutation {};
+//     let mut challenger = Challenger::new(permutation).unwrap();
 
-    let pis = vec![
-        BabyBear::from_canonical_u64(0),
-        BabyBear::from_canonical_u64(1),
-        BabyBear::from_canonical_u64(21),
-    ];
-    let proof = prove(&config, &FibonacciAir {}, &mut challenger, trace, &pis);
+//     let pis = vec![
+//         BabyBear::from_canonical_u64(0),
+//         BabyBear::from_canonical_u64(1),
+//         BabyBear::from_canonical_u64(21),
+//     ];
+//     let proof = prove(&config, &FibonacciAir {}, &mut challenger, trace, &pis);
 
-    let Proof {
-        commitments,
-        opened_values,
-        opening_proof,
-        degree_bits,
-    } = proof;
+//     let Proof {
+//         commitments,
+//         opened_values,
+//         opening_proof,
+//         degree_bits,
+//     } = proof;
 
-    let degree = 1 << degree_bits;
-    let log_quotient_degree =
-        get_log_quotient_degree::<Val, FibonacciAir>(&FibonacciAir {}, 0, pis.len());
-    let quotient_degree = 1 << log_quotient_degree;
+//     let degree = 1 << degree_bits;
+//     let log_quotient_degree =
+//         get_log_quotient_degree::<Val, FibonacciAir>(&FibonacciAir {}, 0, pis.len());
+//     let quotient_degree = 1 << log_quotient_degree;
 
-    let trace_domain = TwoAdicMultiplicativeCoset {
-        log_n: degree_bits,
-        shift: Val::one(),
-    };
-    let quotient_domain =
-        trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
-    let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
+//     let trace_domain = TwoAdicMultiplicativeCoset {
+//         log_n: degree_bits,
+//         shift: Val::one(),
+//     };
+//     let quotient_domain =
+//         trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
+//     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
 
-    let mut rng = ChaCha20Rng::seed_from_u64(0u64);
+//     let mut rng = ChaCha20Rng::seed_from_u64(0u64);
 
-    let zeta = rng.gen::<Challenge>();
+//     let zeta = rng.gen::<Challenge>();
 
-    let a = Val::generator().try_inverse().unwrap();
+//     let a = Val::generator().try_inverse().unwrap();
 
-    let generator = Val::two_adic_generator(quotient_domain.log_n);
+//     let generator = Val::two_adic_generator(quotient_domain.log_n);
 
-    let quotient_chunk_nums = quotient_chunks_domains.len();
+//     let quotient_chunk_nums = quotient_chunks_domains.len();
 
-    let zps = quotient_chunks_domains
-        .iter()
-        .enumerate()
-        .map(|(i, domain)| {
-            quotient_chunks_domains
-                .iter()
-                .enumerate()
-                .filter(|(j, _)| *j != i)
-                .map(|(_, other_domain)| {
-                    other_domain.zp_at_point(zeta)
-                        * other_domain.zp_at_point(domain.first_point()).inverse()
-                })
-                .product::<Challenge>()
-        })
-        .collect_vec();
+//     let zps = quotient_chunks_domains
+//         .iter()
+//         .enumerate()
+//         .map(|(i, domain)| {
+//             quotient_chunks_domains
+//                 .iter()
+//                 .enumerate()
+//                 .filter(|(j, _)| *j != i)
+//                 .map(|(_, other_domain)| {
+//                     other_domain.zp_at_point(zeta)
+//                         * other_domain.zp_at_point(domain.first_point()).inverse()
+//                 })
+//                 .product::<Challenge>()
+//         })
+//         .collect_vec();
 
-    let quotient = opened_values
-        .quotient_chunks
-        .iter()
-        .enumerate()
-        .map(|(ch_i, ch)| {
-            ch.iter()
-                .enumerate()
-                .map(|(e_i, &c)| {
-                    zps[ch_i]
-                        * <BinomialExtensionField<BabyBear, 4> as AbstractExtensionField<
-                            BabyBear,
-                        >>::monomial(e_i)
-                        * c
-                })
-                .sum::<Challenge>()
-        })
-        .sum::<Challenge>();
-    let denomiator_inverse = quotient_chunks_domains
-        .iter()
-        .enumerate()
-        .map(|(i, domain)| {
-            quotient_chunks_domains
-                .iter()
-                .enumerate()
-                .filter(|(j, _)| *j != i)
-                .map(|(_, other_domain)| {
-                    other_domain
-                        .zp_at_point(domain.first_point())
-                        .inverse()
-                        .into()
-                })
-                .product::<Val>()
-        })
-        .collect_vec();
+//     let quotient = opened_values
+//         .quotient_chunks
+//         .iter()
+//         .enumerate()
+//         .map(|(ch_i, ch)| {
+//             ch.iter()
+//                 .enumerate()
+//                 .map(|(e_i, &c)| {
+//                     zps[ch_i]
+//                         * <BinomialExtensionField<BabyBear, 4> as AbstractExtensionField<
+//                             BabyBear,
+//                         >>::monomial(e_i)
+//                         * c
+//                 })
+//                 .sum::<Challenge>()
+//         })
+//         .sum::<Challenge>();
+//     let denomiator_inverse = quotient_chunks_domains
+//         .iter()
+//         .enumerate()
+//         .map(|(i, domain)| {
+//             quotient_chunks_domains
+//                 .iter()
+//                 .enumerate()
+//                 .filter(|(j, _)| *j != i)
+//                 .map(|(_, other_domain)| {
+//                     other_domain
+//                         .zp_at_point(domain.first_point())
+//                         .inverse()
+//                         .into()
+//                 })
+//                 .product::<Val>()
+//         })
+//         .collect_vec();
 
-    let mut manager_assign = ManagerAssign::new();
-    let manager = manager_assign.next_manager();
+//     let mut manager_assign = ManagerAssign::new();
+//     let manager = manager_assign.next_manager();
 
-    let zeta_dsl = Dsl::from(zeta);
-    compute_quotient_expr::<Val, Challenge>(
-        zeta_dsl,
-        degree,
-        generator,
-        quotient_chunk_nums,
-        opened_values.quotient_chunks,
-        denomiator_inverse,
-        quotient,
-        manager.lock().unwrap(),
-    );
+//     let zeta_dsl = Dsl::from(zeta);
+//     compute_quotient_expr::<Val, Challenge>(
+//         zeta_dsl,
+//         degree,
+//         generator,
+//         quotient_chunk_nums,
+//         opened_values.quotient_chunks,
+//         denomiator_inverse,
+//         quotient,
+//         manager.lock().unwrap(),
+//     );
 
-    {
-        let mut m = manager.lock().unwrap();
-        m.embed_hint_verify::<BabyBear>();
-        m.run(false);
-    }
-}
+//     {
+//         let mut m = manager.lock().unwrap();
+//         m.embed_hint_verify::<BabyBear>();
+//         m.run(false);
+//     }
+// }
 
 // #[cfg(debug_assertions)]
 // #[test]

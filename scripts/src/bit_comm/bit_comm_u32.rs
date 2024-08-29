@@ -1,12 +1,13 @@
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
+use serde::{Deserialize, Serialize};
 
 use super::winternitz::*;
 use crate::bit_comm::winternitz;
 use crate::u32_std::u32_compress;
 define_pushable!();
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct BitCommitmentU32 {
     pub value: u32,
     pub winternitz: Winternitz,

@@ -8,6 +8,8 @@ use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::log2_strict_usize;
 use scripts::execute_script_with_inputs;
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
 
 use super::bf_mmcs::BFMmcs;
 use super::error::BfError;
@@ -22,7 +24,7 @@ pub const DEFAULT_MATRIX_WIDTH: usize = 2;
 pub const LOG_DEFAULT_MATRIX_WIDTH: usize = 1;
 
 pub const ROOT_WIDTH: usize = 8;
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd)]
 pub struct TapTreeMmcs<F> {
     _marker: PhantomData<F>,
 }
@@ -35,7 +37,8 @@ impl<F> TapTreeMmcs<F> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(bound = "")]
 pub struct CommitProof<F: BfField> {
     pub points_leaf: PointsLeaf<F>,
     pub leaf_node: LeafNode,

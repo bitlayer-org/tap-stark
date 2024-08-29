@@ -2,16 +2,16 @@ use alloc::vec::Vec;
 
 use bitcoin::taproot::LeafNode;
 use primitives::field::BfField;
-// use serde::{Deserialize, Serialize};
 use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::PointsLeaf;
 use primitives::mmcs::taptree_mmcs::CommitProof;
-// #[derive(Serialize, Deserialize)]
-// #[serde(bound(
-//     serialize = "Witness: Serialize",
-//     deserialize = "Witness: Deserialize<'de>"
-// ))]
-#[derive(Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(bound(
+    serialize = "Witness: Serialize, InputProof: Serialize",
+    deserialize = "Witness: Deserialize<'de>, InputProof: Deserialize<'de>"
+))]
 pub struct FriProof<F: BfField, M: BFMmcs<F>, Witness, InputProof> {
     pub(crate) commit_phase_commits: Vec<M::Commitment>,
     pub(crate) query_proofs: Vec<BfQueryProof<F, InputProof>>,
@@ -21,9 +21,11 @@ pub struct FriProof<F: BfField, M: BFMmcs<F>, Witness, InputProof> {
     pub(crate) pow_witness: Witness,
 }
 
-// #[derive(Serialize, Deserialize)]
-// #[serde(bound = "")]
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(bound(
+    serialize = "InputProof: Serialize",
+    deserialize = "InputProof: Deserialize<'de>",
+))]
 pub struct BfQueryProof<F: BfField, InputProof> {
     pub input_proof: InputProof,
     /// For each commit phase commitment, this contains openings of a commit phase codeword at the
