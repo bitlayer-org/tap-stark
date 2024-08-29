@@ -392,10 +392,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::fmt::Debug;
+    
 
-    use bitcoin::{OutPoint, ScriptBuf as Script};
-    use bitcoin_script::{define_pushable, script};
+    use bitcoin::ScriptBuf as Script;
+    use bitcoin_script::script;
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
     use p3_challenger::{CanObserve, CanSample, CanSampleBits};
@@ -403,10 +403,10 @@ mod test {
     use p3_field::{AbstractField, PrimeField32};
     use primitives::challenger::chan_field::{PermutationField, U32};
     use primitives::challenger::{BfChallenger, BfGrindingChallenger, Blake3Permutation};
-    use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+    use script_manager::bc_assignment::DefaultBCAssignment;
     use scripts::bit_comm::winternitz::{pushable, to_digits};
-    use scripts::u31_lib::BabyBear4;
-    use scripts::{execute_script, execute_script_with_inputs};
+    
+    use scripts::execute_script_with_inputs;
 
     use super::{new_challenge_commit, new_u32_bit_commit, Commit, FiatShamirSubTree, SubTree};
 

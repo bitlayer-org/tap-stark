@@ -532,8 +532,8 @@ mod test {
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};
     use p3_util::reverse_bits_len;
-    use primitives::mmcs::taptree::EvaluationLeaf;
-    use rand::Rng;
+    
+    
     use scripts::execute_script;
 
     type AF = BabyBear;

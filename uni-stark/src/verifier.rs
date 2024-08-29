@@ -1,24 +1,18 @@
-use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use bitcoin_script_stack::stack::StackTracker;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
 use p3_field::{AbstractExtensionField, AbstractField, Field};
-use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
+use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
-use p3_util::log2_strict_usize;
 use primitives::bf_pcs::Pcs;
 use primitives::field::BfField;
-use script_expr::{selectors_at_point_expr, Expression, ScriptConstraintBuilder};
-use script_manager::script_info::ScriptInfo;
-use scripts::execute_script_with_inputs;
 use tracing::instrument;
 
-use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
+use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder};
 
 #[instrument(skip_all)]

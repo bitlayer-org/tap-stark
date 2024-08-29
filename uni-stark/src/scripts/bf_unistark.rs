@@ -1,13 +1,9 @@
-use std::cell::Cell;
-use std::collections::BTreeMap;
-use std::sync::{Arc, MutexGuard};
+use std::sync::MutexGuard;
 
-use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use itertools::Itertools;
 use p3_field::ExtensionField;
 use primitives::field::BfField;
-use script_expr::{Dsl, Expression, InputManager};
-use scripts::u31_lib::u31_equalverify;
+use script_expr::{Dsl, InputManager};
 
 use crate::get_table;
 

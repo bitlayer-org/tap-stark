@@ -62,7 +62,7 @@ mod tests {
     use primitives::field::BfField;
     use rand::{thread_rng, Rng};
     use scripts::execute_script;
-    use scripts::u31_lib::BabyBear4;
+    
 
     use super::*;
     use crate::fri_scripts::verify_folding::fold_degree;

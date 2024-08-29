@@ -279,10 +279,10 @@ mod tests {
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};
     use p3_util::reverse_bits_len;
-    use rand::{random, Rng};
+    use rand::Rng;
     type AF = BabyBear;
     type F = BinomialExtensionField<BabyBear, 4>;
-    use scripts::{execute_script, execute_script_with_inputs};
+    use scripts::execute_script;
 
     use super::*;
 
@@ -1026,11 +1026,11 @@ pub fn fold_degree_with_input<F: BfField>() -> Script {
 
 #[cfg(test)]
 mod tests2 {
-    use bitcoin::Script;
+    
     use p3_baby_bear::BabyBear;
     use primitives::field::BfField;
-    use rand::{Rng, SeedableRng};
-    use rand_chacha::ChaCha20Rng;
+    
+    
     use scripts::execute_script;
     use scripts::pseudo::OP_NDUP;
 

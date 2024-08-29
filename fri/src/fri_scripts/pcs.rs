@@ -275,19 +275,19 @@ pub fn verify_quotient<Val: BfField, Challenge: BfField>(matrix_width: usize) ->
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::ScriptBuf as Script;
+    
     use bitcoin_script::{define_pushable, script};
     use itertools::izip;
-    use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
-    use p3_field::{AbstractExtensionField, AbstractField};
-    use p3_interpolation::interpolate_coset;
-    use p3_matrix::dense::RowMajorMatrix;
-    use p3_matrix::util::reverse_matrix_index_bits;
+    
+    use p3_field::AbstractField;
+    
+    
+    
     use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
     use script_manager::bc_assignment::DefaultBCAssignment;
-    use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4TOALTSTACK};
+    use scripts::pseudo::{OP_4FROMALTSTACK, OP_4TOALTSTACK};
     use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
     use scripts::{execute_script, execute_script_with_inputs, BabyBear, BinomialExtensionField};
 

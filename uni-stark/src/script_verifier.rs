@@ -8,20 +8,18 @@ use p3_air::{Air, BaseAir};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
 use p3_field::{AbstractExtensionField, AbstractField, Field, TwoAdicField};
-use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
+use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use p3_util::log2_strict_usize;
 use primitives::bf_pcs::{Pcs, PcsExpr};
-use primitives::challenger::chan_field::U32;
 use primitives::field::BfField;
 use script_expr::{
-    selectors_at_point_expr, BfChallengerExpr, Dsl, InputManager, ManagerAssign,
+    selectors_at_point_expr, Dsl,
     ScriptConstraintBuilder, ValueCounter,
 };
-use serde::de::value;
 use tracing::instrument;
 
-use crate::symbolic_builder::{self, get_log_quotient_degree, SymbolicAirBuilder};
+use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{
     compute_quotient_expr, PcsError, Proof, StarkGenericConfig, Val, VerifierConstraintFolder,
 };
