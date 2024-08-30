@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use p3_challenger::{CanObserve, CanSample, FieldChallenger};
+use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
 use p3_field::{ExtensionField, Field};
 use primitives::bf_pcs;

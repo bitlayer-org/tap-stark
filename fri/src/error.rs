@@ -1,4 +1,3 @@
-use bitcoin::taproot::TaprootBuilderError;
 use primitives::mmcs::error::BfError;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SVError {

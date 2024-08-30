@@ -1,11 +1,8 @@
-use alloc::vec;
 use alloc::vec::Vec;
 use core::panic;
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use bitcoin::taproot::TapLeaf;
-use bitcoin_script_stack::stack::StackTracker;
 use itertools::izip;
 use p3_field::AbstractField;
 use p3_util::reverse_bits_len;
@@ -14,9 +11,8 @@ use primitives::mmcs::bf_mmcs::BFMmcs;
 use primitives::mmcs::point::{Point, PointsLeaf};
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use script_expr::{Dsl, InputManager, ManagerAssign};
-use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
 use scripts::{execute_script_with_inputs, BabyBear};
-use tracing::{instrument, trace};
+use tracing::trace;
 
 use crate::error::{FriError, SVError};
 use crate::verifier::*;
@@ -44,7 +40,7 @@ where
         let cur_manager = manager_assign
             .next_manager_with_name(format!("[fri-pcs-verify query_index:{}] ", index));
         let ro = {
-            let mut manager: std::sync::MutexGuard<Box<InputManager>> = cur_manager.lock().unwrap();
+            let manager: std::sync::MutexGuard<Box<InputManager>> = cur_manager.lock().unwrap();
             open_input(index, &query_proof.input_proof, manager)
                 .map_err(|e| FriError::InputError(e))?
         };

@@ -1,8 +1,8 @@
 use fri::{FriConfig, TwoAdicFriPcs};
 use itertools::{izip, Itertools};
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use p3_challenger::{CanObserve, CanSample, DuplexChallenger, FieldChallenger};
-use p3_commit::{ExtensionMmcs, PolynomialSpace};
+use p3_baby_bear::BabyBear;
+use p3_challenger::{CanObserve, CanSample};
+use p3_commit::PolynomialSpace;
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
 use p3_field::{ExtensionField, Field};
@@ -15,7 +15,7 @@ use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::{Dsl, Expression, ManagerAssign};
+use script_expr::ManagerAssign;
 
 extern crate alloc;
 

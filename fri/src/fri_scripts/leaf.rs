@@ -9,12 +9,10 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-use itertools::rev;
 use p3_field::TwoAdicField;
 use primitives::field::BfField;
 use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
-use scripts::bit_comm_u32::BitCommitmentU32;
 use scripts::execute_script_with_inputs;
 use scripts::secret_generator::ConstantSecretGen;
 use scripts::u31_lib::{
@@ -23,8 +21,8 @@ use scripts::u31_lib::{
 use segment::SegmentLeaf;
 
 use super::verify_folding::{
-    cal_neg_x_with_input, fold_degree, fold_degree_with_input, index_to_rou,
-    reverse_bits_len_script_with_input, value_square_with_input,
+    cal_neg_x_with_input, fold_degree_with_input, index_to_rou, reverse_bits_len_script_with_input,
+    value_square_with_input,
 };
 
 define_pushable!();
@@ -222,7 +220,7 @@ impl<const NUM_POLY: usize, F: BfField> IndexToROULeaf<NUM_POLY, F> {
 
 impl<const NUM_POLY: usize, F: BfField> SegmentLeaf for IndexToROULeaf<NUM_POLY, F> {
     fn input(&self) -> Vec<Vec<u8>> {
-        let mut sigs0 = self.x_bc.witness();
+        let sigs0 = self.x_bc.witness();
         let mut sigs1 = self.index_bc.witness();
         sigs1.extend(sigs0);
         sigs1
@@ -534,8 +532,8 @@ mod test {
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};
     use p3_util::reverse_bits_len;
-    use primitives::mmcs::taptree::EvaluationLeaf;
-    use rand::Rng;
+    
+    
     use scripts::execute_script;
 
     type AF = BabyBear;

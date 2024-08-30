@@ -1,14 +1,13 @@
-use core::ops::{Deref, DerefMut};
-use core::{mem, usize};
+use core::usize;
 use std::cmp::Reverse;
 
 use bitcoin::taproot::LeafVersion::TapScript;
 use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
 use bitcoin::{ScriptBuf, TapNodeHash};
-use itertools::{Chunk, Itertools};
+use itertools::Itertools;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
-use p3_util::{log2_ceil_usize, log2_strict_usize, reverse_slice_index_bits};
+use p3_util::{log2_ceil_usize, log2_strict_usize};
 use scripts::secret_generator::ThreadSecretGen;
 
 use super::error::BfError;
@@ -248,7 +247,7 @@ impl<const NUM_POLY: usize> TreeBuilder<NUM_POLY> {
                 reminder_node = working_nodes.pop();
             }
 
-            let mut node_tuples = working_nodes.into_iter().tuples();
+            let node_tuples = working_nodes.into_iter().tuples();
             let mut todo: Vec<NodeInfo> = Vec::new();
             let mut a_start_idx = 0usize; // will be updated after finishing combining two nodes.
 
@@ -315,8 +314,8 @@ impl<const NUM_POLY: usize> BasicTree<NUM_POLY> {
     // This function only support combine trees with same depth
     pub fn combine_tree(a: Self, b: Self) -> Self {
         // perserve indices map before combining two trees.
-        let mut a_leaf_indices = a.leaf_indices.clone();
-        let mut b_leaf_indices = b.leaf_indices.clone();
+        let a_leaf_indices = a.leaf_indices.clone();
+        let b_leaf_indices = b.leaf_indices.clone();
 
         let (combined_tree, noswap) =
             combine_two_nodes(a.root_node.unwrap(), b.root_node.unwrap()).unwrap();
@@ -465,14 +464,8 @@ impl<F: BfField> Polynomials<F> {
 mod tests {
 
     use p3_baby_bear::BabyBear;
-    use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
-    use p3_field::extension::BinomialExtensionField;
-    use p3_field::{AbstractExtensionField, AbstractField};
-    use p3_interpolation::interpolate_subgroup;
-    use p3_matrix::dense::RowMajorMatrix;
-    use rand::distributions::Standard;
-    use rand::prelude::Distribution;
-    use rand::{thread_rng, Rng};
+    use p3_field::AbstractField;
+    use rand::Rng;
     use scripts::execute_script_with_inputs;
 
     use super::*;

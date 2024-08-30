@@ -1,33 +1,22 @@
 use std::borrow::Borrow;
-use std::collections::BTreeMap;
 
-use bitcoin_script_stack::stack::StackTracker;
 use fri::{FriConfig, TwoAdicFriPcs};
-use itertools::Itertools;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_baby_bear::BabyBear;
-use p3_commit::{ExtensionMmcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
 use p3_field::{
-    AbstractExtensionField, AbstractField, ExtensionField, Field, PrimeField64, TwoAdicField,
+    AbstractField, PrimeField64,
 };
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
-use primitives::bf_pcs::Pcs;
 use primitives::challenger::chan_field::U32;
 // use p3_challenger::DuplexChallenger;
 use primitives::challenger::{BfChallenger, Blake3Permutation};
-use primitives::field::BfField;
 use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
-use rand::{thread_rng, Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
-use script_expr::{BfChallengerExpr, Dsl, Expression, ManagerAssign};
-use script_manager::bc_assignment::DefaultBCAssignment;
-use scripts::execute_script_with_inputs;
-use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
+use script_expr::BfChallengerExpr;
 use uni_stark::{
-    compute_quotient_expr, generate_script_verifier, get_log_quotient_degree, prove, verify, Proof,
+    generate_script_verifier, prove, verify,
     StarkConfig,
 };
 

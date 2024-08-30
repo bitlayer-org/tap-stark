@@ -1,15 +1,8 @@
 use std::usize;
 
-use bitcoin::opcodes::{
-    OP_2SWAP, OP_DROP, OP_ENDIF, OP_EQUALVERIFY, OP_FROMALTSTACK, OP_GREATERTHAN,
-    OP_GREATERTHANOREQUAL, OP_LESSTHAN, OP_LESSTHANOREQUAL, OP_PICK, OP_RESERVED2, OP_SUB, OP_SWAP,
-    OP_TOALTSTACK,
-};
-use bitcoin::script::{self, scriptint_vec};
 use bitcoin::ScriptBuf as Script;
-use bitcoin_script::{define_pushable, script};
+use bitcoin_script::script;
 use itertools::Itertools;
-use p3_field::PrimeField32;
 use primitives::challenger::chan_field::{PermutationField, U32};
 use primitives::challenger::{BfChallenger, BitExtractor, Blake3Permutation};
 use primitives::field::BfField;
@@ -17,9 +10,8 @@ use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::bit_comm_u32::*;
 use scripts::blake3;
-use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4TOALTSTACK};
-use scripts::u32_rrot::{u32_rrot, u8_extract_hbit};
-use scripts::u32_std::{u32_compress, u32_equal, u32_equalverify, u32_push};
+use scripts::pseudo::{OP_4FROMALTSTACK, OP_4TOALTSTACK};
+use scripts::u32_std::{u32_compress, u32_equalverify};
 
 /// fiat shamir subtree contains a series script leafs and coressponding
 trait SubTree {
@@ -223,7 +215,7 @@ fn u32_to_compressed_babybear() -> Script {
 }
 
 fn new_u32_bit_commit(bc_assignment: &mut DefaultBCAssignment, value: U32) -> Commit {
-    let mut bitcommit = bc_assignment.assign(U32_to_u32(value));
+    let bitcommit = bc_assignment.assign(U32_to_u32(value));
     let locking = script! {
         { bitcommit.commitments.get(0).unwrap().checksig_verify_script() }
     };
@@ -400,11 +392,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::fmt::Debug;
+    
 
-    use bitcoin::opcodes::OP_EQUALVERIFY;
-    use bitcoin::{OutPoint, ScriptBuf as Script};
-    use bitcoin_script::{define_pushable, script};
+    use bitcoin::ScriptBuf as Script;
+    use bitcoin_script::script;
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
     use p3_challenger::{CanObserve, CanSample, CanSampleBits};
@@ -412,10 +403,10 @@ mod test {
     use p3_field::{AbstractField, PrimeField32};
     use primitives::challenger::chan_field::{PermutationField, U32};
     use primitives::challenger::{BfChallenger, BfGrindingChallenger, Blake3Permutation};
-    use script_manager::bc_assignment::{BCAssignment, DefaultBCAssignment};
+    use script_manager::bc_assignment::DefaultBCAssignment;
     use scripts::bit_comm::winternitz::{pushable, to_digits};
-    use scripts::u31_lib::BabyBear4;
-    use scripts::{execute_script, execute_script_with_inputs};
+    
+    use scripts::execute_script_with_inputs;
 
     use super::{new_challenge_commit, new_u32_bit_commit, Commit, FiatShamirSubTree, SubTree};
 

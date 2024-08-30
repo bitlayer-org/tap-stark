@@ -5,11 +5,8 @@ use bitcoin::hashes::Hash as Bitcoin_HASH;
 use bitcoin::taproot::{LeafNode, TapLeaf};
 use bitcoin::TapNodeHash;
 use p3_matrix::dense::RowMajorMatrix;
-use p3_matrix::Matrix;
-use p3_util::log2_strict_usize;
 use scripts::execute_script_with_inputs;
-use serde::ser::SerializeStruct;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use super::bf_mmcs::BFMmcs;
 use super::error::BfError;

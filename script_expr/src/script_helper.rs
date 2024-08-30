@@ -1,15 +1,10 @@
+use alloc::vec;
 use alloc::vec::Vec;
-use alloc::{format, vec};
 
-use bitcoin::opcodes::{OP_FROMALTSTACK, OP_TOALTSTACK};
 use primitives::field::BfField;
 use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
 use scripts::treepp::*;
-use scripts::u31_lib::{
-    u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31ext_add, u31ext_add_u31,
-    u31ext_equalverify, u31ext_mul, u31ext_mul_u31, u31ext_neg, u31ext_sub, u31ext_sub_u31,
-    BabyBear4, BabyBearU31,
-};
+use scripts::u31_lib::{u31_mul, u31ext_equalverify, u31ext_mul, BabyBear4, BabyBearU31};
 
 /// constraint: bits <= 31
 /// input: [b_{0}, b_{1}, ..., b_{bits-1}]
@@ -287,7 +282,6 @@ pub(crate) fn value_exp_n<F: BfField>(log_n: usize) -> Script {
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::opcodes::{OP_DROP, OP_EQUAL};
     use p3_baby_bear::BabyBear;
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};

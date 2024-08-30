@@ -181,7 +181,6 @@ impl<F: BfField> Point<F> {
 #[cfg(test)]
 mod test {
     use p3_baby_bear::BabyBear;
-    use p3_field::{AbstractExtensionField, AbstractField, PrimeField32};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
     use scripts::execute_script_with_inputs;

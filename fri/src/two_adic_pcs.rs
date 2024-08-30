@@ -3,10 +3,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::marker::PhantomData;
-use std::cell::Cell;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::MutexGuard;
 
-use bitcoin_script_stack::stack::StackTracker;
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::{OpenedValues, PolynomialSpace, TwoAdicMultiplicativeCoset};
@@ -18,7 +16,7 @@ use p3_field::{
 use p3_interpolation::interpolate_coset;
 use p3_matrix::bitrev::{BitReversableMatrix, BitReversalPerm};
 use p3_matrix::dense::RowMajorMatrix;
-use p3_matrix::{Dimensions, Matrix};
+use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_util::linear_map::LinearMap;
 use p3_util::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits, VecExt};
@@ -26,13 +24,12 @@ use primitives::bf_pcs::{Pcs, PcsExpr};
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::taptree_mmcs::{CommitProof, TapTreeMmcs};
+use primitives::mmcs::taptree_mmcs::CommitProof;
 use script_expr::{Dsl, InputManager, ManagerAssign};
 use serde::{Deserialize, Serialize};
-use tracing::{debug_span, info_span, instrument};
+use tracing::{info_span, instrument};
 
-use crate::error::{self, FriError};
-use crate::fri_scripts::pcs::{accmulator_script, ro_mul_x_minus_z_script};
+use crate::error::FriError;
 use crate::{
     prover, script_verifier, verifier, FriConfig, FriGenericConfig, FriGenericConfigWithExpr,
     FriProof,

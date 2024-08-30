@@ -1,6 +1,5 @@
 use alloc::vec;
 use alloc::vec::Vec;
-use core::cmp::Reverse;
 use core::iter;
 
 use itertools::{izip, Itertools};
@@ -11,7 +10,7 @@ use p3_util::log2_strict_usize;
 use primitives::challenger::BfGrindingChallenger;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::taptree_mmcs::{CommitProof, DEFAULT_MATRIX_WIDTH};
+use primitives::mmcs::taptree_mmcs::CommitProof;
 use tracing::{info_span, instrument};
 
 use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriProof};

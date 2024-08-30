@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bitcoin_script::script;
 use bitcoin_script_stack::stack::StackTracker;
-use p3_util::{log2_strict_usize, reverse_bits_len};
+use p3_util::log2_strict_usize;
 use primitives::field::BfField;
 use scripts::blake3::blake3;
 use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4ROLL, OP_4TOALTSTACK};
@@ -14,9 +14,7 @@ use scripts::u31_lib::{
 };
 use scripts::u32_std::u32_compress;
 
-use crate::script_helper::{
-    index_to_reverse_index, index_to_rou, reverse_bits_len_script_with_input, value_exp_n,
-};
+use crate::script_helper::{index_to_reverse_index, index_to_rou, value_exp_n};
 use crate::{StackVariable, Variable};
 
 #[derive(Debug, Clone, Copy)]

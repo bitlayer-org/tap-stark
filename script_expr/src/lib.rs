@@ -10,7 +10,7 @@ use bitcoin_script_stack::debugger::StepResult;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use primitives::field::BfField;
 use script_gen::StandardOpcodeId;
-use tracing::{error, info, instrument, trace, warn};
+use tracing::{instrument, trace, warn};
 mod script_builder;
 mod variable;
 pub use variable::{ValueVariable, Variable};

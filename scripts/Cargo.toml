@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
-bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark" }
-bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec" }
-rust-bitcoin-u31-or-u30 ={ git = "https://github.com/bitlayer-org/rust-bitcoin-m31-or-babybear.git", branch = "bf-pcs" }
+bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bitvm" }
+bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec",  branch = "bitvm" }
+rust-bitcoin-u31-or-u30 ={ git = "https://github.com/bitlayer-org/rust-bitcoin-m31-or-babybear.git", branch = "bitvm" }
 lazy_static = "1.4.0"
 
 rand_chacha = "0.3.1"

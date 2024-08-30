@@ -1,9 +1,7 @@
 use alloc::vec::Vec;
 
-use bitcoin::taproot::LeafNode;
 use primitives::field::BfField;
 use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::point::PointsLeaf;
 use primitives::mmcs::taptree_mmcs::CommitProof;
 use serde::{Deserialize, Serialize};
 

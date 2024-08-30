@@ -9,13 +9,13 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::usize;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-use common::{AbstractField, BabyBear};
+use common::AbstractField;
 use lazy_static::lazy_static;
 use primitives::field::BfField;
 
 use crate::{
-    CustomOpcode, Expression, IdCount, InputManager, ManagerAssign, ScriptExprError,
-    StandardOpcode, StandardOpcodeId, Variable, DYNAMIC_INPUT_OR_OUTPUT,
+    CustomOpcode, Expression, IdCount, ScriptExprError, StandardOpcode, StandardOpcodeId, Variable,
+    DYNAMIC_INPUT_OR_OUTPUT,
 };
 lazy_static! {
     static ref OPID: Mutex<u32> = Mutex::new(0);
@@ -775,23 +775,17 @@ impl<F: BfField> Product<ExprPtr> for Dsl<F> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::boxed::Box;
-    use alloc::collections::BTreeMap;
-    use alloc::sync::Arc;
-    use alloc::vec::Vec;
-    use core::cell::{self, Cell};
 
-    use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
+    use alloc::collections::BTreeMap;
+
+    use bitcoin_script_stack::stack::StackTracker;
     use common::{AbstractField, BabyBear, BinomialExtensionField};
-    use p3_air::AirBuilder;
     use p3_field::TwoAdicField;
-    use p3_matrix::Matrix;
     use p3_util::reverse_bits_len;
     use primitives::field::BfField;
-    use scripts::treepp::*;
     use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
 
-    use super::{Dsl, Expression, Variable, *};
+    use super::{Dsl, Expression, *};
     use crate::InputManager;
     type F = BabyBear;
     type EF = BinomialExtensionField<BabyBear, 4>;
@@ -1325,24 +1319,15 @@ mod tests {
 
 #[cfg(test)]
 mod tests2 {
-    use alloc::boxed::Box;
+
     use alloc::collections::BTreeMap;
-    use alloc::sync::Arc;
-    use alloc::vec::Vec;
-    use core::cell::{self, Cell};
-    use std::borrow::Borrow;
 
-    use bitcoin_script_stack::stack::{self, StackTracker, StackVariable};
+    use bitcoin_script_stack::stack::StackTracker;
     use common::{AbstractField, BabyBear, BinomialExtensionField};
-    use p3_air::AirBuilder;
     use p3_field::TwoAdicField;
-    use p3_matrix::Matrix;
-    use primitives::field::BfField;
-    use scripts::treepp::*;
-    use scripts::u31_lib::{u31ext_equalverify, BabyBear4};
 
-    use super::{Dsl, Expression, Variable, *};
-    use crate::opcode::Opcode;
+    use super::{Dsl, Expression, *};
+
     type EF = BinomialExtensionField<BabyBear, 4>;
 
     #[test]
@@ -1452,7 +1437,7 @@ mod tests2 {
             //  let b_2 = b.square();
             let res_expr = Dsl::constant_f(res * res);
             let equal = b_2.equal_verify(res_expr);
-            equal.express1(&mut stack, &bmap,false);
+            equal.express1(&mut stack, &bmap, false);
             stack.op_true();
             let res = stack.run();
             assert!(res.success);
@@ -1472,7 +1457,7 @@ mod tests2 {
             //  let b_2 = b.square();
             let res_expr = Dsl::constant_f(res);
             let equal = res_expr.equal_verify(b);
-            equal.express1(&mut stack, &bmap,false);
+            equal.express1(&mut stack, &bmap, false);
             stack.op_true();
             let res = stack.run();
             assert!(res.success);

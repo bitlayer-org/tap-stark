@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use itertools::Itertools;
 use p3_field::{
-    batch_multiplicative_inverse, cyclic_subgroup_coset_known_order, Field, PackedField,
+    batch_multiplicative_inverse, cyclic_subgroup_coset_known_order, PackedField,
     TwoAdicField,
 };
 use primitives::field::BfField;
