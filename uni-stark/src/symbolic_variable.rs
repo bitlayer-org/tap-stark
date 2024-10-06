@@ -5,7 +5,7 @@ use p3_field::Field;
 
 use crate::symbolic_expression::SymbolicExpression;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash,PartialOrd, Ord)]
 pub enum Entry {
     Preprocessed { offset: usize },
     Main { offset: usize },
@@ -15,11 +15,32 @@ pub enum Entry {
 }
 
 /// A variable within the evaluation window, i.e. a column in either the local or next row.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug,PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolicVariable<F: Field> {
     pub entry: Entry,
     pub index: usize,
     pub(crate) _phantom: PhantomData<F>,
+}
+
+#[derive(Copy, Clone, Debug,PartialEq, Eq, PartialOrd, Ord)]
+pub struct SVKey{
+    pub entry: Entry,
+    pub index: usize,
+}
+
+impl <F:Field> From<SymbolicVariable<F>> for SVKey{
+    fn from(value: SymbolicVariable<F>) -> Self {
+        SVKey{
+            entry: value.entry,
+            index: value.index,
+        }
+    }
+}
+
+impl <F:Field> From<SVKey> for SymbolicVariable<F>{
+    fn from(value: SVKey) -> Self {
+        SymbolicVariable { entry: value.entry, index: value.index, _phantom: PhantomData }
+    }
 }
 
 impl<F: Field> SymbolicVariable<F> {

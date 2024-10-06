@@ -2,13 +2,15 @@ use alloc::rc::Rc;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-
+use std::sync::Arc;
+use alloc::collections::BTreeMap;
 use p3_field::{AbstractField, Field};
 
 use crate::symbolic_variable::SymbolicVariable;
+use crate::SVKey;
 
 /// An expression over `SymbolicVariable`s.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug,PartialEq, PartialOrd)]
 pub enum SymbolicExpression<F: Field> {
     Variable(SymbolicVariable<F>),
     IsFirstRow,
@@ -16,24 +18,64 @@ pub enum SymbolicExpression<F: Field> {
     IsTransition,
     Constant(F),
     Add {
-        x: Rc<Self>,
-        y: Rc<Self>,
+        x: Arc<Self>,
+        y: Arc<Self>,
         degree_multiple: usize,
     },
     Sub {
-        x: Rc<Self>,
-        y: Rc<Self>,
+        x: Arc<Self>,
+        y: Arc<Self>,
         degree_multiple: usize,
     },
     Neg {
-        x: Rc<Self>,
+        x: Arc<Self>,
         degree_multiple: usize,
     },
     Mul {
-        x: Rc<Self>,
-        y: Rc<Self>,
+        x: Arc<Self>,
+        y: Arc<Self>,
         degree_multiple: usize,
     },
+}
+
+impl<F: Field> SymbolicExpression<F> {
+    /// Returns the multiple of `n` (the trace length) in this expression's degree.
+    pub fn execute(&self, var_getter: &BTreeMap<SVKey, F>, selectors: &[F]) -> F {
+        match self {
+            SymbolicExpression::Variable(v) => {
+                var_getter.get(&v.clone().into()).unwrap().clone()
+            },
+            SymbolicExpression::IsFirstRow => selectors[0],
+            SymbolicExpression::IsLastRow => selectors[1],
+            SymbolicExpression::IsTransition => selectors[2],
+            SymbolicExpression::Constant(value) => *value,
+            SymbolicExpression::Add{x,y,..} => {
+                let left = x.execute(var_getter,selectors);
+                let right = y.execute(var_getter,selectors); 
+                left + right
+            }   
+            SymbolicExpression::Sub {
+                x,y,..
+            } => {
+                let left = x.execute(var_getter,selectors);
+                let right = y.execute(var_getter,selectors); 
+                left - right 
+            }
+            SymbolicExpression::Neg {
+                x,..
+            } => {
+                let left = x.execute(var_getter,selectors);
+                -left
+            },
+            SymbolicExpression::Mul {
+                x,y,..
+            } => {
+                let left = x.execute(var_getter,selectors);
+                let right = y.execute(var_getter,selectors); 
+                left*right 
+            }
+        }
+    }
 }
 
 impl<F: Field> SymbolicExpression<F> {
@@ -137,8 +179,8 @@ impl<F: Field> Add for SymbolicExpression<F> {
     fn add(self, rhs: Self) -> Self {
         let degree_multiple = self.degree_multiple().max(rhs.degree_multiple());
         Self::Add {
-            x: Rc::new(self),
-            y: Rc::new(rhs),
+            x: Arc::new(self),
+            y: Arc::new(rhs),
             degree_multiple,
         }
     }
@@ -182,8 +224,8 @@ impl<F: Field> Sub for SymbolicExpression<F> {
     fn sub(self, rhs: Self) -> Self {
         let degree_multiple = self.degree_multiple().max(rhs.degree_multiple());
         Self::Sub {
-            x: Rc::new(self),
-            y: Rc::new(rhs),
+            x: Arc::new(self),
+            y: Arc::new(rhs),
             degree_multiple,
         }
     }
@@ -215,7 +257,7 @@ impl<F: Field> Neg for SymbolicExpression<F> {
     fn neg(self) -> Self {
         let degree_multiple = self.degree_multiple();
         Self::Neg {
-            x: Rc::new(self),
+            x: Arc::new(self),
             degree_multiple,
         }
     }
@@ -228,8 +270,8 @@ impl<F: Field> Mul for SymbolicExpression<F> {
         #[allow(clippy::suspicious_arithmetic_impl)]
         let degree_multiple = self.degree_multiple() + rhs.degree_multiple();
         Self::Mul {
-            x: Rc::new(self),
-            y: Rc::new(rhs),
+            x: Arc::new(self),
+            y: Arc::new(rhs),
             degree_multiple,
         }
     }
