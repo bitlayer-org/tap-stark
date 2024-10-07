@@ -4,7 +4,10 @@
 
 extern crate alloc;
 
+#[cfg(debug_assertions)]
+mod check_constraints;
 mod config;
+mod convert;
 mod expr_helper;
 mod folder;
 mod proof;
@@ -16,9 +19,8 @@ mod symbolic_expression;
 mod symbolic_variable;
 mod verifier;
 mod zerofier_coset;
-
-#[cfg(debug_assertions)]
-mod check_constraints;
+mod symbolic_prover;
+mod symbolic_verifier;
 
 #[cfg(debug_assertions)]
 pub use check_constraints::*;

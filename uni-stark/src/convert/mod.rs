@@ -1,11 +1,11 @@
 use alloc::collections::BTreeMap;
-use p3_air::{Air, AirBuilder};
-use std::{collections::HashSet, marker::PhantomData};
-use std::rc::Rc;
+use p3_air::BaseAir;
+use std::sync::Arc;
+use std::{collections::HashSet};
 
 use p3_field::Field as P3Field;
-use risc0_core::field::{Elem, ExtElem, Field};
-use risc0_zkp::adapter::{MixState, PolyExtStep, PolyExtStepDef, Var};
+use risc0_core::field::Field;
+use risc0_zkp::adapter::{MixState, PolyExtStep, PolyExtStepDef};
 
 use crate::symbolic_expression::SymbolicExpression;
 use crate::{Entry, SymbolicVariable};
@@ -72,9 +72,6 @@ pub fn convert<F: Field, P3F: P3Field>(
     // final_expr.iter().map(|index|{
     //     var_index_to_expr.get(index).unwrap().clone()
     // }).collect::<Vec<SymbolicExpression<P3F>>>()
-
-
-
 }
 
 fn mix_convert_step<F: Field, P3F: P3Field>(
@@ -158,8 +155,8 @@ fn convert_step<F: Field, P3F: P3Field>(
                 convert_step::<F, P3F>(*b, b_step, args, fp_vars, fp_vars_relation, var_index_to_expr, final_expr).unwrap();
             let degree = a_expr.degree_multiple().max(b_expr.degree_multiple());
             let expr = SymbolicExpression::Add {
-                x: Rc::new(a_expr),
-                y: Rc::new(b_expr),
+                x: Arc::new(a_expr),
+                y: Arc::new(b_expr),
                 degree_multiple: degree,
             };
             var_index_to_expr.insert(index, expr.clone());
@@ -176,8 +173,8 @@ fn convert_step<F: Field, P3F: P3Field>(
                 convert_step::<F, P3F>(*b, b_step, args, fp_vars, fp_vars_relation, var_index_to_expr, final_expr).unwrap();
             let degree = a_expr.degree_multiple() + b_expr.degree_multiple();
             let expr = SymbolicExpression::Mul {
-                x: Rc::new(a_expr),
-                y: Rc::new(b_expr),
+                x: Arc::new(a_expr),
+                y: Arc::new(b_expr),
                 degree_multiple: degree,
             };
             var_index_to_expr.insert(index, expr.clone());
@@ -194,8 +191,8 @@ fn convert_step<F: Field, P3F: P3Field>(
                 convert_step::<F, P3F>(*b, b_step, args, fp_vars, fp_vars_relation, var_index_to_expr, final_expr).unwrap();
             let degree = a_expr.degree_multiple().max(b_expr.degree_multiple());
             let expr = SymbolicExpression::Sub {
-                x: Rc::new(a_expr),
-                y: Rc::new(b_expr),
+                x: Arc::new(a_expr),
+                y: Arc::new(b_expr),
                 degree_multiple: degree,
             };
             var_index_to_expr.insert(index, expr.clone());
@@ -209,14 +206,12 @@ pub struct R0Recursive<F: P3Field>{
     constraints: Vec<SymbolicExpression<F>>,
 }
 
+impl <F: P3Field> BaseAir<F> for R0Recursive<F>{
+    fn width(&self) -> usize {
+        1
+    }
+}
 
-// impl <AB: AirBuilder> Air<AB> for R0Recursive<AB::F>{
-//     fn eval(&self, builder: &mut AB) {
-//         self.constraints.iter().for_each(|constraint|{
-//             builder.assert_zero(x);
-//         })
-//     }
-// }
 #[cfg(test)]
 mod tests{
     use super::{PolyExtStepDef,PolyExtStep};
@@ -253,6 +248,5 @@ mod tests{
             println!("{:?}", item);
         });
         
-
     }
 }

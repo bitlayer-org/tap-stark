@@ -28,8 +28,11 @@ script_manager = {path = "../script_manager"}
 fri = { path = "../fri"}
 common = {path = "../common"}
 script_expr = {path = "../script_expr"}
+risc0-zkp = { git = "https://github.com/cyl19970726/risc0.git" , branch = "constraint_convert"}
+risc0-core = { git = "https://github.com/cyl19970726/risc0.git" , branch = "constraint_convert"}
 
 [dev-dependencies]
+risc0-zkvm = { git = "https://github.com/cyl19970726/risc0.git" , branch = "constraint_convert"}
 p3-circle = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-fri = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-keccak = { git = "https://github.com/Plonky3/Plonky3.git" }
