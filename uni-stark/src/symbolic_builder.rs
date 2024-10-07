@@ -216,11 +216,11 @@ impl <'a,F: Field, PublicF: Into<F> + Copy ,Challenge: ExtensionField<F>> AirTra
     }
 
     fn preprocess_trace(&self) -> RowMajorMatrix<F> {
-        self.main_trace.as_ref().unwrap().clone()
+        self.preprocess_trace.as_ref().unwrap().clone()
     }
 
-    fn set_preprocess_trace(&mut self, main_trace: RowMajorMatrix<F>) {
-        self.main_trace = Some(main_trace);
+    fn set_preprocess_trace(&mut self, preprocess_trace: RowMajorMatrix<F>) {
+        self.preprocess_trace = Some(preprocess_trace);
     }
 
     fn public_trace(&self) -> &[Self::PublicF] {
