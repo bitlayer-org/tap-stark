@@ -151,6 +151,14 @@ impl<F: Field> PairBuilder for SymbolicAirBuilder<F> {
 }
 
 impl <F: Field> AirConstraintBuilder for SymbolicAirBuilder<F> {
+    fn main_width(&self) -> usize {
+        self.main.width()
+    }
+
+    fn preprocessed_width(&self) -> usize {
+        self.preprocessed.width()
+    }
+
     fn constraints(&self) -> &[Self::Expr] {
         &self.constraints
     }
@@ -160,17 +168,19 @@ impl <F: Field> AirConstraintBuilder for SymbolicAirBuilder<F> {
     }
 }
 
-pub struct SymbolicAirTraceBuilder<'a,F: Field,Challenge: ExtensionField<F>,ACB: AirConstraintBuilder> {
+pub struct SymbolicAirTraceBuilder<'a,F: Field,PublicF: Into<F>,Challenge: ExtensionField<F>,ACB: AirConstraintBuilder> {
     constraint_builder: &'a ACB,
     main_trace: Option<RowMajorMatrix<F>>,
-    public_trace: Option<Vec<F>>,
+    public_trace: Option<Vec<PublicF>>,
     selectors: Option<Vec<F>>,
     alpha: Option<Challenge>,
+    width: Option<usize>,
 }
 
 
-impl <'a,F: Field ,Challenge: ExtensionField<F>> AirTraceBuilder<'a> for SymbolicAirTraceBuilder<'a,F,Challenge,SymbolicAirBuilder<F>> {
+impl <'a,F: Field, PublicF: Into<F> ,Challenge: ExtensionField<F>> AirTraceBuilder<'a> for SymbolicAirTraceBuilder<'a,F,PublicF,Challenge,SymbolicAirBuilder<F>> {
     type F = F;
+    type PublicF = PublicF;
     type Challenge = Challenge;
     type MV = RowMajorMatrix<F>;
     type ACB = SymbolicAirBuilder<F>;
@@ -182,6 +192,7 @@ impl <'a,F: Field ,Challenge: ExtensionField<F>> AirTraceBuilder<'a> for Symboli
             public_trace: None,
             selectors: None, 
             alpha: None,
+            width: width,
         }
     }
 
@@ -197,11 +208,11 @@ impl <'a,F: Field ,Challenge: ExtensionField<F>> AirTraceBuilder<'a> for Symboli
         self.main_trace = Some(main_trace);
     }
 
-    fn public_trace(&self) -> &[Self::F] {
+    fn public_trace(&self) -> &[Self::PublicF] {
         self.public_trace.as_ref().unwrap()
     }
 
-    fn set_public_trace(&mut self, public_trace:Vec<F>) {
+    fn set_public_trace(&mut self, public_trace:Vec<PublicF>) {
         self.public_trace = Some(public_trace);
     }
 
@@ -222,7 +233,7 @@ impl <'a,F: Field ,Challenge: ExtensionField<F>> AirTraceBuilder<'a> for Symboli
 
 }
 
-impl<'a,F: Field ,Challenge: ExtensionField<F>> SymbolicAirTraceBuilder<'a,F,Challenge,SymbolicAirBuilder<F>> {
+impl<'a,F: Field, PublicF: Into<F> ,Challenge: ExtensionField<F>> SymbolicAirTraceBuilder<'a,F, PublicF, Challenge,SymbolicAirBuilder<F>> {
     fn generate_var_getter(&self) -> BTreeMap<SVKey,F>{
         // assert_eq!(self.main().values.len(),self.main_trace().values.);
         let mut var_getter = BTreeMap::new();

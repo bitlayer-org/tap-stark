@@ -50,17 +50,17 @@ where
     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
 
     // todo: verify the air width
-    // let air_width = <A as BaseAir<Val<SC>>>::width(air);
-    // let valid_shape = opened_values.trace_local.len() == air_width
-    //     && opened_values.trace_next.len() == air_width
-    //     && opened_values.quotient_chunks.len() == quotient_degree
-    //     && opened_values
-    //         .quotient_chunks
-    //         .iter()
-    //         .all(|qc| qc.len() == <SC::Challenge as AbstractExtensionField<Val<SC>>>::D);
-    // if !valid_shape {
-    //     return Err(VerificationError::InvalidProofShape);
-    // }
+    let air_width = air.main_width();
+    let valid_shape = opened_values.trace_local.len() == air_width
+        && opened_values.trace_next.len() == air_width
+        && opened_values.quotient_chunks.len() == quotient_degree
+        && opened_values
+            .quotient_chunks
+            .iter()
+            .all(|qc| qc.len() == <SC::Challenge as AbstractExtensionField<Val<SC>>>::D);
+    if !valid_shape {
+        return Err(VerificationError::InvalidProofShape);
+    }
 
     // Observe the instance.    // TODO: recover observe when we have CanObserve<F> trait
     // challenger.observe(Val::<SC>::from_canonical_usize(proof.degree_bits));
