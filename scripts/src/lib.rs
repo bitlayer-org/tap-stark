@@ -71,12 +71,12 @@ pub mod u31_lib {
     }
 
     #[cfg(test)]
-    mod tests{
+    mod tests {
         use rust_bitcoin_u31_or_u30::BabyBear4;
 
         use super::BabyBearU31;
         #[test]
-        fn test_op_len(){
+        fn test_op_len() {
             let add_script = super::u31ext_add::<BabyBear4>();
             let mul_script = super::u31ext_mul::<BabyBear4>();
             let sub_script = super::u31ext_sub::<BabyBear4>();
@@ -84,8 +84,6 @@ pub mod u31_lib {
             println!("add_script: {:?}", add_script.len());
             println!("mul_script: {:?}", mul_script.len());
             println!("sub_script: {:?}", sub_script.len());
-
-
         }
     }
 }
