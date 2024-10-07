@@ -37,6 +37,15 @@ impl <F:Field> From<SymbolicVariable<F>> for SVKey{
     }
 }
 
+impl <F:Field> From<&SymbolicVariable<F>> for SVKey{
+    fn from(value: &SymbolicVariable<F>) -> Self {
+        SVKey{
+            entry: value.entry,
+            index: value.index,
+        }
+    }
+}
+
 impl <F:Field> From<SVKey> for SymbolicVariable<F>{
     fn from(value: SVKey) -> Self {
         SymbolicVariable { entry: value.entry, index: value.index, _phantom: PhantomData }

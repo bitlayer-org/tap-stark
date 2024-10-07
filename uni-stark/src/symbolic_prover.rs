@@ -22,11 +22,7 @@ use crate::{
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations)] // cfg not supported in where clauses?
-pub fn prove<
-    SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>>>,
-    #[cfg(not(debug_assertions))] A,
->(
+pub fn symbolic_prove<SC>(
     config: &SC,
     air: SymbolicAirBuilder<Val<SC>>,
     challenger: &mut SC::Challenger,

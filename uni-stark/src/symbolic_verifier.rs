@@ -20,7 +20,7 @@ use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{PcsError, Proof, StarkGenericConfig, SymbolicAirTraceBuilder, Val, VerifierConstraintFolder};
 
 #[instrument(skip_all)]
-pub fn verify<SC, A>(
+pub fn symbolic_verify<SC>(
     config: &SC,
     air:  SymbolicAirBuilder<SC::Challenge>,
     challenger: &mut SC::Challenger,
@@ -35,8 +35,7 @@ where
     let Proof {
         commitments,
         opened_values,
-        opening_proof,
-        degree_bits,
+        opening_proof,        degree_bits,
     } = proof;
 
     let degree = 1 << degree_bits;

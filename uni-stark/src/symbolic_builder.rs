@@ -67,12 +67,19 @@ where
 }
 
 /// An `AirBuilder` for evaluating constraints symbolically, and recording them for later use.
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct SymbolicAirBuilder<F: Field> {
     preprocessed: RowMajorMatrix<SymbolicVariable<F>>,
     main: RowMajorMatrix<SymbolicVariable<F>>,
     public_values: Vec<SymbolicVariable<F>>,
     constraints: Vec<SymbolicExpression<F>>,
+}
+
+pub fn gen_symbolic_builder<F: Field, A: Air<SymbolicAirBuilder<F>>>( air: &A, preprocessed_width: usize,num_public_values: usize) -> SymbolicAirBuilder<F>
+{
+    let mut builder = SymbolicAirBuilder::new(preprocessed_width, air.width(), num_public_values);
+    air.eval(&mut builder);
+    builder
 }
 
 impl<F: Field> SymbolicAirBuilder<F> {
@@ -171,14 +178,14 @@ impl <F: Field> AirConstraintBuilder for SymbolicAirBuilder<F> {
 pub struct SymbolicAirTraceBuilder<'a,F: Field,PublicF: Into<F>,Challenge: ExtensionField<F>,ACB: AirConstraintBuilder> {
     constraint_builder: &'a ACB,
     main_trace: Option<RowMajorMatrix<F>>,
+    preprocess_trace: Option<RowMajorMatrix<F>>,
     public_trace: Option<Vec<PublicF>>,
     selectors: Option<Vec<F>>,
     alpha: Option<Challenge>,
-    width: Option<usize>,
 }
 
 
-impl <'a,F: Field, PublicF: Into<F> ,Challenge: ExtensionField<F>> AirTraceBuilder<'a> for SymbolicAirTraceBuilder<'a,F,PublicF,Challenge,SymbolicAirBuilder<F>> {
+impl <'a,F: Field, PublicF: Into<F> + Copy ,Challenge: ExtensionField<F>> AirTraceBuilder<'a> for SymbolicAirTraceBuilder<'a,F,PublicF,Challenge,SymbolicAirBuilder<F>> {
     type F = F;
     type PublicF = PublicF;
     type Challenge = Challenge;
@@ -189,10 +196,10 @@ impl <'a,F: Field, PublicF: Into<F> ,Challenge: ExtensionField<F>> AirTraceBuild
         Self{
             constraint_builder: cb,
             main_trace: None,
+            preprocess_trace: None,
             public_trace: None,
             selectors: None, 
             alpha: None,
-            width: width,
         }
     }
 
@@ -205,6 +212,14 @@ impl <'a,F: Field, PublicF: Into<F> ,Challenge: ExtensionField<F>> AirTraceBuild
     }
 
     fn set_main_trace(&mut self, main_trace: RowMajorMatrix<F>) {
+        self.main_trace = Some(main_trace);
+    }
+
+    fn preprocess_trace(&self) -> RowMajorMatrix<F> {
+        self.main_trace.as_ref().unwrap().clone()
+    }
+
+    fn set_preprocess_trace(&mut self, main_trace: RowMajorMatrix<F>) {
         self.main_trace = Some(main_trace);
     }
 
@@ -233,13 +248,24 @@ impl <'a,F: Field, PublicF: Into<F> ,Challenge: ExtensionField<F>> AirTraceBuild
 
 }
 
-impl<'a,F: Field, PublicF: Into<F> ,Challenge: ExtensionField<F>> SymbolicAirTraceBuilder<'a,F, PublicF, Challenge,SymbolicAirBuilder<F>> {
+impl<'a,F: Field, PublicF: Into<F> + Copy ,Challenge: ExtensionField<F>> SymbolicAirTraceBuilder<'a,F, PublicF, Challenge,SymbolicAirBuilder<F>> {
     fn generate_var_getter(&self) -> BTreeMap<SVKey,F>{
         // assert_eq!(self.main().values.len(),self.main_trace().values.);
         let mut var_getter = BTreeMap::new();
         self.constraint_builder.main().values.iter().zip(self.main_trace().values.iter()).for_each(| data | {
             var_getter.insert(data.0.clone().into(), data.1.clone());
         });
+
+        self.constraint_builder.public_values().iter().zip(self.public_trace().iter()).for_each(| data | {
+            var_getter.insert(data.0.clone().into(), (*data.1).into());
+        });
+
+        if self.preprocess_trace.is_some(){
+            self.constraint_builder.preprocessed().values.iter().zip(self.preprocess_trace().values.iter()).for_each(| data | {
+                var_getter.insert(data.0.clone().into(), data.1.clone());
+            });
+        }
+
         var_getter
     }
 

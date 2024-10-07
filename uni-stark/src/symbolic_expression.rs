@@ -43,7 +43,8 @@ impl<F: Field> SymbolicExpression<F> {
     pub fn execute(&self, var_getter: &BTreeMap<SVKey, F>, selectors: &[F]) -> F {
         match self {
             SymbolicExpression::Variable(v) => {
-                var_getter.get(&v.clone().into()).unwrap().clone()
+                let key = v.into();
+                var_getter.get(&key).unwrap().clone()
             },
             SymbolicExpression::IsFirstRow => selectors[0],
             SymbolicExpression::IsLastRow => selectors[1],

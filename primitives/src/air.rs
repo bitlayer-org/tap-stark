@@ -16,7 +16,7 @@ pub trait AirConstraintBuilder:AirBuilderWithPublicValues{
 
 pub trait AirTraceBuilder<'a>{
     type F: Field;
-    type PublicF: Into<Self::F>;
+    type PublicF: Into<Self::F> + Copy;
     type Challenge: ExtensionField<Self::F>;
     type MV: Matrix<Self::F>;
     type ACB: AirConstraintBuilder;
@@ -24,6 +24,10 @@ pub trait AirTraceBuilder<'a>{
     fn new(cb: &'a Self::ACB) -> Self; 
 
     fn constraint_builder(&self) -> &Self::ACB; 
+
+    fn preprocess_trace(&self) -> Self::MV;
+
+    fn set_preprocess_trace(&mut self, main_trace: Self::MV);
 
     fn main_trace(&self) -> Self::MV;
 
