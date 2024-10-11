@@ -1,9 +1,13 @@
 use alloc::collections::BTreeMap;
+use common::TwoAdicField;
 use p3_air::BaseAir;
+use p3_dft::TwoAdicSubgroupDft;
+use p3_matrix::dense::RowMajorMatrix;
+use std::borrow::Borrow;
 use std::sync::Arc;
 use std::{collections::HashSet};
 
-use p3_field::Field as P3Field;
+use p3_field::{ExtensionField, Field as P3Field};
 use risc0_core::field::Field;
 use risc0_zkp::adapter::{MixState, PolyExtStep, PolyExtStepDef};
 
@@ -202,6 +206,26 @@ fn convert_step<F: Field, P3F: P3Field>(
     }
 }
 
+fn compute_eval_u<F: TwoAdicField, Challenge:ExtensionField<F>, Dft:TwoAdicSubgroupDft<F>> (
+    trace: RowMajorMatrix<F>,
+    challenge: Challenge,
+    dft: Dft,
+) -> Vec<Challenge> {
+    let width = trace.width;
+    let height = trace.values.len() / width;
+    let mut eval_u = Vec::with_capacity(width);
+    let coeff = dft.idft_batch(trace.clone());
+    println!("coeff:{:?}", coeff);
+    for i in 0..width {
+        let mut sum = Challenge::from_base(coeff.values[(height - 1) * width + i]);
+        for j in (0..height - 1).rev() {
+            sum = sum * challenge + coeff.values[j * width + i];
+        }
+        eval_u.push(sum);
+    }
+    eval_u
+}
+
 pub struct R0Recursive<F: P3Field>{
     constraints: Vec<SymbolicExpression<F>>,
 }
@@ -214,9 +238,12 @@ impl <F: P3Field> BaseAir<F> for R0Recursive<F>{
 
 #[cfg(test)]
 mod tests{
-    use super::{PolyExtStepDef,PolyExtStep};
+    use super::{compute_eval_u, PolyExtStep, PolyExtStepDef};
     use super::convert;
     use common::BinomialExtensionField;
+    use p3_dft::Radix2DitParallel;
+    use p3_matrix::dense::{DenseMatrix, RowMajorMatrix};
+    use primitives::field::BfField;
     use risc0_core::field::baby_bear;
     use p3_baby_bear::BabyBear;
     type EF = BinomialExtensionField<BabyBear,4>;
@@ -247,6 +274,30 @@ mod tests{
         result.constraints.iter().for_each(|item|{
             println!("{:?}", item);
         });
-        
+    }
+
+    type Dft = Radix2DitParallel;
+    #[test]
+    fn test_compute_eval_u() {
+        //trival case
+        {
+            let dft = Dft {};
+            let challenge = EF::from_u32(100 as u32);
+            let trace = DenseMatrix::new(vec![BabyBear::from_u32(5 as u32),BabyBear::from_u32(1 as u32),BabyBear::from_u32(2 as u32),BabyBear::from_u32(3 as u32)], 4);
+            // let trace = RowMajorMatrix::from(vec);
+            let eval = compute_eval_u(trace, challenge, dft);
+            println!("eval:{:?}", eval);
+        }
+        //non-trival case
+        {
+            let dft = Dft {};
+            let challenge = EF::from_u32(2 as u32);
+            let trace = DenseMatrix::new(vec![BabyBear::from_u32(0 as u32),BabyBear::from_u32(1 as u32),BabyBear::from_u32(2 as u32),BabyBear::from_u32(3 as u32),BabyBear::from_u32(4 as u32),BabyBear::from_u32(5 as u32),BabyBear::from_u32(6 as u32),BabyBear::from_u32(7 as u32)], 4);
+            // let trace = RowMajorMatrix::from(vec);
+            let eval = compute_eval_u(trace, challenge, dft);
+            println!("eval:{:?}", eval);
+        }
+
+
     }
 }
