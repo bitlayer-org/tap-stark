@@ -221,7 +221,7 @@ where
             .managers()
             .iter()
             .enumerate()
-            .fold(0, |acc, (manager_index, manager)| {
+            .fold(0, |acc, (_manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val<SC>>();
                 manager.lock().unwrap().run(false);
                 acc + manager.lock().unwrap().print_script_len()

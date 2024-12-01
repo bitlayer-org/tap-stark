@@ -239,9 +239,7 @@ mod test {
 
     #[test]
     fn test_extension_bit_commit_sig_verify() {
-        let mut rng = ChaCha20Rng::seed_from_u64(0u64);
-        let mut a = rng.gen::<EF>();
-        a = EF::from_base_slice(
+        let a = EF::from_base_slice(
             vec![
                 BabyBear::from_u32(1u32),
                 BabyBear::from_u32(2u32),
@@ -264,9 +262,7 @@ mod test {
 
     #[test]
     fn test_bit_commit_sig_verify() {
-        let mut rng = ChaCha20Rng::seed_from_u64(0u64);
-        let mut a = rng.gen::<F>();
-        a = BabyBear::from_u32(1u32);
+        let a = BabyBear::from_u32(1u32);
         let a_commit = BitCommitment::new::<ThreadSecretGen>(a);
 
         let script = script! {

@@ -106,7 +106,7 @@ mod tests0 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |query_times_index, query_idx| {
+            |_query_times_index, query_idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -135,7 +135,7 @@ mod tests0 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |query_times_index, _index, proof| Ok(proof.clone()),
+            |_query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -204,7 +204,7 @@ mod tests0 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |query_times_index, idx| {
+            |_query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -234,7 +234,7 @@ mod tests0 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |query_times_index, _index, proof| Ok(proof.clone()),
+            |_query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -243,7 +243,7 @@ mod tests0 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |query_times_index, _index, proof, mut manager| {
+            |_query_times_index, _index, proof, mut manager| {
                 Ok(proof
                     .iter()
                     // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
@@ -260,7 +260,7 @@ mod tests0 {
             .managers()
             .iter()
             .enumerate()
-            .for_each(|(manager_index, manager)| {
+            .for_each(|(_manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val>();
                 manager.lock().unwrap().run(false);
                 println!(
@@ -305,9 +305,7 @@ mod tests1 {
 
     type PF = U32;
     const WIDTH: usize = 16;
-    type SpongeState = [PF; WIDTH];
     type F = BabyBear;
-    // impl CryptographicPermutation<SpongeState> for TestPermutation {}
     type Val = BabyBear;
     type ValMmcs = TapTreeMmcs<Val>;
 
@@ -369,7 +367,7 @@ mod tests1 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |query_times_index, idx| {
+            |_query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -397,7 +395,7 @@ mod tests1 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |query_times_index, _index, proof, mut manager| {
+            |_query_times_index, _index, proof, mut manager| {
                 Ok(proof
                     .iter()
                     .map(|(lh, v)| {
@@ -413,7 +411,7 @@ mod tests1 {
             .managers()
             .iter()
             .enumerate()
-            .for_each(|(manager_index, manager)| {
+            .for_each(|(_manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val>();
                 manager.lock().unwrap().run(false);
                 println!(
@@ -472,7 +470,6 @@ mod tests2 {
     impl CryptographicPermutation<SpongeState> for TestPermutation {}
     type Val = F;
     type ValMmcs = TapTreeMmcs<Val>;
-    type MyFriConfig = FriConfig<ValMmcs>;
 
     #[test]
     fn test_compelte_fri_process_with_ext_babybear() {
@@ -534,7 +531,7 @@ mod tests2 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |query_times_index, idx| {
+            |_query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -563,7 +560,7 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |query_times_index, _index, proof| Ok(proof.clone()),
+            |_query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -632,7 +629,7 @@ mod tests2 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |query_times_index, idx| {
+            |_query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -663,7 +660,7 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |query_times_index, _index, proof| Ok(proof.clone()),
+            |_query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -672,7 +669,7 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |query_times_index, _index, proof, mut manager| {
+            |_query_times_index, _index, proof, mut manager| {
                 Ok(proof
                     .iter()
                     // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
@@ -689,7 +686,7 @@ mod tests2 {
             .managers()
             .iter()
             .enumerate()
-            .for_each(|(manager_index, manager)| {
+            .for_each(|(_manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val>();
                 manager.lock().unwrap().run(false);
                 println!(

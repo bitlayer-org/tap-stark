@@ -38,9 +38,7 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
         query_times_index: usize,
         query_index: usize, // This is the index corresponding to the highest matrix
         prover_data: &Self::ProverData,
-    ) -> (Vec<Vec<T>>, Self::Proof) {
-        unimplemented!()
-    }
+    ) -> (Vec<Vec<T>>, Self::Proof);
 
     fn verify_batch(
         &self,

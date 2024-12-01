@@ -233,9 +233,6 @@ impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommit
         }
     }
 
-    fn new_wtih_query_proof(query_proof: impl TaptreeConcater) -> Self {
-        unimplemented!()
-    }
 
     fn commit_polys<F: BfField>(&self, leaves: Vec<RowMajorMatrix<F>>) -> CommitedData<F, BC, B> {
         let commit_type = match F::U32_SIZE {
@@ -337,8 +334,6 @@ pub trait PolyTCS<
 >
 {
     fn new(manager: SyncBcManager<BM, SG, BC, B>) -> Self;
-
-    fn new_wtih_query_proof(query_proof: impl TaptreeConcater) -> Self;
 
     fn padding_matrix<F: BfField>(
         &self,
@@ -512,40 +507,14 @@ impl ScriptToEmbbed for ScriptBuf {
     }
 }
 
-// struct IncompleteTaptree{
-//     root: NodeInfo,
-//     leaves: Vec<(Tapleaf,MerklePath,Vec<BitComm>)>,
-// }
-
-// impl TaptreeConcater for IncompleteTaptree{
-//     fn combine_other_taptree(&mut self, slash_scripts: Vec<Script>);
-//     // 现在存在的问题在于，我们如果把TCSQueryTaptree给到Xaiver这边，他那边发现有script有问题怎么执行？怎么找到对应的index呢？
-//     // 解决方案： 研究下原来的实现里是怎构造Taptree 以及怎么生成 MerklePath的
-
-//     fn new(scripts: Vec<Script>) -> Self;
-
-//     fn combine(&self, other: Self) -> Self;
-
-//     fn get_idx(&self,index: usize) -> (Tapleaf,MerklePath,Vec<BitComm>);
-
-//     fn combine_script_into_stark() -> Self;
-
-//     fn to_taproot_info() -> TaprootInfo;
-// }
-
 #[cfg(test)]
 mod tests {
-
-    use bitcomm::{BcManagerIns, BcOperator, SecretGenIns, Winternitz};
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
 
     use super::*;
     type F = BabyBear;
-    type BCS = Winternitz;
-    type BCP = BcOperator<Winternitz>;
-    type BM = BcManagerIns<SecretGenIns, BCS, BCP>;
 
     #[test]
     fn test_taptree_mmcs() {
