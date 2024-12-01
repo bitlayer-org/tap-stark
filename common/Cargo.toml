@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }

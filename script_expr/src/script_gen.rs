@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
+use basic::field::BfField;
 use bitcoin_script::script;
 use bitcoin_script_stack::stack::StackTracker;
 use p3_util::log2_strict_usize;
-use primitives::field::BfField;
 use scripts::blake3::blake3;
 use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4ROLL, OP_4TOALTSTACK};
 use scripts::treepp::*;

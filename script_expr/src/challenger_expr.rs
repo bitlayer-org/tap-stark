@@ -1,13 +1,13 @@
 use std::any::TypeId;
 use std::marker::PhantomData;
 
+use basic::challenger::chan_field::PermutationField;
+use basic::challenger::BitExtractor;
+use basic::field::BfField;
 use common::BinomialExtensionField;
 use p3_baby_bear::BabyBear;
 use p3_challenger::{CanObserve, CanSample};
 use p3_symmetric::Hash;
-use primitives::challenger::chan_field::PermutationField;
-use primitives::challenger::BitExtractor;
-use primitives::field::BfField;
 
 use crate::Dsl;
 
@@ -122,6 +122,19 @@ where
     }
 }
 
+impl<F, PF, const N: usize, const WIDTH: usize> CanObserve<Vec<[PF; N]>>
+    for BfChallengerExpr<F, PF, WIDTH>
+where
+    F: BfField,
+    PF: PermutationField<4>,
+{
+    fn observe(&mut self, values: Vec<[PF; N]>) {
+        for value in values {
+            self.observe(value);
+        }
+    }
+}
+
 // for TrivialPcs
 impl<F, PF, const WIDTH: usize> CanObserve<Vec<Vec<PF>>> for BfChallengerExpr<F, PF, WIDTH>
 where
@@ -206,12 +219,12 @@ where
 mod tests {
     use std::collections::BTreeMap;
 
+    use basic::challenger::chan_field::U32;
+    use basic::challenger::{BfChallenger, Blake3Permutation};
     use bitcoin_script_stack::stack::StackTracker;
     use common::BinomialExtensionField;
     use p3_baby_bear::BabyBear;
     use p3_challenger::{CanObserve, CanSample};
-    use primitives::challenger::chan_field::U32;
-    use primitives::challenger::{BfChallenger, Blake3Permutation};
 
     use crate::challenger_expr::BfChallengerExpr;
 

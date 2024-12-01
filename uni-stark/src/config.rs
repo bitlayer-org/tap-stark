@@ -1,12 +1,12 @@
 use core::marker::PhantomData;
 
+use basic::bf_pcs;
+use basic::bf_pcs::{Pcs, PcsExpr};
+use basic::challenger::BfGrindingChallenger;
+use basic::field::BfField;
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
 use p3_field::{ExtensionField, Field};
-use primitives::bf_pcs;
-use primitives::bf_pcs::{Pcs, PcsExpr};
-use primitives::challenger::BfGrindingChallenger;
-use primitives::field::BfField;
 use script_expr::{Dsl, ManagerAssign};
 
 pub type PcsError<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<

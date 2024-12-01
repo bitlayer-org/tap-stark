@@ -7,7 +7,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use super::bit_comm_u32::BitCommitmentU32;
-use super::secret_generator::{SecretGen, ThreadSecretGen};
+use super::secret_generator::SecretGen;
 use super::Witness;
 use crate::pushable;
 use crate::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
@@ -157,13 +157,14 @@ mod test {
 
     use core::ops::Add;
 
+    use basic::field::BfField;
     use bitcoin_script::script;
     use p3_baby_bear::BabyBear;
     use p3_field::{AbstractExtensionField, PrimeField32};
-    use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
+    use crate::secret_generator::ThreadSecretGen;
     use crate::u31_lib::{u31_equalverify, u31ext_add, u31ext_equalverify, BabyBear4};
     use crate::{execute_script, execute_script_with_inputs};
 
@@ -238,9 +239,7 @@ mod test {
 
     #[test]
     fn test_extension_bit_commit_sig_verify() {
-        let mut rng = ChaCha20Rng::seed_from_u64(0u64);
-        let mut a = rng.gen::<EF>();
-        a = EF::from_base_slice(
+        let a = EF::from_base_slice(
             vec![
                 BabyBear::from_u32(1u32),
                 BabyBear::from_u32(2u32),
@@ -263,9 +262,7 @@ mod test {
 
     #[test]
     fn test_bit_commit_sig_verify() {
-        let mut rng = ChaCha20Rng::seed_from_u64(0u64);
-        let mut a = rng.gen::<F>();
-        a = BabyBear::from_u32(1u32);
+        let a = BabyBear::from_u32(1u32);
         let a_commit = BitCommitment::new::<ThreadSecretGen>(a);
 
         let script = script! {

@@ -1,11 +1,10 @@
 use alloc::vec::Vec;
 
+use basic::field::BfField;
 use itertools::Itertools;
 use p3_field::{
-    batch_multiplicative_inverse, cyclic_subgroup_coset_known_order, PackedField,
-    TwoAdicField,
+    batch_multiplicative_inverse, cyclic_subgroup_coset_known_order, PackedField, 
 };
-use primitives::field::BfField;
 
 /// Precomputations of the evaluation of `Z_H(X) = X^n - 1` on a coset `s K` with `H <= K`.
 #[derive(Debug)]

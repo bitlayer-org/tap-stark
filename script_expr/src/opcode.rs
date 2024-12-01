@@ -1,26 +1,13 @@
-use std::cell::{Cell, Ref, RefCell};
+use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
-use bitcoin_script_stack::stack::StackTracker;
-use primitives::field::BfField;
+use basic::field::BfField;
 
 use crate::script_gen::*;
-use crate::{ExprPtr, Expression, StackVariable, Variable};
-
-fn to_copy(
-    low_var: StackVariable,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Option<StackVariable> {
-    if copy_ref.is_none() {
-        return None;
-    }
-    let top_var = stack.copy_var(low_var);
-    Some(top_var)
-}
+use crate::{ExprPtr, Expression, Variable};
 
 pub(crate) struct Opcode<const INPUT_NUM: usize, const OUTPUT_NUM: usize> {
     id: u32,

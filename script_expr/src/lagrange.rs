@@ -1,6 +1,6 @@
+use basic::field::BfField;
 use common::TwoAdicField;
-use p3_field::ExtensionField;
-use primitives::field::BfField;
+use p3_field::{ExtensionField, Field};
 
 use super::Dsl;
 
@@ -11,7 +11,10 @@ pub struct LagrangeSelectorsExpr<F: BfField> {
     pub z_h: Dsl<F>,
 }
 
-pub fn selectors_at_point_expr<Ext: ExtensionField<Val> + BfField, Val: TwoAdicField + BfField>(
+pub fn selectors_at_point_expr<
+    Ext: ExtensionField<Val> + BfField,
+    Val: TwoAdicField + BfField + Field,
+>(
     shift: Val,
     point: Ext,
     log_n: usize,

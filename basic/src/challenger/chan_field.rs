@@ -38,7 +38,7 @@ pub trait PermutationField<const U8_NUM: usize>:
         for _ in 0..U8_NUM {
             by.push(0);
         }
-        1 << U8_NUM * 3
+        1 << (U8_NUM * 3)
     }
 
     fn from_u64(value: u64) -> Self {

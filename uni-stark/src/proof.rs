@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use primitives::bf_pcs::Pcs;
+use basic::bf_pcs::Pcs;
 use serde::{Deserialize, Serialize};
 
 use crate::StarkGenericConfig;

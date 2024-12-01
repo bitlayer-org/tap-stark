@@ -2,6 +2,8 @@ use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use basic::bf_pcs::{Pcs, PcsExpr};
+use basic::field::BfField;
 use bitcoin_script_stack::stack::StackTracker;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -11,12 +13,7 @@ use p3_field::{AbstractExtensionField, AbstractField, Field, TwoAdicField};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use p3_util::log2_strict_usize;
-use primitives::bf_pcs::{Pcs, PcsExpr};
-use primitives::field::BfField;
-use script_expr::{
-    selectors_at_point_expr, Dsl,
-    ScriptConstraintBuilder, ValueCounter,
-};
+use script_expr::{selectors_at_point_expr, Dsl, ScriptConstraintBuilder, ValueCounter};
 use tracing::instrument;
 
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
@@ -53,7 +50,7 @@ where
     let quotient_degree = 1 << log_quotient_degree;
 
     let pcs = config.pcs();
-    let trace_domain = pcs.natural_domain_for_degree(degree.clone());
+    let trace_domain = pcs.natural_domain_for_degree(degree);
     let quotient_domain =
         trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
@@ -185,7 +182,6 @@ where
                     other_domain
                         .zp_at_point(domain.first_point())
                         .inverse()
-                        .into()
                 })
                 .product::<Val<SC>>()
         })
@@ -225,7 +221,7 @@ where
             .managers()
             .iter()
             .enumerate()
-            .fold(0, |acc, (manager_index, manager)| {
+            .fold(0, |acc, (_manager_index, manager)| {
                 manager.lock().unwrap().embed_hint_verify::<Val<SC>>();
                 manager.lock().unwrap().run(false);
                 acc + manager.lock().unwrap().print_script_len()

@@ -2,6 +2,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
 
+use basic::bf_pcs::Pcs;
 use itertools::{izip, Itertools};
 use p3_air::Air;
 use p3_challenger::{CanObserve, CanSample};
@@ -11,7 +12,6 @@ use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_util::log2_strict_usize;
-use primitives::bf_pcs::Pcs;
 use tracing::{info_span, instrument};
 
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};

@@ -8,17 +8,16 @@ license = "MIT OR Apache-2.0"
 bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
 bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bitvm" }
 bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec", branch = "bitvm"}
-#bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git"}
 bitcoin-script-stack = {git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack.git", branch = "bitvm"}
 
-p3-commit ={ git = "https://github.com/Plonky3/Plonky3.git" }
-p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-dft =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-field =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-interpolation =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-matrix =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-maybe-rayon =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-commit ={ git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a"}
+p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-dft =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-field =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-interpolation =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-matrix =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-maybe-rayon =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
 itertools = "0.12.0"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
@@ -26,24 +25,20 @@ serde = { version = "1.0", default-features = false, features = ["derive", "allo
 script_expr ={ path = "../script_expr" }
 rand = "0.8.5"
 
-
-
 scripts = { path = "../scripts"}
-primitives = {path = "../primitives"}
-segment ={ path = "../segment"}
-script_manager = {path = "../script_manager"}
+basic = {path = "../basic"}
 
-p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-symmetric =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-symmetric =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
 [dev-dependencies]
-p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-goldilocks =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-mersenne-31 =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-mds =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-merkle-tree =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-blake3 =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-keccak = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-interpolation =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-goldilocks =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-mersenne-31 =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-mds =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-merkle-tree =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-blake3 =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-keccak = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-interpolation =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
 criterion = "0.5.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"

@@ -24,7 +24,7 @@ pub trait BfField: AbstractField + TwoAdicField + Clone + Copy + AsU32Vec {
         subgroups.push(Self::one());
         for _ in 0..group_size - 1 {
             subgroups.push(acc);
-            acc = acc * generator;
+            acc *= generator;
         }
         subgroups
     }
@@ -62,12 +62,9 @@ impl BfField for BinomialExtensionField<BabyBear, 4> {
             .collect()
     }
 }
-
+#[cfg(test)]
 mod tests {
-    use p3_baby_bear::BabyBear;
-    use p3_field::{AbstractField, PrimeField32};
-
-    use super::BfField;
+    use super::*;
 
     #[test]
     fn test_subgroup() {

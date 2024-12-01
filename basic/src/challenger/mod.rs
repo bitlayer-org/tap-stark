@@ -33,7 +33,7 @@ impl Permutation<StateLength> for Blake3Permutation {
 
     fn permute_mut(&self, input: &mut StateLength) {
         let mut hasher = blake3::Hasher::new();
-        for chunk in input.clone() {
+        for chunk in *input {
             hasher.update(&chunk);
         }
         let hashed: [u8; 32] = hasher.finalize().into();
@@ -100,7 +100,7 @@ where
             .expect("failed to find witness");
         assert!(self.check_witness(bits, witness));
         self.grind_bits = Some(bits);
-        self.grind_output = self.sample_output.last().unwrap().clone();
+        self.grind_output = *self.sample_output.last().unwrap();
         witness
     }
 
@@ -138,7 +138,7 @@ where
 
     pub fn record_sample(&mut self, input: &Vec<PF>, output: &F) {
         self.sample_input.push(input.clone());
-        self.sample_output.push(output.clone());
+        self.sample_output.push(*output);
     }
 }
 
@@ -158,17 +158,17 @@ where
 
         // Record this permutation to build fiat shamir subtree for future
         self.permutation_input_records
-            .push(self.sponge_state.try_into().unwrap());
+            .push(self.sponge_state.into());
 
         // Apply the permutation.
         self.permutation.permute_mut(&mut self.sponge_state);
 
         self.permutation_output_records
-            .push(self.sponge_state[WIDTH / 2..WIDTH].try_into().unwrap());
+            .push(self.sponge_state[WIDTH / 2..WIDTH].into());
 
         self.output_buffer.clear();
         for i in WIDTH / 2..WIDTH {
-            self.output_buffer.push(self.sponge_state[i].clone());
+            self.output_buffer.push(self.sponge_state[i]);
         }
         tracing::debug! {"state change: {:?}", u32::from_le_bytes(self.sponge_state[8].as_u8_array())};
     }
@@ -202,6 +202,20 @@ where
     P: CryptographicPermutation<[PF; WIDTH]>,
 {
     fn observe(&mut self, values: [PF; N]) {
+        for value in values {
+            self.observe(value);
+        }
+    }
+}
+
+impl<F, PF, const N: usize, P, const WIDTH: usize> CanObserve<Vec<[PF; N]>>
+    for BfChallenger<F, PF, P, WIDTH>
+where
+    F: Field + BitExtractor,
+    PF: PermutationField<4>,
+    P: CryptographicPermutation<[PF; WIDTH]>,
+{
+    fn observe(&mut self, values: Vec<[PF; N]>) {
         for value in values {
             self.observe(value);
         }
@@ -262,7 +276,7 @@ where
             // commit records
             let output = BabyBear::from_pf(&value);
             sample_input.push(value);
-            res = (&output as &dyn Any).downcast_ref::<F>().unwrap().clone();
+            res = *(&output as &dyn Any).downcast_ref::<F>().unwrap();
         }
         // else, F would be a extension field of Babybear
         else if TypeId::of::<F>() == TypeId::of::<BinomialExtensionField<BabyBear, 4>>() {
@@ -287,7 +301,7 @@ where
 
             // commit records
             let output = BinomialExtensionField::<BabyBear, 4>::from_base_slice(&base_slice);
-            res = (&output as &dyn Any).downcast_ref::<F>().unwrap().clone();
+            res = *(&output as &dyn Any).downcast_ref::<F>().unwrap();
         } else {
             panic!("the type of base or f is invalid")
         } // no other implementation yet
@@ -311,10 +325,8 @@ impl BitExtractor for BabyBear {
 
 impl BitExtractor for BinomialExtensionField<BabyBear, 4> {
     fn as_usize(&self) -> usize {
-        let s: BabyBear = <Self as AbstractExtensionField<BabyBear>>::as_base_slice(self)
-            .get(0)
-            .unwrap()
-            .clone();
+        let s: BabyBear = *<Self as AbstractExtensionField<BabyBear>>::as_base_slice(self).first()
+            .unwrap();
         s.as_canonical_u32() as usize
     }
 }

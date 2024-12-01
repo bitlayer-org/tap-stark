@@ -1,8 +1,8 @@
 use std::sync::MutexGuard;
 
+use basic::field::BfField;
 use itertools::Itertools;
 use p3_field::ExtensionField;
-use primitives::field::BfField;
 use script_expr::{Dsl, InputManager};
 
 use crate::get_table;
@@ -40,7 +40,7 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
     // let zeta_dsl = manager.assign_input_f(zeta);
     // let zeta_dsl = Dsl::from(zeta);
     //babybear generator inverse constant
-    let inverse_a = Dsl::from(Val::from_u32(64944062 as u32));
+    let inverse_a = Dsl::from(Val::from_u32(64944062_u32));
     let zeta_div_a = inverse_a.mul_ext(zeta_dsl);
 
     let table = Dsl::from_table(&get_table(generator, quotient_chunk_nums));
@@ -90,9 +90,9 @@ pub fn compute_quotient_expr<Val: BfField, Challenge: BfField + ExtensionField<V
         let zps_i = denominator_inverse[i].clone().mul_ext(numerator[i].clone());
         let mut acc = Dsl::from(Challenge::zero());
         for j in 0..4 {
-            acc = acc + (open_values[i][j].clone() * Dsl::from(Challenge::monomial(j)));
+            acc += open_values[i][j].clone() * Dsl::from(Challenge::monomial(j));
         }
-        quotient_zeta = quotient_zeta + (acc * zps_i);
+        quotient_zeta += acc * zps_i;
     }
 
     manager.set_exec_dsl(quotient_zeta.equal_for_f(quotient_res).into());

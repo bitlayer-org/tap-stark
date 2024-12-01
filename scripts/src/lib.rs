@@ -63,7 +63,7 @@ pub mod u31_lib {
             OP_ABS
             {BabyBearU31::MOD}
             {u31_sub::<BabyBearU31>()}
-            {0x80000000 as u32 - 0x78000001} OP_ADD
+            {0x80000000_u32 - 0x78000001} OP_ADD
             OP_ENDIF
             {BabyBearU31::MOD}
             {u31_sub::<BabyBearU31>()}
@@ -151,7 +151,7 @@ pub fn execute_script_with_inputs(
         match temp_res {
             Ok(()) => (),
             Err(err) => {
-                if err.success == false {
+                if !err.success {
                     println!("temp_res: {:?}", temp_res);
                 }
                 break;

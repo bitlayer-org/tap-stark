@@ -16,7 +16,7 @@ pub struct BitCommitmentU32 {
 
 impl BitCommitmentU32 {
     pub fn new(secret_key: &str, value: u32) -> Self {
-        let winternitz = Winternitz::new(&secret_key);
+        let winternitz = Winternitz::new(secret_key);
         let message = to_digits(value, winternitz::N0);
         Self {
             value,
@@ -26,10 +26,10 @@ impl BitCommitmentU32 {
     }
 
     pub fn change_value(&mut self, value: &u32) -> Self {
-        let message = to_digits(value.clone(), winternitz::N0);
+        let message = to_digits(*value, winternitz::N0);
         let winternitz = self.winternitz.clone();
         Self {
-            value: value.clone(),
+            value: *value,
             winternitz,
             message,
         }

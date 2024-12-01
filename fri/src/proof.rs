@@ -1,8 +1,10 @@
 use alloc::vec::Vec;
 
-use primitives::field::BfField;
-use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::taptree_mmcs::CommitProof;
+use basic::field::BfField;
+use basic::mmcs::bf_mmcs::BFMmcs;
+use basic::tcs::{
+    CommitedProof, B, BO,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -17,6 +19,7 @@ pub struct FriProof<F: BfField, M: BFMmcs<F>, Witness, InputProof> {
     // final polynomials.
     pub(crate) final_poly: F,
     pub(crate) pow_witness: Witness,
+    // _phantom: PhantomData<(M, InputProof)>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -28,7 +31,7 @@ pub struct BfQueryProof<F: BfField, InputProof> {
     pub input_proof: InputProof,
     /// For each commit phase commitment, this contains openings of a commit phase codeword at the
     /// queried location, along with an opening proof.
-    pub(crate) commit_phase_openings: Vec<CommitProof<F>>,
+    pub(crate) commit_phase_openings: Vec<(Vec<Vec<F>>, CommitedProof<BO, B>)>, // for the same polys, each query produces a new CommitedProof
 }
 
 pub fn get_leaf_index_by_query_index(query_index: usize) -> (usize, usize, usize) {

@@ -1,6 +1,8 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use basic::bf_pcs::Pcs;
+use basic::field::BfField;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
 use p3_challenger::{CanObserve, CanSample};
@@ -8,8 +10,6 @@ use p3_commit::PolynomialSpace;
 use p3_field::{AbstractExtensionField, AbstractField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
-use primitives::bf_pcs::Pcs;
-use primitives::field::BfField;
 use tracing::instrument;
 
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
