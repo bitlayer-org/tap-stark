@@ -10,18 +10,6 @@ use bitcoin_script_stack::stack::StackTracker;
 use crate::script_gen::*;
 use crate::{ExprPtr, Expression, StackVariable, Variable};
 
-fn to_copy(
-    low_var: StackVariable,
-    stack: &mut StackTracker,
-    copy_ref: Ref<Option<Arc<RwLock<Box<dyn Expression>>>>>,
-) -> Option<StackVariable> {
-    if copy_ref.is_none() {
-        return None;
-    }
-    let top_var = stack.copy_var(low_var);
-    Some(top_var)
-}
-
 pub(crate) struct Opcode<const INPUT_NUM: usize, const OUTPUT_NUM: usize> {
     id: u32,
     name: RefCell<Option<String>>,
