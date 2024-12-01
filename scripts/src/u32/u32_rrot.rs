@@ -141,11 +141,11 @@ pub fn byte_reorder(offset: usize) -> Script {
     assert!(offset < 4);
     if offset == 0 {
         // 4 3 2 1
-        return script! {
+        script! {
             OP_SWAP
             OP_2SWAP
             OP_SWAP
-        };
+        }
     } else if offset == 1 {
         // 1 4 3 2
         return script! {
@@ -186,10 +186,7 @@ pub fn specific_optimize(rot_num: usize) -> Option<Script> {
 
 pub fn u32_rrot(rot_num: usize) -> Script {
     assert!(rot_num < 32);
-    match specific_optimize(rot_num) {
-        Some(res) => return res,
-        None => {}
-    }
+    if let Some(res) = specific_optimize(rot_num) { return res }
     let remainder: usize = rot_num % 8;
 
     let hbit: usize = 8 - remainder;

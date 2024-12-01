@@ -285,6 +285,7 @@ mod tests {
     use p3_baby_bear::BabyBear;
     use p3_field::extension::BinomialExtensionField;
     use p3_field::{AbstractField, TwoAdicField};
+    use scripts::u31_lib::u31ext_equalverify;
 
     use super::*;
     type EF = BinomialExtensionField<BabyBear, 4>;

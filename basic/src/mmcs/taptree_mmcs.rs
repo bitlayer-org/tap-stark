@@ -110,13 +110,11 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
         let commitments: Vec<[U32; 8]> = commited_data
             .iter()
             .map(|data| {
-                let root = data
+                let root = (*data
                     .commit_taptree
                     .root()
                     .hash
-                    .as_byte_array()
-                    .clone()
-                    .into();
+                    .as_byte_array());
                 u256_to_u32(root)
             })
             .collect();

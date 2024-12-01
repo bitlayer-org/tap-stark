@@ -21,8 +21,8 @@ impl CompleteTaptree {
     }
 
     pub fn root(&self) -> &NodeInfo {
-        let root = &self.root_node;
-        root
+        
+        (&self.root_node) as _
     }
 
     pub fn leaf_count(&self) -> usize {
@@ -44,7 +44,7 @@ impl CompleteTaptree {
     }
 
     fn index_map(&self, index: usize) -> usize {
-        self.leaf_indices[index] as usize
+        self.leaf_indices[index]
     }
 
     pub fn get_tapleaf(&self, index: usize) -> Option<&LeafNode> {
@@ -57,7 +57,7 @@ impl CompleteTaptree {
         let leaf = self.get_tapleaf(index).unwrap();
         let path = self.get_leaf_merkle_path(index).unwrap();
         let mut first_node_hash = TapNodeHash::from_node_hashes(leaf.node_hash(), path[0]);
-        path[1..].into_iter().for_each(|sibling_node| {
+        path[1..].iter().for_each(|sibling_node| {
             first_node_hash = TapNodeHash::from_node_hashes(first_node_hash, *sibling_node);
         });
 
@@ -68,7 +68,7 @@ impl CompleteTaptree {
 pub fn verify_inclusion(root: TapNodeHash, leaf: &LeafNode) -> bool {
     let path = leaf.merkle_branch();
     let mut first_node_hash = TapNodeHash::from_node_hashes(leaf.node_hash(), path[0]);
-    path[1..].into_iter().for_each(|sibling_node| {
+    path[1..].iter().for_each(|sibling_node| {
         first_node_hash = TapNodeHash::from_node_hashes(first_node_hash, *sibling_node);
     });
 
@@ -107,7 +107,7 @@ impl TaptreeConcater for CompleteTaptree {
             // the acctually taptree indices is [a_taptree_indices,b_taptree_indices]
             true => {
                 for b_idx in b_leaf_indices.iter_mut() {
-                    *b_idx = *b_idx + self.leaf_count();
+                    *b_idx += self.leaf_count();
                 }
                 a_leaf_indices.append(&mut b_leaf_indices);
                 println!("left first {:?}", a_leaf_indices);
@@ -117,7 +117,7 @@ impl TaptreeConcater for CompleteTaptree {
                 // for swap happen, for the merkletree index is still [a_merkle_tree_indices,b_merkle_tree_indices]
                 // the acctually taptree indices is [b_taptree_indices,a_taptree_indices]
                 for a_idx in a_leaf_indices.iter_mut() {
-                    *a_idx = *a_idx + other.leaf_count();
+                    *a_idx += other.leaf_count();
                 }
                 a_leaf_indices.append(&mut b_leaf_indices);
 

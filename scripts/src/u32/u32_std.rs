@@ -9,7 +9,7 @@ pub fn u32_push(value: u32) -> Script {
         {value >> 24 & 0xff} // high position
         {value >> 16 & 0xff}
         {value >>  8 & 0xff}
-        {value >>  0 & 0xff} // low position
+        {value & 0xff} // low position
     }
 }
 

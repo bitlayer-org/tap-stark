@@ -78,7 +78,7 @@ impl TreeBuilder {
                         .copy_from_slice(&t_idx_to_m_idx[b_start_idx..b_end_idx]);
                     temp_b_leaf_indices.append(&mut temp_a_leaf_indices);
                     t_idx_to_m_idx[a_start_idx..b_end_idx]
-                        .copy_from_slice(&temp_b_leaf_indices.as_slice());
+                        .copy_from_slice(temp_b_leaf_indices.as_slice());
                 }
                 a_start_idx += a_leaf_size + b_leaf_size;
             }

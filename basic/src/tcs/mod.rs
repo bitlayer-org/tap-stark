@@ -45,6 +45,12 @@ pub struct SyncBcManager<
     _marker: PhantomData<(SG, BC, B)>,
 }
 
+impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommitWithSecret> Default for SyncBcManager<BM, SG, BC, B> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommitWithSecret>
     SyncBcManager<BM, SG, BC, B>
 {
@@ -258,7 +264,7 @@ impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommit
         let mut commited_leaves = vec![];
 
         for index in 0..max_height {
-            if leaf_ys[index].len() != 0 {
+            if !leaf_ys[index].is_empty() {
                 //println!("index:{:?}, ys:{:?}", index, leaf_ys[index]);
                 let mut to_commit_leaf =
                     CommitedLeaf::new_with_bcs(use_bcs.clone(), index, leaf_ys[index].clone());
@@ -270,7 +276,7 @@ impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommit
         // generate commit taptree
         let commit_tree = CompleteTaptree::new_with_scripts(leaves_script);
         CommitedData {
-            leaves: leaves,
+            leaves,
             commit_leaves: commited_leaves,
             commit_taptree: commit_tree,
             use_bcs,
@@ -349,7 +355,7 @@ pub trait PolyTCS<
             let matrices = leaves_largest_first
                 .peeking_take_while(|m| log2_ceil_usize(m.height()) == log_height)
                 .collect_vec();
-            if matrices.len() != 0 {
+            if !matrices.is_empty() {
                 let curr_height = matrices[0].height();
                 for matrix in matrices.iter() {
                     let width = matrix.width();
@@ -439,7 +445,7 @@ pub trait PolyTCS<
     ) -> bool {
         let mut success = true;
         for query_times_index in 0..query_times {
-            if success == false {
+            if !success {
                 return false;
             }
             success = self.verify(

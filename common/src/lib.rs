@@ -9,7 +9,7 @@ pub trait AsU32Vec {
 
 impl AsU32Vec for u32 {
     fn bc_as_u32_vec(&self) -> Vec<u32> {
-        vec![self.clone()]
+        vec![*self]
     }
 }
 

@@ -7,7 +7,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use super::bit_comm_u32::BitCommitmentU32;
-use super::secret_generator::{SecretGen, ThreadSecretGen};
+use super::secret_generator::SecretGen;
 use super::Witness;
 use crate::pushable;
 use crate::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
@@ -164,6 +164,7 @@ mod test {
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
+    use crate::secret_generator::ThreadSecretGen;
     use crate::u31_lib::{u31_equalverify, u31ext_add, u31ext_equalverify, BabyBear4};
     use crate::{execute_script, execute_script_with_inputs};
 
