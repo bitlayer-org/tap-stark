@@ -1,19 +1,17 @@
 use alloc::vec::Vec;
-use core::panic;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use basic::field::BfField;
 use basic::mmcs::bf_mmcs::BFMmcs;
-use basic::tcs::{CommitedProof, DefaultSyncBcManager, B, BM, BO, SG};
-use bitcoin::taproot::TapLeaf;
+use basic::tcs::{CommitedProof, B, BO};
 use itertools::izip;
 use p3_field::AbstractField;
 use p3_util::reverse_bits_len;
 use script_expr::{Dsl, InputManager, ManagerAssign};
-use scripts::{execute_script_with_inputs, BabyBear};
+use scripts::BabyBear;
 use tracing::trace;
 
-use crate::error::{FriError, SVError};
+use crate::error::FriError;
 use crate::verifier::*;
 use crate::{BfQueryProof, FriConfig, FriGenericConfigWithExpr, FriProof};
 
@@ -49,7 +47,7 @@ where
                 &query_proof.input_proof,
                 manager,
             )
-            .map_err(|e| FriError::InputError(e))?
+            .map_err(FriError::InputError)?
         };
         let folded_eval = bf_verify_query(
             g,

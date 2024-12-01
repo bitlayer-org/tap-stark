@@ -155,8 +155,8 @@ impl TaptreeConcater for CompleteTaptree {
 #[cfg(test)]
 mod tests {
 
-    use bitcoin::opcodes::all::OP_ADD;
-    use bitcoin::{Script, ScriptBuf};
+    
+    use bitcoin::ScriptBuf;
     use bitcoin_script::{define_pushable, script};
 
     use super::{CompleteTaptree, TaptreeConcater};
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_build_tree() {
-        let nums = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15u32];
+        let nums = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15u32];
         // let nums = vec![0,1,2,3,4,5,6,7,8,10,11,12,13,14,15u32];
         // let nums = vec![1u32];
         let scripts = nums
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_combine_tree() {
-        let nums = vec![0, 1, 2, 3, 4, 5, 6, 7u32];
+        let nums = [0, 1, 2, 3, 4, 5, 6, 7u32];
         let scripts = nums
             .iter()
             .map(|index| {
@@ -234,7 +234,7 @@ mod tests {
             );
         }
 
-        let b_nums = vec![8, 9, 10, 11, 12, 13, 14, 15u32];
+        let b_nums = [8, 9, 10, 11, 12, 13, 14, 15u32];
         let b_scripts = b_nums
             .iter()
             .map(|index| {
@@ -259,7 +259,7 @@ mod tests {
         println!("a_tree: {:?}", a_tree.leaf_indices);
         println!("b_tree: {:?}", b_tree.leaf_indices);
         println!("c_tree: {:?}", c_tree.leaf_indices);
-        let expect_nums = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15u32];
+        let expect_nums = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15u32];
         for (query_index, value) in expect_nums.iter().enumerate() {
             println!("query_index {:?}, value: {:?}", query_index, value);
             let ap = c_tree.get_tapleaf(query_index).unwrap();
@@ -277,7 +277,7 @@ mod tests {
         println!("a_tree: {:?}", a_tree.leaf_indices);
         println!("b_tree: {:?}", b_tree.leaf_indices);
         println!("c_tree: {:?}", c_tree.leaf_indices);
-        let expect_nums = vec![8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7u32];
+        let expect_nums = [8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7u32];
         for (query_index, value) in expect_nums.iter().enumerate() {
             println!("query_index {:?}, value: {:?}", query_index, value);
             let ap = c_tree.get_tapleaf(query_index).unwrap();
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_combine_with_different_depth() {
-        let nums = vec![0, 1, 2, 3, 4, 5, 6, 7u32];
+        let nums = [0, 1, 2, 3, 4, 5, 6, 7u32];
         let scripts = nums
             .iter()
             .map(|index| {
@@ -314,7 +314,7 @@ mod tests {
             );
         }
 
-        let b_nums = vec![8, 9, 10, 11u32];
+        let b_nums = [8, 9, 10, 11u32];
         let b_scripts = b_nums
             .iter()
             .map(|index| {
@@ -339,7 +339,7 @@ mod tests {
         println!("a_tree: {:?}", a_tree.leaf_indices);
         println!("b_tree: {:?}", b_tree.leaf_indices);
         println!("c_tree: {:?}", c_tree.leaf_indices);
-        let expect_nums = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11u32];
+        let expect_nums = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11u32];
         for (query_index, value) in expect_nums.iter().enumerate() {
             println!("query_index {:?}, value: {:?}", query_index, value);
             let ap = c_tree.get_tapleaf(query_index).unwrap();
@@ -357,7 +357,7 @@ mod tests {
         println!("a_tree: {:?}", a_tree.leaf_indices);
         println!("b_tree: {:?}", b_tree.leaf_indices);
         println!("c_tree: {:?}", c_tree.leaf_indices);
-        let expect_nums = vec![8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7u32];
+        let expect_nums = [8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7u32];
         for (query_index, value) in expect_nums.iter().enumerate() {
             println!("query_index {:?}, value: {:?}", query_index, value);
             let ap = c_tree.get_tapleaf(query_index).unwrap();

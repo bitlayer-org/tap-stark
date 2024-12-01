@@ -205,9 +205,9 @@ mod test {
 
         for _ in 0..30 {
             let mut origin_value0: u32 = rng.gen();
-            origin_value0 = origin_value0 % 1 << 31;
+            origin_value0 = (origin_value0 % 1) << 31;
             let origin_value1: u32 = rng.gen();
-            origin_value0 = origin_value1 % 1 << 31;
+            origin_value0 = (origin_value1 % 1) << 31;
 
             let v = origin_value0 + origin_value1;
 

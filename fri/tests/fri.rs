@@ -164,7 +164,7 @@ mod tests0 {
         let shift = Val::generator();
         let mut rng = ChaCha20Rng::seed_from_u64(0);
 
-        let ldes: Vec<RowMajorMatrix<Val>> = vec![2]
+        let ldes: Vec<RowMajorMatrix<Val>> = [2]
             .iter()
             .map(|deg_bits| {
                 let evals = RowMajorMatrix::<Val>::rand_nonzero(&mut rng, 1 << deg_bits, 1);
@@ -248,7 +248,7 @@ mod tests0 {
                     .iter()
                     // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
                     .map(|(lh, v)| {
-                        let v_dsl = manager.assign_input_f::<Val>(v.clone());
+                        let v_dsl = manager.assign_input_f::<Val>(*v);
                         (*lh, v_dsl)
                     })
                     .collect())
@@ -401,7 +401,7 @@ mod tests1 {
                 Ok(proof
                     .iter()
                     .map(|(lh, v)| {
-                        let v_dsl = manager.assign_input_f::<Val>(v.clone());
+                        let v_dsl = manager.assign_input_f::<Val>(*v);
                         (*lh, v_dsl)
                     })
                     .collect())
@@ -677,7 +677,7 @@ mod tests2 {
                     .iter()
                     // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
                     .map(|(lh, v)| {
-                        let v_dsl = manager.assign_input_f::<Val>(v.clone());
+                        let v_dsl = manager.assign_input_f::<Val>(*v);
                         (*lh, v_dsl)
                     })
                     .collect())

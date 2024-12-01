@@ -1,14 +1,11 @@
-use alloc::vec;
 use alloc::vec::Vec;
 
 use basic::challenger::BfGrindingChallenger;
 use basic::field::BfField;
 use basic::mmcs::bf_mmcs::BFMmcs;
-use basic::tcs::{CommitedProof, DefaultSyncBcManager, B, BM, BO, SG};
-use bitcoin::taproot::TapLeaf;
+use basic::tcs::{CommitedProof, B, BO};
 use itertools::izip;
 use p3_challenger::{CanObserve, CanSample};
-use scripts::execute_script_with_inputs;
 use tracing::trace;
 
 use crate::error::FriError;
@@ -79,7 +76,7 @@ where
         izip!(&challenges.query_indices, &proof.query_proofs,)
     {
         let ro = open_input(query_times_index, query_index, &query_proof.input_proof)
-            .map_err(|e| FriError::InputError(e))?;
+            .map_err(FriError::InputError)?;
         let folded_eval = verify_query(
             g,
             config,

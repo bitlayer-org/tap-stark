@@ -9,7 +9,7 @@ use basic::bf_pcs::{Pcs, PcsExpr};
 use basic::challenger::BfGrindingChallenger;
 use basic::field::BfField;
 use basic::mmcs::bf_mmcs::BFMmcs;
-use basic::tcs::{CommitedProof, DefaultSyncBcManager, B, BM, BO, SG};
+use basic::tcs::{CommitedProof, B, BO};
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::{OpenedValues, PolynomialSpace, TwoAdicMultiplicativeCoset};
@@ -168,7 +168,7 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
         // in case we want higher arity in the future
 
         let rev_x_hint = x_hint * F::two_adic_generator(log_arity);
-        let mut xs_hint = vec![x_hint; 2];
+        let mut xs_hint = [x_hint; 2];
         xs_hint[index_sibling % 2] = rev_x_hint;
         let xs1_minus_xs0_inverse_hint = F::one() / (xs_hint[1] - xs_hint[0]);
 
@@ -182,7 +182,7 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
             xs_1 = x * F::two_adic_generator(log_arity);
         }
 
-        let mut evals = vec![Dsl::default(), Dsl::default()];
+        let mut evals = [Dsl::default(), Dsl::default()];
         evals[index_sibling % 2] = sibling_eval;
         evals[(index_sibling + 1) % 2] = folded_eval;
         assert_eq!(log_arity, 1, "can only interpolate two points for now");
@@ -407,8 +407,8 @@ where
                         let (opened_values, opening_proof) =
                             self.mmcs.open_batch(query_times_index, reduced_index, data);
                         BatchOpening {
-                            opened_values: opened_values,
-                            opening_proof: opening_proof,
+                            opened_values,
+                            opening_proof,
                         }
                     })
                     .collect()

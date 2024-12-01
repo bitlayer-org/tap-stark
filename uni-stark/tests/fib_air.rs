@@ -133,7 +133,7 @@ fn test_public_value() {
     let mut challenger = Challenger::new(permutation).unwrap();
 
     let len = trace.values.len();
-    let output = trace.values[len - 1].clone();
+    let output = trace.values[len - 1];
     let pis = vec![
         BabyBear::from_canonical_u64(0),
         BabyBear::from_canonical_u64(1),
@@ -167,7 +167,7 @@ fn test_generate_script_expr() {
     let mut challenger = Challenger::new(permutation).unwrap();
 
     let len = trace.values.len();
-    let output = trace.values[len - 1].clone();
+    let output = trace.values[len - 1];
     let mut challenger_dsl = BfChallengerExpr::<Challenge, U32, 64>::new().unwrap();
 
     let pis = vec![

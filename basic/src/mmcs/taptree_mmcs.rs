@@ -110,11 +110,11 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
         let commitments: Vec<[U32; 8]> = commited_data
             .iter()
             .map(|data| {
-                let root = (*data
+                let root = *data
                     .commit_taptree
                     .root()
                     .hash
-                    .as_byte_array());
+                    .as_byte_array();
                 u256_to_u32(root)
             })
             .collect();
@@ -129,13 +129,13 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
 
 #[cfg(test)]
 mod test {
-    use bitcoin::taproot::TapLeaf;
+    
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
-    use scripts::execute_script_with_inputs;
+    
 
-    use super::{PolyTCS, TapTreeMmcs, TCS};
+    use super::{PolyTCS, TapTreeMmcs};
     use crate::mmcs::bf_mmcs::BFMmcs;
     use crate::tcs::DefaultSyncBcManager;
     type F = BabyBear;

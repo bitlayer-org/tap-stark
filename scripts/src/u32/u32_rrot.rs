@@ -251,7 +251,7 @@ mod tests {
                     {u32_equal()}
                 };
                 let res = execute_script(exec_script);
-                assert_eq!(res.success, true);
+                assert!(res.success);
             }
         }
     }

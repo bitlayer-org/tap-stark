@@ -50,7 +50,7 @@ where
     let quotient_degree = 1 << log_quotient_degree;
 
     let pcs = config.pcs();
-    let trace_domain = pcs.natural_domain_for_degree(degree.clone());
+    let trace_domain = pcs.natural_domain_for_degree(degree);
     let quotient_domain =
         trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
     let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
@@ -182,7 +182,6 @@ where
                     other_domain
                         .zp_at_point(domain.first_point())
                         .inverse()
-                        .into()
                 })
                 .product::<Val<SC>>()
         })

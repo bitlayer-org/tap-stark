@@ -5,7 +5,7 @@ use core::iter;
 use basic::challenger::BfGrindingChallenger;
 use basic::field::BfField;
 use basic::mmcs::bf_mmcs::BFMmcs;
-use basic::tcs::{CommitedProof, DefaultSyncBcManager, B, BM, BO, SG};
+use basic::tcs::{CommitedProof, B, BO};
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample};
 use p3_field::TwoAdicField;
@@ -82,8 +82,8 @@ where
         .map(|(i, commit)| {
             let index_i = query_index >> i >> 1;
 
-            let proof = config.mmcs.open_batch(query_times_index, index_i, commit);
-            proof
+            
+            config.mmcs.open_batch(query_times_index, index_i, commit)
         })
         .collect();
 

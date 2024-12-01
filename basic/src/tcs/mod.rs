@@ -633,7 +633,7 @@ mod tests {
 
         let manager = DefaultSyncBcManager::new();
         let inputs = vec![mat_1, mat_2, mat_3];
-        let mut tcs = TCS::new(manager);
+        let tcs = TCS::new(manager);
         let commit_data = tcs.commit_polys(inputs);
 
         (0..7).for_each(|index| {
@@ -728,13 +728,13 @@ mod tests {
 
         let manager = DefaultSyncBcManager::new();
         let inputs = vec![mat_1, mat_2, mat_3];
-        let mut tcs = TCS::new(manager);
+        let tcs = TCS::new(manager);
         let query_times = 8;
         let commit_data = tcs.commit_poly_with_query_times::<BabyBear>(inputs, query_times);
 
         let roots: Vec<TapNodeHash> = commit_data
             .iter()
-            .map(|data| data.commit_taptree.root().hash.clone())
+            .map(|data| data.commit_taptree.root().hash)
             .collect();
 
         (0..7).for_each(|index| {
