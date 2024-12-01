@@ -1378,9 +1378,7 @@ mod tests2 {
         let bmap = BTreeMap::new();
         let mut stack = StackTracker::new();
         let a = Dsl::constant_f(BabyBear::one());
-        // let b = Dsl::constant_f(BabyBear::one());
         let b = a.clone();
-        // let c = b.clone();
 
         let c = a + b;
         let d = c.clone();
