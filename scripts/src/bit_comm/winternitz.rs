@@ -1,7 +1,8 @@
 //
-// Winternitz One-time Signatures
+// License Claim: This file is optimized based https://github.com/BitVM/BitVM/blob/main/src/signatures/winternitz.rs
 //
 
+// Winternitz One-time Signatures
 //
 // Winternitz signatures are an improved version of Lamport signatures.
 // A detailed introduction to Winternitz signatures can be found
@@ -16,6 +17,7 @@
 //
 
 pub use bitcoin_script::{define_pushable, script};
+use serde::{Deserialize, Serialize};
 
 pub use crate::execute_script;
 
@@ -53,7 +55,7 @@ pub const N1: usize = 2;
 //
 // Helper functions
 //
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub struct Winternitz {
     secret_key: String,
     pub_key: Vec<Vec<u8>>,
@@ -64,7 +66,7 @@ impl Winternitz {
         let mut pubkey = Vec::new();
 
         for i in 0..N {
-            pubkey.push(generate_public_key(&secret_key, i as u32));
+            pubkey.push(generate_public_key(secret_key, i as u32));
         }
 
         Self {
@@ -143,11 +145,11 @@ impl Winternitz {
         let mut signature: Vec<Vec<u8>> = Vec::new();
         for i in 0..N {
             let (hash, digit) =
-                self.digit_signature(i as u32, checksum_digits[(N - 1 - i) as usize]);
+                self.digit_signature(i as u32, checksum_digits[N - 1 - i]);
             signature.push(hash); // The reason why reverse order is used here is because it needs to be pushed onto the stack
             signature.push(vec![digit]);
         }
-        assert!(signature.len() == 2 * N as usize);
+        assert!(signature.len() == 2 * N);
         signature
     }
 
@@ -161,7 +163,7 @@ impl Winternitz {
 
             for i in 0..N {
                 // the checksum must be N-1-i(can not set i reason) because we must ensure that the checkum only can modify to a smallet number when the digit only can modify to a bigger number by a malious part.
-                { self.digit_signature_script( i as u32, checksum_digits[ (N-1-i) as usize]) }
+                { self.digit_signature_script( i as u32, checksum_digits[ N-1-i]) }
             }
         }
     }
@@ -205,7 +207,7 @@ impl Winternitz {
                 // Verify the signature for this digit
                 OP_FROMALTSTACK
                 OP_PICK
-                { pub_key[(N - 1 - digit_index) as usize].clone() }
+                { pub_key[N - 1 - digit_index].clone() }
                 OP_EQUALVERIFY
 
                 // Drop the d+1 stack items
@@ -262,7 +264,7 @@ impl Winternitz {
         }
     }
     pub fn checksig_verify_self_pubkey(&self) -> Script {
-        self.checksig_verify(&self.pub_key().as_slice())
+        self.checksig_verify(self.pub_key().as_slice())
     }
 }
 /// Generate the public key for the i-th digit of the message
@@ -305,8 +307,6 @@ pub fn equivocation(_pub_key: &[Vec<u8>]) -> Script {
 #[cfg(test)]
 mod test {
 
-    use p3_baby_bear::BabyBear;
-
     use super::*;
     use crate::execute_script_with_inputs;
 
@@ -316,7 +316,7 @@ mod test {
     #[test]
     fn test_checksum() {
         let winter = Winternitz::new("1234");
-        let message_digits: [u8; N0_INS as usize] = [1, 2, 3, 4, 5, 6, 7, 8];
+        let message_digits: [u8; N0_INS] = [1, 2, 3, 4, 5, 6, 7, 8];
         // if the message is [1, 2, 3, 4, 5, 6, 7, 8]; checksum=36 120-36=84(0101,0100)[5,4]
         let sum = winter.checksum(&message_digits);
         assert_eq!(sum, 84);
@@ -332,7 +332,7 @@ mod test {
         let origin_value: u32 = 0x87654321;
         // let message = winter.to_digits(origin_value);
         let message = to_digits(origin_value, N0);
-        const MESSAGE: [u8; N0_INS as usize] = [1, 2, 3, 4, 5, 6, 7, 8];
+        const MESSAGE: [u8; N0_INS] = [1, 2, 3, 4, 5, 6, 7, 8];
         assert_eq!(message, MESSAGE);
 
         let mut pubkey = Vec::new();
@@ -360,7 +360,7 @@ mod test {
         // test zero case
         let origin_value: u32 = 0xED65002F;
         let message = to_digits(origin_value, N0);
-        const MESSAGE_1: [u8; N0_INS as usize] = [0xF, 2, 0, 0, 5, 6, 0xD, 0xE];
+        const MESSAGE_1: [u8; N0_INS] = [0xF, 2, 0, 0, 5, 6, 0xD, 0xE];
         assert_eq!(message, MESSAGE_1);
 
         let script = script! {
@@ -387,7 +387,7 @@ mod test {
         // ======== Test 1...F CASE ============
         let winter = Winternitz::new("1234");
 
-        const MESSAGE: [u8; N0_INS as usize] = [1, 2, 3, 4, 5, 6, 7, 8];
+        const MESSAGE: [u8; N0_INS] = [1, 2, 3, 4, 5, 6, 7, 8];
 
         let mut pubkey = Vec::new();
         for i in 0..N_INS {
@@ -414,7 +414,7 @@ mod test {
         assert!(exec_result.success);
 
         // Test 0xA 0xB 0xC 0xD 0xE 0xF Case
-        const MESSAGE_1: [u8; N0_INS as usize] = [0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 9, 8];
+        const MESSAGE_1: [u8; N0_INS] = [0xA, 0xB, 0xC, 0xD, 0xE, 0xF, 9, 8];
 
         let mut pubkey = Vec::new();
         for i in 0..N_INS {
@@ -446,7 +446,7 @@ mod test {
         assert!(exec_result.success);
 
         // ============ Test 0 CASE ==============
-        const MESSAGE_2: [u8; N0_INS as usize] = [0xA, 0xB, 0x0, 0x0, 0x0, 0xF, 7, 8];
+        const MESSAGE_2: [u8; N0_INS] = [0xA, 0xB, 0x0, 0x0, 0x0, 0xF, 7, 8];
 
         let mut pubkey = Vec::new();
         for i in 0..N_INS {

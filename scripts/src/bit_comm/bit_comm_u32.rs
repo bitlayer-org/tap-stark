@@ -1,14 +1,14 @@
-use bitcoin::opcodes::OP_FROMALTSTACK;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
+use serde::{Deserialize, Serialize};
 
 use super::winternitz::*;
+use crate::bit_comm::winternitz;
 use crate::u32_std::u32_compress;
-use crate::winternitz;
 define_pushable!();
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub  struct BitCommitmentU32 {
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct BitCommitmentU32 {
     pub value: u32,
     pub winternitz: Winternitz,
     pub message: Vec<u8>, // every u8 only available for 4-bits
@@ -16,10 +16,20 @@ pub  struct BitCommitmentU32 {
 
 impl BitCommitmentU32 {
     pub fn new(secret_key: &str, value: u32) -> Self {
-        let winternitz = Winternitz::new(&secret_key);
+        let winternitz = Winternitz::new(secret_key);
         let message = to_digits(value, winternitz::N0);
         Self {
             value,
+            winternitz,
+            message,
+        }
+    }
+
+    pub fn change_value(&mut self, value: &u32) -> Self {
+        let message = to_digits(*value, winternitz::N0);
+        let winternitz = self.winternitz.clone();
+        Self {
+            value: *value,
             winternitz,
             message,
         }
@@ -65,14 +75,14 @@ impl BitCommitmentU32 {
         self.winternitz.sign_script(&self.message)
     }
 
-    pub  fn recover_message_at_stack(&self) -> Script {
+    pub fn recover_message_at_stack(&self) -> Script {
         script! {
             {self.checksig_verify_script()}
             {u32_compress()}
         }
     }
 
-    pub  fn recover_message_at_altstack(&self) -> Script {
+    pub fn recover_message_at_altstack(&self) -> Script {
         script! {
             {self.checksig_verify_script()}
             {u32_compress()}
@@ -80,14 +90,14 @@ impl BitCommitmentU32 {
         }
     }
 
-    pub  fn message_from_altstack(&self) -> Script {
+    pub fn message_from_altstack(&self) -> Script {
         script! {
           OP_FROMALTSTACK
         }
     }
 
     // signuture is the input of this script
-    pub  fn recover_message_euqal_to_commit_message(&self) -> Script {
+    pub fn recover_message_euqal_to_commit_message(&self) -> Script {
         script! {
             {self.recover_message_at_stack()}
             {self.value }
@@ -95,7 +105,7 @@ impl BitCommitmentU32 {
         }
     }
 
-    pub  fn signature(&self) -> Vec<Vec<u8>> {
+    pub fn signature(&self) -> Vec<Vec<u8>> {
         let mut sig = self.winternitz.sign(&self.message);
         for i in 0..sig.len() {
             if sig[i].len() == 1 && sig[i][0] == 0 {

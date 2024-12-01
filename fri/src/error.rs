@@ -1,16 +1,4 @@
-use bitcoin::taproot::TaprootBuilderError;
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum BfError {
-    TaprootBuilderError(TaprootBuilderError),
-    TaprootError,
-    TapLeafError,
-    TapTreeError,
-    EvaluationLeafError,
-    ExecuteScriptError,
-    InvalidMerkleProof,
-    IndexWithEmptyLeaf(u32, u32),
-}
-
+use basic::mmcs::error::BfError;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SVError {
     VerifyCalNegXScriptError,
@@ -23,20 +11,15 @@ pub enum SVError {
     InvalidWitness,
 }
 
-impl From<TaprootBuilderError> for BfError {
-    fn from(error: TaprootBuilderError) -> Self {
-        BfError::TaprootBuilderError(error)
-    }
-}
-
-impl<M> From<BfError> for FriError<M> {
+impl<M, I> From<BfError> for FriError<M, I> {
     fn from(error: BfError) -> Self {
-        FriError::<M>::BFError(error)
+        FriError::<M, I>::BFError(error)
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum FriError<CommitMmcsErr> {
+pub enum FriError<CommitMmcsErr, InputErr> {
+    InputError(InputErr),
     InvalidProofShape,
     CommitPhaseMmcsError(CommitMmcsErr),
     ScriptVerifierError(SVError),

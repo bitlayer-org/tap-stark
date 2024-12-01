@@ -1,103 +1,109 @@
-use alloc::vec;
 use alloc::vec::Vec;
-use core::panic;
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use scripts::{
-    execute_script_with_inputs
-};
-use crate::fri_scripts::leaf::{CalNegXLeaf, IndexToROULeaf,SegmentLeaf,SquareFLeaf,ReductionLeaf, RevIndexLeaf, VerifyFoldingLeaf };
-use crate::fri_scripts::point::{ Point,
-    PointsLeaf};
-use primitives::bit_comm::BCAssignment;
-use primitives::field::BfField;
-use bitcoin::taproot::TapLeaf;
+use basic::field::BfField;
+use basic::mmcs::bf_mmcs::BFMmcs;
+use basic::tcs::{CommitedProof, B, BO};
 use itertools::izip;
-use primitives::challenger::{BfGrindingChallenger};
-use p3_challenger::{ CanObserve, CanSample};
+use p3_field::AbstractField;
 use p3_util::reverse_bits_len;
+use script_expr::{Dsl, InputManager, ManagerAssign};
+use scripts::BabyBear;
+use tracing::trace;
 
-use crate::bf_mmcs::BFMmcs;
-use crate::error::{BfError, FriError, SVError};
+use crate::error::FriError;
 use crate::verifier::*;
-use crate::{BfCommitPhaseProofStep, BfQueryProof, FriConfig, FriProof};
+use crate::{BfQueryProof, FriConfig, FriGenericConfigWithExpr, FriProof};
 
-pub fn bf_verify_challenges<F, M, Witness>(
-    assign: &mut BCAssignment,
+pub fn bf_verify_challenges<G, F, M, Witness>(
+    g: &G,
     config: &FriConfig<M>,
-    proof: &FriProof<F, M, Witness>,
+    proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
-    reduced_openings: &[[F; 32]],
-) -> Result<(), FriError<M::Error>>
+    open_input: impl Fn(
+        usize,
+        usize,
+        &G::InputProof,
+        MutexGuard<Box<InputManager>>,
+    ) -> Result<Vec<(usize, Dsl<F>)>, G::InputError>,
+) -> Result<ManagerAssign, FriError<M::Error, G::InputError>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
+    G: FriGenericConfigWithExpr<F>,
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
-    for (&index, query_proof, ro) in izip!(
-        &challenges.query_indices,
-        &proof.query_proofs,
-        reduced_openings
-    ) {
+    let mut manager_assign = ManagerAssign::new();
+    for (&(query_times_index, query_index), query_proof) in
+        izip!(&challenges.query_indices, &proof.query_proofs,)
+    {
+        let cur_manager = manager_assign
+            .next_manager_with_name(format!("[fri-pcs-verify query_index:{}] ", query_index));
+        let ro = {
+            let manager: std::sync::MutexGuard<Box<InputManager>> = cur_manager.lock().unwrap();
+            open_input(
+                query_times_index,
+                query_index,
+                &query_proof.input_proof,
+                manager,
+            )
+            .map_err(FriError::InputError)?
+        };
         let folded_eval = bf_verify_query(
-            assign,
+            g,
             config,
             &proof.commit_phase_commits,
-            index,
+            query_index,
+            query_times_index,
             query_proof,
             &challenges.betas,
             ro,
             log_max_height,
+            &cur_manager,
         )?;
 
-        if folded_eval != proof.final_poly {
-            return Err(FriError::FinalPolyMismatch);
+        {
+            let mut manager = cur_manager.lock().unwrap();
+            let final_poly_input = manager.assign_input_f::<F>(proof.final_poly);
+            manager.set_exec_dsl(folded_eval.equal(final_poly_input).into());
         }
     }
 
-    Ok(())
+    Ok(manager_assign)
 }
 
-fn bf_verify_query<F, M>(
-    assign: &mut BCAssignment,
+fn bf_verify_query<G, F, M>(
+    g: &G,
     config: &FriConfig<M>,
     commit_phase_commits: &[M::Commitment],
-    mut index: usize,
-    proof: &BfQueryProof<F>,
+    mut query_index: usize,
+    query_times_index: usize,
+    proof: &BfQueryProof<F, G::InputProof>,
     betas: &[F],
-    reduced_openings: &[F; 32],
+    reduced_openings: Vec<(usize, Dsl<F>)>,
     log_max_height: usize,
-) -> Result<F, FriError<M::Error>>
+    manager: &Arc<Mutex<Box<InputManager>>>,
+) -> Result<Dsl<F>, FriError<M::Error, G::InputError>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = BfCommitPhaseProofStep<F>>,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
+    G: FriGenericConfigWithExpr<F>,
 {
-    let mut folded_eval = F::zero();
+    let mut ro_iter = reduced_openings.into_iter().peekable();
+    let mut folded_eval = Dsl::<F>::zero();
 
-    let rev_index = reverse_bits_len(index, log_max_height);
-    let rev_index_leaf = RevIndexLeaf::new_from_assign(
-        log_max_height as u32,
-        index as u32,
-        rev_index as u32,
-        assign,
-    );
-    let exec_success = rev_index_leaf.execute_leaf_script();
-    if !exec_success {
-        return Err(FriError::ScriptVerifierError(
-            SVError::VerifyReverseIndexScriptError,
-        ));
-    }
+    let rev_index_dsl =
+        Dsl::<F>::reverse_bits_len::<BabyBear>(query_index as u32, log_max_height as u32);
 
-    let generator = F::two_adic_generator(log_max_height);
-    let mut x = generator.exp_u64(rev_index as u64);
-    let index_to_rou_leaf =
-        IndexToROULeaf::<1, F>::new_from_assign(rev_index, log_max_height, x, assign);
-    assert_eq!(index_to_rou_leaf.generator(), generator);
-    let exec_success = index_to_rou_leaf.execute_leaf_script();
-    if !exec_success {
-        return Err(FriError::ScriptVerifierError(
-            SVError::VerifyIndexToROUScriptError,
-        ));
-    }
+    let mut x = rev_index_dsl.index_to_rou_dsl(log_max_height as u32);
+
+    let rev_index = reverse_bits_len(query_index, log_max_height);
+    let mut x_hint = F::two_adic_generator(log_max_height).exp_u64(rev_index as u64);
+
+    // let mut x = manager
+    //     .lock()
+    //     .unwrap()
+    //     .assign_input::<F>(x_hint.as_u32_vec());
 
     for (log_folded_height, commit, step, &beta) in izip!(
         (0..log_max_height).rev(),
@@ -105,98 +111,53 @@ where
         &proof.commit_phase_openings,
         betas,
     ) {
-        let index_sibling = index ^ 1;
-        let index_pair = index >> 1;
+        let point_index = query_index & 1;
+        let index_sibling = point_index ^ 1;
+        let index_pair = query_index >> 1;
 
-        let poins_leaf: PointsLeaf<F> = step.points_leaf.clone();
-        let challenge_point: Point<F> = poins_leaf.get_point_by_index(index).unwrap().clone();
-
-        let opening = reduced_openings[log_folded_height + 1];
-        let reduction_value = opening + folded_eval;
-        let reduction_leaf =
-            ReductionLeaf::<1, F>::new_from_assign(folded_eval, opening, reduction_value, assign);
-        let exec_success = reduction_leaf.execute_leaf_script();
-        if !exec_success {
-            return Err(FriError::ScriptVerifierError(
-                SVError::VerifyReductionScriptError,
-            ));
+        if let Some((_, ro)) = ro_iter.next_if(|(lh, _)| *lh == log_folded_height + 1) {
+            folded_eval += ro;
         }
 
-        if log_folded_height < log_max_height - 1 {
-            assert_eq!(reduction_value, challenge_point.y);
-        }
-        let sibling_point: Point<F> = poins_leaf
-            .get_point_by_index(index_sibling)
-            .unwrap()
-            .clone();
-
-        assert_eq!(challenge_point.x, x);
-        let neg_x = x * F::two_adic_generator(1);
-        let cal_negx_leaf = CalNegXLeaf::<1, F>::new_from_assign(x, neg_x, assign);
-        let exec_success = cal_negx_leaf.execute_leaf_script();
-        if !exec_success {
-            return Err(FriError::ScriptVerifierError(
-                SVError::VerifyCalNegXScriptError,
-            ));
-        }
-        assert_eq!(sibling_point.x, neg_x);
-
-        let mut evals = vec![reduction_value; 2];
-        evals[index_sibling % 2] = sibling_point.y;
-
-        let mut xs = vec![x; 2];
-        xs[index_sibling % 2] = neg_x;
-
-        let input = poins_leaf.signature();
-        if let TapLeaf::Script(script, _ver) = step.leaf_node.leaf().clone() {
-            assert_eq!(script, poins_leaf.recover_points_euqal_to_commited_point());
-            let res = execute_script_with_inputs(
-                poins_leaf.recover_points_euqal_to_commited_point(),
-                input,
-            );
-            if !res.success {
-                return Err(FriError::ScriptVerifierError(
-                    SVError::VerifyCommitedPointError,
-                ));
-            }
-            assert_eq!(res.success, true);
-        } else {
-            panic!("Invalid script")
-        }
+        // the opening values len should be 1, becuase we only commit one matrix.
+        assert_eq!(step.0.len(), 1);
+        let opening_values = step.0.clone();
+        let commited_proof = step.1.clone();
 
         config
             .mmcs
-            .verify_taptree(step, commit)
+            .verify_batch(query_times_index, &opening_values, &commited_proof, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
-
-        folded_eval = evals[0] + (beta - xs[0]) * (evals[1] - evals[0]) / (xs[1] - xs[0]);
-        let folding_leaf = VerifyFoldingLeaf::<1, F>::new_from_assign(
-            challenge_point.y,
-            sibling_point.y,
-            challenge_point.x,
-            beta,
-            folded_eval,
-            assign,
+        trace!(
+            "log_folded_height:{}; open_index:{}; open index_sibling:{}; point_index:{} ",
+            log_folded_height,
+            query_index,
+            index_sibling,
+            point_index
         );
-        let exec_success = folding_leaf.execute_leaf_script();
-        if !exec_success {
-            return Err(FriError::ScriptVerifierError(
-                SVError::VerifyFoldingScriptError,
-            ));
-        }
-        index = index_pair;
-        x = x.square();
-        let square_leaf = SquareFLeaf::<1, F>::new_from_assign(x, x.square(), assign);
-        let exec_success = folding_leaf.execute_leaf_script();
-        if !exec_success {
-            return Err(FriError::ScriptVerifierError(
-                SVError::VerifySquareFScriptError,
-            ));
+
+        folded_eval = {
+            let mut cur_manager: MutexGuard<Box<InputManager>> = manager.lock().unwrap();
+            g.fold_row_with_expr(
+                folded_eval,
+                cur_manager.assign_input_f::<F>(opening_values[0][index_sibling]),
+                x.clone(),
+                x_hint,
+                point_index,
+                index_sibling,
+                cur_manager.assign_input_f::<F>(beta),
+                cur_manager,
+            )
+        };
+
+        query_index = index_pair;
+        if log_folded_height != 1 {
+            x = x.square();
+            x_hint = x_hint * x_hint;
         }
     }
 
-    debug_assert!(index < config.blowup(), "index was {}", index);
-    debug_assert_eq!(x.exp_power_of_2(config.log_blowup), F::one());
+    debug_assert!(query_index < config.blowup(), "index was {}", query_index);
 
     Ok(folded_eval)
 }
