@@ -1,3 +1,8 @@
+use basic::bf_pcs::{Pcs, PcsExpr};
+use basic::challenger::chan_field::U32;
+use basic::challenger::{BfChallenger, Blake3Permutation};
+use basic::field::BfField;
+use basic::mmcs::taptree_mmcs::TapTreeMmcs;
 use fri::{FriConfig, TwoAdicFriPcs};
 use itertools::{izip, Itertools};
 use p3_baby_bear::BabyBear;
@@ -7,11 +12,6 @@ use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
 use p3_field::{ExtensionField, Field};
 use p3_matrix::dense::RowMajorMatrix;
-use primitives::bf_pcs::{Pcs, PcsExpr};
-use primitives::challenger::chan_field::U32;
-use primitives::challenger::{BfChallenger, Blake3Permutation};
-use primitives::field::BfField;
-use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -167,6 +167,8 @@ macro_rules! make_tests_for_pcs {
 }
 
 mod babybear_fri_pcs {
+    use basic::tcs::DefaultSyncBcManager;
+
     use super::*;
 
     type PF = U32;
@@ -181,11 +183,12 @@ mod babybear_fri_pcs {
     type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
 
     fn get_pcs(log_blowup: usize) -> (MyPcs, Challenger) {
-        let val_mmcs = ValMmcs::new();
-        let challenge_mmscs = ChallengeMmcs::new();
+        let num_queries = 2;
+        let val_mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
+        let challenge_mmscs = ChallengeMmcs::new(DefaultSyncBcManager::new(), num_queries);
         let fri_config = FriConfig {
             log_blowup,
-            num_queries: 1,
+            num_queries,
             proof_of_work_bits: 8,
             mmcs: challenge_mmscs,
         };

@@ -8,10 +8,10 @@ use std::sync::Mutex;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::usize;
 
+use basic::field::BfField;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use common::AbstractField;
 use lazy_static::lazy_static;
-use primitives::field::BfField;
 
 use crate::{
     CustomOpcode, Expression, IdCount, ScriptExprError, StandardOpcode, StandardOpcodeId, Variable,
@@ -778,11 +778,11 @@ mod tests {
 
     use alloc::collections::BTreeMap;
 
+    use basic::field::BfField;
     use bitcoin_script_stack::stack::StackTracker;
     use common::{AbstractField, BabyBear, BinomialExtensionField};
     use p3_field::TwoAdicField;
     use p3_util::reverse_bits_len;
-    use primitives::field::BfField;
     use scripts::u31_lib::{u31_equalverify, u31ext_equalverify, BabyBear4};
 
     use super::{Dsl, Expression, *};

@@ -2,93 +2,107 @@ use std::usize;
 
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-use primitives::field::BfField;
-use script_manager::bc_assignment::DefaultBCAssignment;
 use scripts::bit_comm::bit_comm::BitCommitment;
 use scripts::secret_generator::ConstantSecretGen;
+use serde::{Deserialize, Serialize};
+
+use crate::field::BfField;
 define_pushable!();
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(bound = "")]
 pub struct PointsLeaf<F: BfField> {
-    leaf_index_1: usize,
-    leaf_index_2: usize,
-    points: Points<F>,
+    leaf_index: usize,
+    leaf_evals: Points<F>,
 }
 
 impl<F: BfField> PointsLeaf<F> {
-    pub fn new(
-        leaf_index_1: usize,
-        leaf_index_2: usize,
-        x: F,
-        y: F,
-        x2: F,
-        y2: F,
-    ) -> PointsLeaf<F> {
-        let points = Points::<F>::new(x, y, x2, y2);
+    pub fn new(leaf_index: usize, xs: &[F], ys: &[F]) -> PointsLeaf<F> {
+        let leaf_evals = Points::<F>::new(xs, ys);
         Self {
-            leaf_index_1,
-            leaf_index_2,
-            points,
+            leaf_index,
+            leaf_evals,
         }
     }
 
     pub fn recover_points_euqal_to_commited_point(&self) -> Script {
         let scripts = script! {
-            {self.points.p1.recover_point_euqal_to_commited_point()}
-            {self.points.p2.recover_point_euqal_to_commited_point()}
+            {self.leaf_evals.recover_points_euqal_to_commited_points()}
             OP_1
         };
         scripts
     }
 
     pub fn witness(&self) -> Vec<Vec<u8>> {
-        let mut p1_sigs = self.points.p1.witness();
-        let mut p2_sigs = self.points.p2.witness();
-        p2_sigs.append(p1_sigs.as_mut());
-        p2_sigs
+        self.leaf_evals.witness()
     }
 
     pub fn get_point_by_index(&self, index: usize) -> Option<&Point<F>> {
-        if index == self.leaf_index_1 {
-            Some(&self.points.p1)
-        } else if self.leaf_index_2 == index {
-            Some(&self.points.p2)
+        if self.leaf_evals.points.len() > index {
+            Some(&self.leaf_evals.points[index])
         } else {
             None
         }
     }
+    pub fn print_point_evals(&self) -> Result<(), ()> {
+        if self.leaf_evals.points.is_empty() {
+            println!("No points to evaluate");
+        }
+        for i in self.leaf_evals.points.iter() {
+            println!("point_eval: {:?}", i.y);
+        }
+        Ok(())
+    }
+
+    pub fn get_all_points_value(&self) -> Vec<F> {
+        let mut points = vec![];
+        for p in self.leaf_evals.points.iter() {
+            points.push(p.y);
+        }
+        points
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(bound = "")]
 pub struct Points<F: BfField> {
-    p1: Point<F>,
-    p2: Point<F>,
+    pub points: Vec<Point<F>>,
 }
 
 impl<F: BfField> Points<F> {
-    pub fn new(x1: F, y1: F, x2: F, y2: F) -> Points<F> {
-        let p1 = Point::<F>::new(x1, y1);
-        let p2 = Point::<F>::new(x2, y2);
-        Self { p1, p2 }
+    pub fn new(xs: &[F], ys: &[F]) -> Points<F> {
+        let mut points = vec![];
+        for (x, y) in xs.iter().zip(ys.iter()) {
+            //we should use refer here?
+            points.push(Point::<F>::new(*x, *y));
+        }
+        Self { points }
     }
 
     pub fn recover_points_euqal_to_commited_points(&self) -> Script {
+        // let scripts = script! {
+        //     {self.p1.recover_point_euqal_to_commited_point()}
+        //     {self.p2.recover_point_euqal_to_commited_point()}
+        // };
         let scripts = script! {
-            {self.p1.recover_point_euqal_to_commited_point()}
-            {self.p2.recover_point_euqal_to_commited_point()}
+            for p in self.points.iter() {
+                { p.recover_point_euqal_to_commited_point() }
+            }
         };
         scripts
     }
 
     pub fn witness(&self) -> Vec<Vec<u8>> {
-        let mut p1_sigs = self.p1.witness();
-        let mut p2_sigs = self.p2.witness();
-        p2_sigs.append(p1_sigs.as_mut());
-        p2_sigs
+        let mut sigs = vec![];
+        for p in self.points.iter().rev() {
+            sigs.extend(p.witness());
+        }
+        sigs
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(bound = "")]
 pub struct Point<F: BfField> {
     pub x: F,
     pub y: F,
@@ -140,7 +154,7 @@ impl<F: BfField> Point<F> {
     pub fn recover_point_at_altstack(&self) -> Script {
         let scripts = script! {
             { self.x_commit.check_and_recover_to_altstack() }
-            { self.y_commit.check_and_recover_to_altstack() }
+            { self.y_commit.check_and_recover() }
         };
 
         scripts
@@ -148,7 +162,7 @@ impl<F: BfField> Point<F> {
 
     pub fn recover_point_at_stack(&self) -> Script {
         let scripts = script! {
-            { self.x_commit.check_and_recover() }
+            { self.x_commit.check_and_recover_to_altstack() }
             { self.y_commit.check_and_recover() }
         };
 
@@ -166,13 +180,12 @@ impl<F: BfField> Point<F> {
 #[cfg(test)]
 mod test {
     use p3_baby_bear::BabyBear;
-    use p3_field::{AbstractExtensionField, AbstractField, PrimeField32};
-    use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
     use scripts::execute_script_with_inputs;
 
     use super::*;
+    use crate::field::BfField;
 
     type F = BabyBear;
     type EF = p3_field::extension::BinomialExtensionField<BabyBear, 4>;
@@ -213,10 +226,8 @@ mod test {
     fn test_points_Babybear() {
         use p3_baby_bear::BabyBear;
         let p = Points::<BabyBear>::new(
-            BabyBear::from_u32(1),
-            BabyBear::from_u32(2),
-            BabyBear::from_u32(3),
-            BabyBear::from_u32(4),
+            &vec![BabyBear::from_u32(1), BabyBear::from_u32(3)],
+            &vec![BabyBear::from_u32(2), BabyBear::from_u32(4)],
         );
 
         let script = script! {
@@ -236,8 +247,12 @@ mod test {
         let b = rng.gen::<EF>();
         let c = rng.gen::<EF>();
         let d = rng.gen::<EF>();
+        let e = rng.gen::<EF>();
+        let f = rng.gen::<EF>();
 
-        let p = Points::new(a, b, c, d);
+        let xs = vec![a, c, e];
+        let ys = vec![b, d, f];
+        let p = Points::new(&xs, &ys);
 
         let script = script! {
             {p.recover_points_euqal_to_commited_points()}

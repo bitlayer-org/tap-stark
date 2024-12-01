@@ -1,5 +1,4 @@
 use bitcoin::ScriptBuf as Script;
-use segment::SegmentLeaf;
 
 pub trait Tapleaf {
     fn unlock_witness(&self) -> Vec<Vec<u8>>;
@@ -16,20 +15,8 @@ impl VerifierLeaf {
         Self { witness, script }
     }
 
-    fn new_from_segment_leaf<L: SegmentLeaf>(leaf: L) -> Self {
-        let script = leaf.leaf_script_witn_noeuqal();
-        let witness = leaf.input();
-        Self::new(witness, script)
-    }
 }
 
-impl<L: SegmentLeaf> From<L> for VerifierLeaf {
-    fn from(leaf: L) -> Self {
-        let script = leaf.leaf_script_witn_noeuqal();
-        let witness = leaf.input();
-        Self { witness, script }
-    }
-}
 
 impl Tapleaf for VerifierLeaf {
     fn unlock_witness(&self) -> Vec<Vec<u8>> {

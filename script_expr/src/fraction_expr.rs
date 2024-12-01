@@ -1,7 +1,7 @@
 use std::ops::Add;
 use std::sync::Arc;
 
-use primitives::field::BfField;
+use basic::field::BfField;
 
 use super::FieldScriptExpression;
 use crate::Expression;

@@ -1,13 +1,8 @@
+use basic::field::BfField;
 use bitcoin::ScriptBuf as Script;
 use bitcoin_script::{define_pushable, script};
-use primitives::field::BfField;
-use scripts::pseudo::{
-    OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK,
-};
-use scripts::u31_lib::{
-    u31_mul, u31_sub, u31ext_mul,
-    u31ext_sub, BabyBear4, BabyBearU31,
-};
+use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
+use scripts::u31_lib::{u31_mul, u31_sub, u31ext_mul, u31ext_sub, BabyBear4, BabyBearU31};
 
 define_pushable!();
 

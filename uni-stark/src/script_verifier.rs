@@ -2,6 +2,8 @@ use alloc::collections::BTreeMap;
 use alloc::vec;
 use alloc::vec::Vec;
 
+use basic::bf_pcs::{Pcs, PcsExpr};
+use basic::field::BfField;
 use bitcoin_script_stack::stack::StackTracker;
 use itertools::Itertools;
 use p3_air::{Air, BaseAir};
@@ -11,12 +13,7 @@ use p3_field::{AbstractExtensionField, AbstractField, Field, TwoAdicField};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use p3_util::log2_strict_usize;
-use primitives::bf_pcs::{Pcs, PcsExpr};
-use primitives::field::BfField;
-use script_expr::{
-    selectors_at_point_expr, Dsl,
-    ScriptConstraintBuilder, ValueCounter,
-};
+use script_expr::{selectors_at_point_expr, Dsl, ScriptConstraintBuilder, ValueCounter};
 use tracing::instrument;
 
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};

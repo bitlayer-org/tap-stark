@@ -2,7 +2,7 @@ use core::fmt::Debug;
 use core::ops::{Add, Mul, Sub};
 use std::sync::{Arc, RwLock};
 
-use primitives::field::BfField;
+use basic::field::BfField;
 
 use super::Dsl;
 use crate::{get_opid, InputOpcode, StandardOpcodeId};

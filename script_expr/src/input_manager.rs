@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, RwLock};
 
+use basic::field::BfField;
 use bitcoin_script_stack::stack::StackTracker;
-use primitives::field::BfField;
 use tracing::warn;
 
 use crate::script_gen::*;
@@ -282,9 +282,9 @@ impl InputManager {
 
 #[cfg(test)]
 mod tests {
+    use basic::field::BfField;
     use common::{BabyBear, BinomialExtensionField};
     use p3_field::AbstractField;
-    use primitives::field::BfField;
 
     use super::InputManager;
     use crate::{Dsl, ManagerAssign, ValueCounter};

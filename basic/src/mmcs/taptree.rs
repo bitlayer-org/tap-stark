@@ -311,7 +311,6 @@ impl<const NUM_POLY: usize> BasicTree<NUM_POLY> {
         root
     }
 
-    // This function only support combine trees with same depth
     pub fn combine_tree(a: Self, b: Self) -> Self {
         // perserve indices map before combining two trees.
         let a_leaf_indices = a.leaf_indices.clone();

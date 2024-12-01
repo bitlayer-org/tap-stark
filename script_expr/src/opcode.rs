@@ -4,8 +4,8 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
+use basic::field::BfField;
 use bitcoin_script_stack::stack::StackTracker;
-use primitives::field::BfField;
 
 use crate::script_gen::*;
 use crate::{ExprPtr, Expression, StackVariable, Variable};

@@ -1,7 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use primitives::field::BfField;
+use basic::field::BfField;
 use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
 use scripts::treepp::*;
 use scripts::u31_lib::{u31_mul, u31ext_equalverify, u31ext_mul, BabyBear4, BabyBearU31};

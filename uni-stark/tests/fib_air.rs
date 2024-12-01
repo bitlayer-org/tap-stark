@@ -1,24 +1,21 @@
+use core::num;
 use std::borrow::Borrow;
 
+use basic::challenger::chan_field::U32;
+// use p3_challenger::DuplexChallenger;
+use basic::challenger::{BfChallenger, Blake3Permutation};
+use basic::mmcs::taptree_mmcs::TapTreeMmcs;
+use basic::tcs::DefaultSyncBcManager;
 use fri::{FriConfig, TwoAdicFriPcs};
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_baby_bear::BabyBear;
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
-use p3_field::{
-    AbstractField, PrimeField64,
-};
+use p3_field::{AbstractField, PrimeField64};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
-use primitives::challenger::chan_field::U32;
-// use p3_challenger::DuplexChallenger;
-use primitives::challenger::{BfChallenger, Blake3Permutation};
-use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
 use script_expr::BfChallengerExpr;
-use uni_stark::{
-    generate_script_verifier, prove, verify,
-    StarkConfig,
-};
+use uni_stark::{generate_script_verifier, prove, verify, StarkConfig};
 
 /// For testing the public values feature
 
@@ -120,13 +117,14 @@ type MyConfig = StarkConfig<MyPcs, Challenge, Challenger, BfChallengerExpr<Chall
 
 #[test]
 fn test_public_value() {
-    let val_mmcs = ValMmcs::new();
-    let challenge_mmcs = ChallengeMmcs::new();
+    let num_queries = 28;
+    let val_mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
+    let challenge_mmcs = ChallengeMmcs::new(DefaultSyncBcManager::new(), num_queries);
     let dft = Dft {};
     let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
     let fri_config = FriConfig {
         log_blowup: 2,
-        num_queries: 28,
+        num_queries,
         proof_of_work_bits: 8,
         mmcs: challenge_mmcs,
     };
@@ -153,13 +151,14 @@ fn test_public_value() {
 
 #[test]
 fn test_generate_script_expr() {
-    let val_mmcs = ValMmcs::new();
-    let challenge_mmcs = ChallengeMmcs::new();
+    let num_queries = 16;
+    let val_mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
+    let challenge_mmcs = ChallengeMmcs::new(DefaultSyncBcManager::new(), num_queries);
     let dft = Dft {};
     let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
     let fri_config = FriConfig {
         log_blowup: 2,
-        num_queries: 16,
+        num_queries,
         proof_of_work_bits: 8,
         mmcs: challenge_mmcs,
     };

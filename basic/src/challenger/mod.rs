@@ -208,6 +208,20 @@ where
     }
 }
 
+impl<F, PF, const N: usize, P, const WIDTH: usize> CanObserve<Vec<[PF; N]>>
+    for BfChallenger<F, PF, P, WIDTH>
+where
+    F: Field + BitExtractor,
+    PF: PermutationField<4>,
+    P: CryptographicPermutation<[PF; WIDTH]>,
+{
+    fn observe(&mut self, values: Vec<[PF; N]>) {
+        for value in values {
+            self.observe(value);
+        }
+    }
+}
+
 impl<F, PF, const N: usize, P, const WIDTH: usize> CanObserve<Hash<PF, PF, N>>
     for BfChallenger<F, PF, P, WIDTH>
 where

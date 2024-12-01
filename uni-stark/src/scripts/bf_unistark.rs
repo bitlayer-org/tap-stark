@@ -1,8 +1,8 @@
 use std::sync::MutexGuard;
 
+use basic::field::BfField;
 use itertools::Itertools;
 use p3_field::ExtensionField;
-use primitives::field::BfField;
 use script_expr::{Dsl, InputManager};
 
 use crate::get_table;

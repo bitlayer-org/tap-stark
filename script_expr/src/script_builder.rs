@@ -2,10 +2,10 @@ use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::vec::Vec;
 
+use basic::field::BfField;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use p3_air::{AirBuilder, AirBuilderWithPublicValues};
 use p3_matrix::dense::RowMajorMatrix;
-use primitives::field::BfField;
 use scripts::treepp::*;
 
 use super::{Dsl, ValueVariable, Variable};

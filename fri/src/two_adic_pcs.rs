@@ -5,6 +5,11 @@ use core::fmt::Debug;
 use core::marker::PhantomData;
 use std::sync::MutexGuard;
 
+use basic::bf_pcs::{Pcs, PcsExpr};
+use basic::challenger::BfGrindingChallenger;
+use basic::field::BfField;
+use basic::mmcs::bf_mmcs::BFMmcs;
+use basic::tcs::{CommitedProof, DefaultSyncBcManager, B, BM, BO, SG};
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::{OpenedValues, PolynomialSpace, TwoAdicMultiplicativeCoset};
@@ -20,11 +25,6 @@ use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_util::linear_map::LinearMap;
 use p3_util::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits, VecExt};
-use primitives::bf_pcs::{Pcs, PcsExpr};
-use primitives::challenger::BfGrindingChallenger;
-use primitives::field::BfField;
-use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::taptree_mmcs::CommitProof;
 use script_expr::{Dsl, InputManager, ManagerAssign};
 use serde::{Deserialize, Serialize};
 use tracing::{info_span, instrument};
@@ -62,7 +62,7 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
-pub struct BatchOpening<Val: BfField, InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>> {
+pub struct BatchOpening<Val: BfField, InputMmcs: BFMmcs<Val, Proof = CommitedProof<BO, B>>> {
     pub opened_values: Vec<Vec<Val>>,
     pub opening_proof: <InputMmcs as BFMmcs<Val>>::Proof,
 }
@@ -203,10 +203,10 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
 impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger> Pcs<Challenge, Challenger>
     for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
 where
-    Val: BfField,
+    Val: BfField + TwoAdicField,
     Dft: TwoAdicSubgroupDft<Val>,
-    InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>,
-    FriMmcs: BFMmcs<Challenge, Proof = CommitProof<Challenge>>,
+    InputMmcs: BFMmcs<Val, Proof = CommitedProof<BO, B>>,
+    FriMmcs: BFMmcs<Challenge, Proof = CommitedProof<BO, B>>,
     Challenge: BfField + ExtensionField<Val>,
     Challenger: CanObserve<FriMmcs::Commitment> + CanSample<Challenge> + BfGrindingChallenger,
 {
@@ -391,22 +391,29 @@ where
         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
             TwoAdicFriGenericConfig(PhantomData);
 
-        let fri_proof = prover::bf_prove(&g, &self.fri, fri_input, challenger, |index| {
-            rounds
-                .iter()
-                .map(|(data, _)| {
-                    let log_max_height = log2_strict_usize(self.mmcs.get_max_height(data));
-                    let bits_reduced = log_global_max_height - log_max_height;
-                    let reduced_index = index >> bits_reduced;
-                    // return the p_1(challenger), p_3(challenger) as Opening opening values
-                    let (opened_values, opening_proof) = self.mmcs.open_batch(reduced_index, data);
-                    BatchOpening {
-                        opened_values: opened_values,
-                        opening_proof: opening_proof,
-                    }
-                })
-                .collect()
-        });
+        let fri_proof = prover::bf_prove(
+            &g,
+            &self.fri,
+            fri_input,
+            challenger,
+            |query_times_index, query_index| {
+                rounds
+                    .iter()
+                    .map(|(data, _)| {
+                        let log_max_height = log2_strict_usize(self.mmcs.get_max_height(data));
+                        let bits_reduced = log_global_max_height - log_max_height;
+                        let reduced_index = query_index >> bits_reduced;
+                        // return the p_1(challenger), p_3(challenger) as Opening opening values
+                        let (opened_values, opening_proof) =
+                            self.mmcs.open_batch(query_times_index, reduced_index, data);
+                        BatchOpening {
+                            opened_values: opened_values,
+                            opening_proof: opening_proof,
+                        }
+                    })
+                    .collect()
+            },
+        );
 
         (all_opened_values, fri_proof)
     }
@@ -449,7 +456,7 @@ where
             &self.fri,
             proof,
             &fri_challenges,
-            |index, input_proof| {
+            |query_times_index, index, input_proof| {
                 // TODO: separate this out into functions
 
                 // log_height -> (alpha_pow, reduced_opening)
@@ -467,6 +474,7 @@ where
                     let reduced_index = index >> bits_reduced;
 
                     self.mmcs.verify_batch(
+                        query_times_index,
                         &batch_opening.opened_values,
                         &batch_opening.opening_proof,
                         batch_commit,
@@ -529,10 +537,10 @@ where
 impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger>
     PcsExpr<Challenge, Challenger, ManagerAssign> for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
 where
-    Val: BfField,
+    Val: BfField + TwoAdicField,
     Dft: TwoAdicSubgroupDft<Val>,
-    InputMmcs: BFMmcs<Val, Proof = CommitProof<Val>>,
-    FriMmcs: BFMmcs<Challenge, Proof = CommitProof<Challenge>>,
+    InputMmcs: BFMmcs<Val, Proof = CommitedProof<BO, B>>,
+    FriMmcs: BFMmcs<Challenge, Proof = CommitedProof<BO, B>>,
     Challenge: BfField + ExtensionField<Val>,
     Challenger: CanObserve<FriMmcs::Commitment> + CanSample<Challenge> + BfGrindingChallenger,
 {
@@ -574,7 +582,7 @@ where
             &self.fri,
             proof,
             &fri_challenges,
-            |index, input_proof, mut manager| {
+            |query_times_index, query_index, input_proof, mut manager| {
                 // TODO: separate this out into functions
 
                 let mut reduced_openings_expr =
@@ -589,9 +597,10 @@ where
                     let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
                     let log_batch_max_height = log2_strict_usize(*batch_max_height);
                     let bits_reduced = log_global_max_height - log_batch_max_height;
-                    let _reduced_index = index >> bits_reduced;
+                    let _reduced_index = query_index >> bits_reduced;
 
                     self.mmcs.verify_batch(
+                        query_times_index,
                         &batch_opening.opened_values,
                         &batch_opening.opening_proof,
                         batch_commit,
@@ -605,7 +614,8 @@ where
                         let log_height = log2_strict_usize(mat_domain.size()) + self.fri.log_blowup;
 
                         let bits_reduced = log_global_max_height - log_height;
-                        let rev_reduced_index = reverse_bits_len(index >> bits_reduced, log_height);
+                        let rev_reduced_index =
+                            reverse_bits_len(query_index >> bits_reduced, log_height);
 
                         // todo: this should be field script expression
                         let x: Val = Val::generator()

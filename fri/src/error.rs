@@ -1,4 +1,4 @@
-use primitives::mmcs::error::BfError;
+use basic::mmcs::error::BfError;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SVError {
     VerifyCalNegXScriptError,

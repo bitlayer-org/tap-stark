@@ -6,9 +6,9 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use std::fmt::Debug;
 
+use basic::field::BfField;
 use bitcoin_script_stack::debugger::StepResult;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-use primitives::field::BfField;
 use script_gen::StandardOpcodeId;
 use tracing::{instrument, trace, warn};
 mod script_builder;

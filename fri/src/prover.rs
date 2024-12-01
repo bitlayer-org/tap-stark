@@ -2,15 +2,15 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
 
+use basic::challenger::BfGrindingChallenger;
+use basic::field::BfField;
+use basic::mmcs::bf_mmcs::BFMmcs;
+use basic::tcs::{CommitedProof, DefaultSyncBcManager, B, BM, BO, SG};
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample};
 use p3_field::TwoAdicField;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
-use primitives::challenger::BfGrindingChallenger;
-use primitives::field::BfField;
-use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::taptree_mmcs::CommitProof;
 use tracing::{info_span, instrument};
 
 use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriProof};
@@ -21,11 +21,11 @@ pub fn bf_prove<G, F, M, Challenger>(
     config: &FriConfig<M>,
     inputs: Vec<Vec<F>>,
     challenger: &mut Challenger,
-    open_input: impl Fn(usize) -> G::InputProof,
+    open_input: impl Fn(usize, usize) -> G::InputProof,
 ) -> FriProof<F, M, Challenger::Witness, G::InputProof>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = CommitProof<F>>,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
     Challenger: BfGrindingChallenger + CanObserve<M::Commitment> + CanSample<F>,
     G: FriGenericConfig<F>,
 {
@@ -45,12 +45,14 @@ where
     let query_proofs = info_span!("query phase").in_scope(|| {
         iter::repeat_with(|| challenger.sample_bits(log_max_height + g.extra_query_index_bits()))
             .take(config.num_queries)
-            .map(|index| BfQueryProof {
-                input_proof: open_input(index),
+            .enumerate()
+            .map(|(query_times_index, query_index)| BfQueryProof {
+                input_proof: open_input(query_times_index, query_index),
                 commit_phase_openings: bf_answer_query(
                     config,
                     &commit_phase_result.data,
-                    index >> g.extra_query_index_bits(),
+                    query_index >> g.extra_query_index_bits(),
+                    query_times_index,
                 ),
             })
             .collect()
@@ -67,19 +69,20 @@ where
 fn bf_answer_query<F, M>(
     config: &FriConfig<M>,
     commit_phase_commits: &[M::ProverData],
-    index: usize,
-) -> Vec<CommitProof<F>>
+    query_index: usize,
+    query_times_index: usize,
+) -> Vec<(Vec<Vec<F>>, CommitedProof<BO, B>)>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = CommitProof<F>>,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
 {
     let commit_phase_openings = commit_phase_commits
         .iter()
         .enumerate()
         .map(|(i, commit)| {
-            let index_i = index >> i >> 1;
+            let index_i = query_index >> i >> 1;
 
-            let proof = config.mmcs.open_taptree(index_i, commit);
+            let proof = config.mmcs.open_batch(query_times_index, index_i, commit);
             proof
         })
         .collect();

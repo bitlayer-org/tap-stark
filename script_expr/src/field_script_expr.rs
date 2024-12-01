@@ -15,7 +15,7 @@ use bitcoin::consensus::serde::hex::Case;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 use common::AbstractField;
 use p3_util::log2_strict_usize;
-use primitives::field::BfField;
+use basics::field::BfField;
 use scripts::treepp::*;
 use scripts::u31_lib::{
     u31_add, u31_mul, u31_neg, u31_sub, u31_sub_u31ext, u31_to_u31ext, u31ext_add, u31ext_add_u31,

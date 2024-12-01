@@ -12,10 +12,10 @@ lazy_static = "1.4.0"
 
 rand_chacha = "0.3.1"
 rand = "0.8.5"
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-util = { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-baby-bear =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-challenger =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
 once_cell = "1.8.0"
 hex = "0.4.3"
 itertools = "0.12.1"
@@ -24,18 +24,18 @@ serde = { version = "1.0", default-features = false, features = ["derive", "allo
 common = {path = "../common"}
 
 [dev-dependencies]
-p3-dft = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-mersenne-31 =  { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-mds = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git" }
-p3-symmetric =  { git = "https://github.com/Plonky3/Plonky3.git" }
+p3-dft = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-mersenne-31 =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-mds = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
+p3-symmetric =  { git = "https://github.com/Plonky3/Plonky3.git", rev = "72b2fc162738df459619488a98bb06eaf64e5b4a" }
 criterion = "0.5.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 blake3 = "1.5"
-primitives = {path = "../primitives"}
+basic = {path = "../basic"}
 
 [profile.release]
 opt-level = 3

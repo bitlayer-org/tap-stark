@@ -75,7 +75,7 @@
 
 //             if !valid {
 //                 // make it invalid
-//                 *c *= F::two();
+//                 *c *= F::TWO;
 //             }
 //         }
 //         RowMajorMatrix::new(trace_values, TRACE_WIDTH)

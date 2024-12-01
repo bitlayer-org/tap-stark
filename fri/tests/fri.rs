@@ -4,36 +4,29 @@ mod tests0 {
     use core::cmp::Reverse;
     use std::marker::PhantomData;
 
+    use basic::challenger::chan_field::U32;
+    use basic::challenger::BfChallenger;
+    use basic::mmcs::taptree_mmcs::TapTreeMmcs;
+    use basic::tcs::DefaultSyncBcManager;
     use fri::prover::bf_prove;
     // use super::*;
     use fri::script_verifier::bf_verify_challenges;
     use fri::two_adic_pcs::TwoAdicFriGenericConfig;
     use fri::{verifier, FriConfig};
-    
     use p3_baby_bear::BabyBear;
     use p3_challenger::CanSampleBits;
     use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
-    
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
     use p3_matrix::util::reverse_matrix_index_bits;
     use p3_matrix::Matrix;
     use p3_symmetric::{CryptographicPermutation, Permutation};
     use p3_util::log2_strict_usize;
-    use primitives::challenger::chan_field::U32;
-    use primitives::challenger::BfChallenger;
-    
-    use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    
-    use script_manager::bc_assignment::DefaultBCAssignment;
-    use script_manager::script_info::ScriptInfo;
 
     extern crate alloc;
-    
 
-    
     type PF = U32;
     const WIDTH: usize = 16;
     type SpongeState = [PF; WIDTH];
@@ -57,14 +50,14 @@ mod tests0 {
     type ValMmcs = TapTreeMmcs<Val>;
     #[test]
     fn test_compelte_fri_process() {
-        let script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
-        let mmcs = ValMmcs::new();
+        let num_queries = 10;
+        let mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 10,
+            num_queries,
             proof_of_work_bits: 8,
             mmcs,
         };
@@ -113,12 +106,12 @@ mod tests0 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |idx| {
+            |query_times_index, query_idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
                     let log_height = log2_strict_usize(v.len());
-                    ro.push((log_height, v[idx >> (log_max_height - log_height)]));
+                    ro.push((log_height, v[query_idx >> (log_max_height - log_height)]));
                 }
                 ro.sort_by_key(|(lh, _)| Reverse(*lh));
                 ro
@@ -142,7 +135,7 @@ mod tests0 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            |query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -155,20 +148,17 @@ mod tests0 {
 
     #[test]
     fn test_script_verifier() {
-        let script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
-        let mmcs = ValMmcs::new();
+        let num_queries = 10;
+        let mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 10,
+            num_queries,
             proof_of_work_bits: 8,
             mmcs,
         };
-
-        let assign = DefaultBCAssignment::new();
-
         let dft = Radix2Dit::default();
 
         let shift = Val::generator();
@@ -214,7 +204,7 @@ mod tests0 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |idx| {
+            |query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -244,7 +234,7 @@ mod tests0 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            |query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -253,7 +243,7 @@ mod tests0 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof, mut manager| {
+            |query_times_index, _index, proof, mut manager| {
                 Ok(proof
                     .iter()
                     // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))
@@ -292,35 +282,27 @@ mod tests1 {
     use core::cmp::Reverse;
     use std::marker::PhantomData;
 
+    use basic::challenger::chan_field::U32;
+    use basic::challenger::{BfChallenger, Blake3Permutation};
+    use basic::mmcs::taptree_mmcs::TapTreeMmcs;
+    use basic::tcs::DefaultSyncBcManager;
     use fri::prover::bf_prove;
     // use super::*;
     use fri::script_verifier::bf_verify_challenges;
     use fri::two_adic_pcs::TwoAdicFriGenericConfig;
     use fri::{verifier, FriConfig};
-    
     use p3_baby_bear::BabyBear;
-    
     use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
-    
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
     use p3_matrix::util::reverse_matrix_index_bits;
     use p3_matrix::Matrix;
-    
     use p3_util::log2_strict_usize;
-    use primitives::challenger::chan_field::U32;
-    use primitives::challenger::{BfChallenger, Blake3Permutation};
-    
-    use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    
-    
 
     extern crate alloc;
-    
 
-    
     type PF = U32;
     const WIDTH: usize = 16;
     type SpongeState = [PF; WIDTH];
@@ -334,10 +316,11 @@ mod tests1 {
         let permutation = Blake3Permutation {};
         let mut challenger: BfChallenger<F, [u8; 4], Blake3Permutation, 16> =
             BfChallenger::<F, PF, Blake3Permutation, WIDTH>::new(permutation).unwrap();
-        let mmcs = ValMmcs::new();
+        let num_queries = 10;
+        let mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 10,
+            num_queries,
             proof_of_work_bits: 8,
             mmcs,
         };
@@ -386,7 +369,7 @@ mod tests1 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |idx| {
+            |query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -414,7 +397,7 @@ mod tests1 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof, mut manager| {
+            |query_times_index, _index, proof, mut manager| {
                 Ok(proof
                     .iter()
                     .map(|(lh, v)| {
@@ -447,11 +430,14 @@ mod tests2 {
     use core::cmp::Reverse;
     use std::marker::PhantomData;
 
+    use basic::challenger::chan_field::U32;
+    use basic::challenger::BfChallenger;
+    use basic::mmcs::taptree_mmcs::TapTreeMmcs;
+    use basic::tcs::DefaultSyncBcManager;
     use fri::prover::bf_prove;
     use fri::script_verifier::bf_verify_challenges;
     use fri::two_adic_pcs::TwoAdicFriGenericConfig;
     use fri::{verifier, FriConfig};
-    
     use p3_baby_bear::BabyBear;
     use p3_challenger::CanSampleBits;
     use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
@@ -462,18 +448,8 @@ mod tests2 {
     use p3_matrix::Matrix;
     use p3_symmetric::{CryptographicPermutation, Permutation};
     use p3_util::log2_strict_usize;
-    use primitives::challenger::chan_field::U32;
-    use primitives::challenger::BfChallenger;
-    use primitives::mmcs::taptree_mmcs::TapTreeMmcs;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
-    
-    use script_manager::bc_assignment::DefaultBCAssignment;
-    use script_manager::script_info::ScriptInfo;
-    
-
-    
-    // use crate::{bf_verify_challenges, verifier};
 
     type PF = U32;
     const WIDTH: usize = 16;
@@ -500,14 +476,15 @@ mod tests2 {
 
     #[test]
     fn test_compelte_fri_process_with_ext_babybear() {
-        let script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
-        let mmcs = ValMmcs::new();
+
+        let num_queries = 10;
+        let mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 10,
+            num_queries,
             proof_of_work_bits: 8,
             mmcs,
         };
@@ -557,7 +534,7 @@ mod tests2 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |idx| {
+            |query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -586,7 +563,7 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            |query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -599,19 +576,17 @@ mod tests2 {
 
     #[test]
     fn test_script_verifier() {
-        let script_manager: Vec<ScriptInfo> = Vec::new();
         let permutation = TestPermutation {};
         let mut challenger =
             BfChallenger::<F, PF, TestPermutation, WIDTH>::new(permutation).unwrap();
-        let mmcs = ValMmcs::new();
+        let num_queries = 10;
+        let mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
         let fri_config = FriConfig {
             log_blowup: 1,
-            num_queries: 10,
+            num_queries,
             proof_of_work_bits: 8,
             mmcs,
         };
-
-        let assign = DefaultBCAssignment::new();
 
         let dft = Radix2Dit::default();
 
@@ -657,7 +632,7 @@ mod tests2 {
             &fri_config,
             input.clone(),
             &mut challenger,
-            |idx| {
+            |query_times_index, idx| {
                 // As our "input opening proof", just pass through the literal reduced openings.
                 let mut ro = vec![];
                 for v in &input {
@@ -688,7 +663,7 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof| Ok(proof.clone()),
+            |query_times_index, _index, proof| Ok(proof.clone()),
         )
         .expect("failed verify challenges");
 
@@ -697,7 +672,7 @@ mod tests2 {
             &fri_config,
             &proof,
             &fri_challenges,
-            |_index, proof, mut manager| {
+            |query_times_index, _index, proof, mut manager| {
                 Ok(proof
                     .iter()
                     // .map(|(lh, v)| (*lh, Dsl::constant_f(v.clone())))

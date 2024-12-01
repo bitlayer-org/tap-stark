@@ -33,10 +33,10 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
         self.commit_matrix(RowMajorMatrix::new_col(input))
     }
 
-    fn open_taptree(&self, index: usize, prover_data: &Self::ProverData) -> Self::Proof;
     fn open_batch(
         &self,
-        index: usize,
+        query_times_index: usize,
+        query_index: usize, // This is the index corresponding to the highest matrix
         prover_data: &Self::ProverData,
     ) -> (Vec<Vec<T>>, Self::Proof) {
         unimplemented!()
@@ -44,13 +44,8 @@ pub trait BFMmcs<T: Send + Sync>: Clone {
 
     fn verify_batch(
         &self,
+        query_times_index: usize,
         opened_values: &Vec<Vec<T>>,
-        proof: &Self::Proof,
-        root: &Self::Commitment,
-    ) -> Result<(), Self::Error>;
-
-    fn verify_taptree(
-        &self,
         proof: &Self::Proof,
         root: &Self::Commitment,
     ) -> Result<(), Self::Error>;

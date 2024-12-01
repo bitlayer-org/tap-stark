@@ -157,10 +157,10 @@ mod test {
 
     use core::ops::Add;
 
+    use basic::field::BfField;
     use bitcoin_script::script;
     use p3_baby_bear::BabyBear;
     use p3_field::{AbstractExtensionField, PrimeField32};
-    use primitives::field::BfField;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 

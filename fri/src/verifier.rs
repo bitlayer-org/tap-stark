@@ -1,14 +1,13 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
+use basic::challenger::BfGrindingChallenger;
+use basic::field::BfField;
+use basic::mmcs::bf_mmcs::BFMmcs;
+use basic::tcs::{CommitedProof, DefaultSyncBcManager, B, BM, BO, SG};
 use bitcoin::taproot::TapLeaf;
 use itertools::izip;
 use p3_challenger::{CanObserve, CanSample};
-use primitives::challenger::BfGrindingChallenger;
-use primitives::field::BfField;
-use primitives::mmcs::bf_mmcs::BFMmcs;
-use primitives::mmcs::point::{Point, PointsLeaf};
-use primitives::mmcs::taptree_mmcs::CommitProof;
 use scripts::execute_script_with_inputs;
 use tracing::trace;
 
@@ -17,7 +16,7 @@ use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriProof};
 
 #[derive(Debug)]
 pub struct FriChallenges<F> {
-    pub query_indices: Vec<usize>,
+    pub query_indices: Vec<(usize, usize)>,
     pub(crate) betas: Vec<F>,
 }
 
@@ -29,7 +28,7 @@ pub fn verify_shape_and_sample_challenges<G, F, M, Challenger>(
 ) -> Result<FriChallenges<F>, FriError<M::Error, G::InputError>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = CommitProof<F>>,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
     Challenger: BfGrindingChallenger + CanObserve<M::Commitment> + CanSample<F>,
     G: FriGenericConfig<F>,
 {
@@ -53,8 +52,8 @@ where
 
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
 
-    let query_indices: Vec<usize> = (0..config.num_queries)
-        .map(|_| challenger.sample_bits(log_max_height))
+    let query_indices: Vec<(usize, usize)> = (0..config.num_queries)
+        .map(|query_times_index| (query_times_index, challenger.sample_bits(log_max_height)))
         .collect();
 
     Ok(FriChallenges {
@@ -68,22 +67,25 @@ pub fn verify_challenges<G, F, M, Witness>(
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Witness, G::InputProof>,
     challenges: &FriChallenges<F>,
-    open_input: impl Fn(usize, &G::InputProof) -> Result<Vec<(usize, F)>, G::InputError>,
+    open_input: impl Fn(usize, usize, &G::InputProof) -> Result<Vec<(usize, F)>, G::InputError>,
 ) -> Result<(), FriError<M::Error, G::InputError>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = CommitProof<F>>,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
     G: FriGenericConfig<F>,
 {
     let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
-    for (&index, query_proof) in izip!(&challenges.query_indices, &proof.query_proofs,) {
-        let ro =
-            open_input(index, &query_proof.input_proof).map_err(|e| FriError::InputError(e))?;
+    for (&(query_times_index, query_index), query_proof) in
+        izip!(&challenges.query_indices, &proof.query_proofs,)
+    {
+        let ro = open_input(query_times_index, query_index, &query_proof.input_proof)
+            .map_err(|e| FriError::InputError(e))?;
         let folded_eval = verify_query(
             g,
             config,
             &proof.commit_phase_commits,
-            index,
+            query_index,
+            query_times_index,
             query_proof,
             &challenges.betas,
             ro,
@@ -102,7 +104,8 @@ fn verify_query<G, F, M>(
     g: &G,
     config: &FriConfig<M>,
     commit_phase_commits: &[M::Commitment],
-    mut index: usize,
+    mut query_index: usize,
+    query_times_index: usize,
     proof: &BfQueryProof<F, G::InputProof>,
     betas: &[F],
     reduced_openings: Vec<(usize, F)>,
@@ -110,7 +113,7 @@ fn verify_query<G, F, M>(
 ) -> Result<F, FriError<M::Error, G::InputError>>
 where
     F: BfField,
-    M: BFMmcs<F, Proof = CommitProof<F>>,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
     G: FriGenericConfig<F>,
 {
     let mut folded_eval = F::zero();
@@ -119,12 +122,12 @@ where
     for (log_folded_height, commit, step, &beta) in izip!(
         (0..log_max_height).rev(),
         commit_phase_commits,
-        &proof.commit_phase_openings,
+        &proof.commit_phase_openings, //  Vec<(Vec<Vec<F>>,CommitedProof<BO,B>)>,
         betas,
     ) {
-        let point_index = index & 1;
+        let point_index = query_index & 1;
         let index_sibling = point_index ^ 1;
-        let index_pair = index >> 1;
+        let index_pair = query_index >> 1;
 
         if let Some((_, ro)) = ro_iter.next_if(|(lh, _)| *lh == log_folded_height + 1) {
             trace!("ro:{}", ro);
@@ -137,42 +140,29 @@ where
             index_sibling,
             index_pair
         );
-        let open_leaf: PointsLeaf<F> = step.points_leaf.clone();
-        let challenge_point: Point<F> = open_leaf.get_point_by_index(point_index).unwrap().clone();
 
-        let sibling_point: Point<F> = open_leaf.get_point_by_index(index_sibling).unwrap().clone();
-        trace!("challenge_point.y:{}", challenge_point.y);
-        trace!("sibling_point.y:{}", sibling_point.y);
+        // the opening values len should be 1, becuase we only commit one matrix.
+        assert_eq!(step.0.len(), 1);
+        let commited_folded_eval = step.0[0][point_index];
         if log_folded_height < log_max_height - 1 {
-            assert_eq!(folded_eval, challenge_point.y);
-        }
-
-        let mut evals = vec![folded_eval; 2];
-        evals[index_sibling % 2] = sibling_point.y;
-
-        let input = open_leaf.witness();
-
-        if let TapLeaf::Script(script, _ver) = step.leaf_node.leaf().clone() {
-            assert_eq!(script, open_leaf.recover_points_euqal_to_commited_point());
-            let res = execute_script_with_inputs(
-                open_leaf.recover_points_euqal_to_commited_point(),
-                input,
-            );
-            assert_eq!(res.success, true);
-        } else {
-            panic!("Invalid script")
+            assert_eq!(folded_eval, commited_folded_eval);
         }
 
         config
             .mmcs
-            .verify_taptree(step, commit)
+            .verify_batch(query_times_index, &step.0, &step.1, commit)
             .map_err(FriError::CommitPhaseMmcsError)?;
 
-        index = index_pair;
-        folded_eval = g.fold_row(index, log_folded_height, beta, evals.into_iter());
+        query_index = index_pair;
+        folded_eval = g.fold_row(
+            query_index,
+            log_folded_height,
+            beta,
+            step.0[0].clone().into_iter(),
+        );
     }
 
-    debug_assert!(index < config.blowup(), "index was {}", index);
+    debug_assert!(query_index < config.blowup(), "index was {}", query_index);
 
     Ok(folded_eval)
 }

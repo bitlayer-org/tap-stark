@@ -1,4 +1,3 @@
-
 use p3_field::Field;
 use script_expr::Variable;
 
@@ -92,15 +91,11 @@ impl<F: Field> From<&SymbolicVariable<F>> for Variable {
 
 #[cfg(test)]
 mod tests {
-    
 
     use common::{BabyBear, BinomialExtensionField};
-    
-    
-    
+
     type EF = BinomialExtensionField<BabyBear, 4>;
 
-    
     // #[test]
     // fn test_symbolic_expr_constraints() {
     //     let air_width: usize = 2;
