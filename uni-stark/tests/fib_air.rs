@@ -1,4 +1,3 @@
-use core::num;
 use std::borrow::Borrow;
 
 use basic::challenger::chan_field::U32;

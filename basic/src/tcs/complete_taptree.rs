@@ -1,11 +1,7 @@
-use bitcoin::hashes::Hash as Bitcoin_HASH;
-use bitcoin::taproot::LeafVersion::TapScript;
 use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
-use bitcoin::{ScriptBuf, TapNodeHash};
-use bitcomm::Winternitz;
-use primitives::{BCommit, BCommitOperator};
+use bitcoin::TapNodeHash;
 
-use super::builder::{reverse_idx_dict, TreeBuilder};
+use super::builder::TreeBuilder;
 use super::{combine_two_nodes, ScriptToEmbbed, TaptreeConcater};
 
 #[derive(Clone, Debug)]

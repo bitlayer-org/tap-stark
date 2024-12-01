@@ -1,6 +1,5 @@
 // use std::str::pattern::SearchStep;
 
-use core::time;
 use std::cmp::Reverse;
 use std::marker::PhantomData;
 use std::slice::Iter;
@@ -13,7 +12,6 @@ use bitcomm::{BcManagerIns, BcOperator, SecretGenIns, Winternitz};
 use complete_taptree::{verify_inclusion, CompleteTaptree};
 use error::TCSError;
 use itertools::Itertools;
-use p3_field::Field;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::log2_ceil_usize;

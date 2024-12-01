@@ -1,26 +1,22 @@
 use core::marker::PhantomData;
-use core::{panic, usize};
+use core::usize;
 
 use bitcoin::hashes::Hash as Bitcoin_HASH;
-use bitcoin::taproot::{LeafNode, TapLeaf};
 use bitcoin::TapNodeHash;
-use bitcomm::{BcManagerIns, BcOperator, SecretGenIns, Winternitz};
 use itertools::Itertools;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::log2_ceil_usize;
-use primitives::{BCManager, BCommitOperator, BCommitWithSecret, SecretGen};
-use scripts::execute_script_with_inputs;
-use serde::{Deserialize, Serialize};
+use primitives::{BCManager, BCommitWithSecret, SecretGen};
 
 use super::bf_mmcs::BFMmcs;
 use super::error::BfError;
 // use super::point::PointsLeaf;
 // use super::taptree::{verify_inclusion, PolyCommitTree};
-use crate::challenger::chan_field::{u256_to_u32, u32_to_u256, U256, U32};
+use crate::challenger::chan_field::{u256_to_u32, u32_to_u256, U32};
 use crate::field::BfField;
 use crate::tcs::{
-    CommitedData, CommitedProof, DefaultSyncBcManager, PolyTCS, UseBComm, B, BM, BO, SG, TCS,
+    CommitedData, CommitedProof, DefaultSyncBcManager, PolyTCS, B, BM, BO, SG, TCS,
 };
 
 pub type TreeRoot = [U32; ROOT_WIDTH];

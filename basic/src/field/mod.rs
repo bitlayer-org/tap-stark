@@ -64,10 +64,10 @@ impl BfField for BinomialExtensionField<BabyBear, 4> {
 }
 
 mod tests {
-    use p3_baby_bear::BabyBear;
-    use p3_field::{AbstractField, PrimeField32};
+    
+    
 
-    use super::BfField;
+    
 
     #[test]
     fn test_subgroup() {

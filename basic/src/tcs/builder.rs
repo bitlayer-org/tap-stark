@@ -1,9 +1,7 @@
-use bitcoin::hashes::Hash as Bitcoin_HASH;
 use bitcoin::taproot::LeafVersion::TapScript;
-use bitcoin::taproot::{LeafNode, LeafNodes, NodeInfo, TaprootMerkleBranch};
-use bitcoin::{ScriptBuf, TapNodeHash};
+use bitcoin::taproot::NodeInfo;
+use bitcoin::ScriptBuf;
 use itertools::Itertools;
-use primitives::{BCommit, BCommitOperator};
 
 use super::complete_taptree::CompleteTaptree;
 

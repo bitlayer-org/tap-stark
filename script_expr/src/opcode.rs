@@ -1,14 +1,13 @@
-use std::cell::{Cell, Ref, RefCell};
+use std::cell::{Cell, RefCell};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
 use basic::field::BfField;
-use bitcoin_script_stack::stack::StackTracker;
 
 use crate::script_gen::*;
-use crate::{ExprPtr, Expression, StackVariable, Variable};
+use crate::{ExprPtr, Expression, Variable};
 
 pub(crate) struct Opcode<const INPUT_NUM: usize, const OUTPUT_NUM: usize> {
     id: u32,
