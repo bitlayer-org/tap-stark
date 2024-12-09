@@ -1,6 +1,6 @@
-# TapStark
+# TapSTARK
 
-TapStark is a Bitcoin-friendly proof system enabling on-chain verification through BitVM2 paradigm and Taptree commitment scheme. Built upon Plonky3, it operates independently of OP_CAT.
+TapSTARK is a Bitcoin-friendly proof system enabling on-chain verification through BitVM2 paradigm and Taptree commitment scheme. Built upon Plonky3, it operates independently of OP_CAT.
 
 ## Core Components
 
@@ -17,7 +17,7 @@ TapStark is a Bitcoin-friendly proof system enabling on-chain verification throu
 
 ## Domain Specific Language (DSL)
 
-Our DSL facilitates rapid development of Bitcoin verifiers for TapStark. It serves two key purposes:
+Our DSL facilitates rapid development of Bitcoin verifiers for TapSTARK. It serves two key purposes:
 
 1. Streamlines verifier script development
 2. Automates constraint script generation via [ScriptAirBuilder](./script_expr/src/script_builder.rs)
