@@ -1,6 +1,6 @@
-# TapStark
+# TapSTARK
 
-TapStark is a Bitcoin-friendly proof system enabling on-chain verification through BitVM2 paradigm and Taptree commitment scheme. Built upon Plonky3, it operates independently of OP_CAT.
+TapSTARK is a Bitcoin-friendly proof system enabling on-chain verification through BitVM2 paradigm and Taptree commitment scheme. Built upon Plonky3, it operates independently of OP_CAT.
 
 ## Core Components
 - **Polynomial Commitment**: Combines Taptree commitment with bit commitment
@@ -14,7 +14,7 @@ TapStark is a Bitcoin-friendly proof system enabling on-chain verification throu
 - For technical details, see our [comprehensive paper](./doc/TapSTARK.pdf)
 
 ## Domain Specific Language (DSL)
-Our DSL facilitates rapid development of Bitcoin verifiers for TapStark. It serves two key purposes:
+Our DSL facilitates rapid development of Bitcoin verifiers for TapSTARK. It serves two key purposes:
 1. Streamlines verifier script development
 2. Automates constraint script generation via [ScriptAirBuilder](./script_expr/script_builder.rs)
 
@@ -78,6 +78,10 @@ let res = res.0.run();
 assert!(res.success);
 ```
 ### Data
+
+You can run this command `cargo test --package uni-stark --test fib_air -- test_generate_script_expr --exact --show-output ` to obtain the below Fibonacci-data.
+  
+The data for Recursive RISC0-STARK is an approximate estimate. We have rewritten the recursive constraints of RISC0 using the Plonky3 circuit. Although there are still some minor issues, the data scale can essentially be determined.
 |   bit security(conjectured soundness with 36 pow bits) |   log blowup factor |   query_num | trace        | table height(degree)   |   table width |   public inputs |   total u32 num(intermediate states) |   fri u32 num(intermediate states) | total script len   | script len for fri query   | verify trace constraint script len   | compute quotient poly   | challenge script size   |
 |-------------------------------------------------------:|--------------------:|------------:|:-------------|:-----------------------|--------------:|----------------:|-------------------------------------:|-----------------------------------:|:-------------------|:---------------------------|:-------------------------------------|:------------------------|:------------------------|
 |                                                     91 |                   2 |          28 | Fibonacci    | 1 << 3                 |             2 |               3 |                                  360 |                                341 | 12177kb            | 28 x 428 = 11984 kb        | 120kb                                | 73kb                    | nan                     |
