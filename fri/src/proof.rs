@@ -2,9 +2,7 @@ use alloc::vec::Vec;
 
 use basic::field::BfField;
 use basic::mmcs::bf_mmcs::BFMmcs;
-use basic::tcs::{
-    CommitedProof, B, BO,
-};
+use basic::tcs::{CommitedProof, B, BO};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]

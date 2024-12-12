@@ -2,6 +2,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use basic::field::BfField;
+use bitcoin::opcodes::all::{OP_DROP, OP_FROMALTSTACK, OP_LESSTHAN, OP_SUB, OP_TOALTSTACK};
 use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
 use scripts::treepp::*;
 use scripts::u31_lib::{u31_mul, u31ext_mul, BabyBear4, BabyBearU31};
@@ -16,6 +17,26 @@ pub fn compress_bits(bits: usize) -> Script {
             OP_DUP OP_ADD // double high bits
             OP_ADD // add a low bit
         }
+    };
+    script
+}
+
+/// constraint: bits <= 31
+/// input: [b_{0}, b_{1}, ..., b_{bits-1}]
+pub fn compress_custom_bits(input_bits_len: usize, output_bits_len: usize) -> Script {
+    println!("bits len{:?}", output_bits_len);
+    assert!(output_bits_len <= 31);
+    let script = script! {
+        for _ in 0..output_bits_len-1 {
+            OP_DUP OP_ADD // double high bits
+            OP_ADD // add a low bit
+        }
+        OP_TOALTSTACK
+        for _ in 0..(input_bits_len-output_bits_len){
+            OP_DROP
+        }
+        OP_FROMALTSTACK
+
     };
     script
 }
@@ -50,7 +71,7 @@ fn reverse_bits_len_script(bits: usize) -> Script {
 // index <-- top
 // output stack:
 // rev_index <-- top
-pub fn reverse_bits_len_script_with_input(input_index: u32, bits: usize) -> Script {
+fn reverse_bits_len_script_with_input(input_index: u32, bits: usize) -> Script {
     script! {
         for bit  in decompress(input_index, bits) {
             {bit}
@@ -126,8 +147,8 @@ fn get_generator<F: BfField>() -> Script {
 // input stack:
 //   value
 // output stack:
-//   31  <-- top  high_position
-//   33   // 33 respresent 0
+//   1  <-- top  high_position
+//   0   // 0 respresent 0
 //   ...
 //   0    // low_position
 pub(crate) fn value_to_bits_format(bits_len_conf: u32) -> Script {
@@ -141,10 +162,62 @@ pub(crate) fn value_to_bits_format(bits_len_conf: u32) -> Script {
         }
     }
 }
-//11
+
+// input stack:
+//   value
+// output stack:
+//   1  <-- top  high_position
+//   0   // 0 respresent 0
+//   ...
+//   0    // low_position
+pub(crate) fn value_to_32_bits_format(bits_len_conf: u32) -> Script {
+    script! {
+        if bits_len_conf == 32 {
+            {value_32_bits_to_altstack(bits_len_conf)}
+        }
+        for i in (0..31).rev(){
+            {value_bit_to_altstack(i)}
+        }
+        OP_DROP
+        for _ in 0..bits_len_conf{
+            OP_FROMALTSTACK
+        }
+    }
+}
+
+//  Positive numbers: Represented directly as unsigned integers, with a range of [0, 0x7FFFFFFF].
+//  Negative numbers: Represented by setting the most significant bit (MSB) to 1, with a range of [-1, -0x80000000].
+// Examples:
+// • -1 = 0xFFFFFFFF
+// • -2 = 0xFFFFFFFE
+// • -3 = 0xFFFFFFFD
+// Consider the value using 32 bits.
+fn value_32_bits_to_altstack(bits: u32) -> Script {
+    // because the value more than 1<<31 will represent as negative number in bitcoin vm
+    assert!(bits == 32);
+    script! {
+        OP_DUP
+        // { ((1<<31) -1 )as u32}
+        {0}
+        OP_LESSTHAN // if less than 0, it will bigger than 0x7fff ffff
+        OP_IF
+            { -0x7fffffff }
+            OP_SUB
+            OP_1
+            OP_ADD  // simulate sub -0x80000000
+            {1}
+            OP_TOALTSTACK
+        OP_ELSE
+            {0} // placeholder
+            OP_TOALTSTACK
+        OP_ENDIF
+    }
+}
 
 // value_bits_len
 fn value_bit_to_altstack(bits: u32) -> Script {
+    // because the value more than 1<<31 will represent as negative number in bitcoin vm
+    assert!(bits <= 31);
     script! {
         OP_DUP
         { ((1<<bits) -1 )as u32}
@@ -164,14 +237,14 @@ fn value_bit_to_altstack(bits: u32) -> Script {
 // input stack:
 //   value
 // output stack:
-//   31  <-- top  high_position
-//   33   // 33 respresent 0
+//   1  <-- top  high_position
+//   0   // 33 respresent 0
 //   ...
 //   0    // low_position
 fn value_to_bits_format_special(bits_len_conf: u32) -> Script {
     script! {
         for i in (0..bits_len_conf).rev(){
-            {value_bit_to_altstack(i)}
+            {value_bit_to_altstack_special(i)}
         }
 
         for _ in 0..bits_len_conf{
@@ -318,7 +391,6 @@ mod tests {
         let bits_len = 3;
         let script = script! {
             {index as u32}
-            // {index_to_reverse_index(3)}
             {value_to_bits_format(bits_len)}
             {compress_bits(bits_len as usize)}
             {6}
@@ -327,6 +399,59 @@ mod tests {
         let res = execute_script(script);
         println!("{:?}", res);
         assert_eq!(res.success, true);
+
+        let input_bits_len = 5;
+        let output_bits_len = 2;
+        let script = script! {
+            {index as u32} // 00110
+            {value_to_bits_format(input_bits_len)}
+            {compress_custom_bits(input_bits_len as usize, output_bits_len as usize)}
+            {0}
+            OP_EQUAL
+        };
+        let res = execute_script(script);
+        println!("{:?}", res);
+        assert_eq!(res.success, true);
+
+        let input_bits_len = 4;
+        let output_bits_len = 2;
+        let script = script! {
+            {index as u32} // 0110
+            {value_to_bits_format(input_bits_len)}
+            {compress_custom_bits(input_bits_len as usize, output_bits_len as usize)}
+            {1}
+            OP_EQUAL
+        };
+        let res = execute_script(script);
+        println!("{:?}", res);
+        assert_eq!(res.success, true);
+    }
+
+    #[test]
+    fn test_value_to_32bits() {
+        let index = 0x80000000_u32;
+        let bits_len = 31;
+        let script = script! {
+            {-1} // 0xFFFFFFFF
+            {value_to_32_bits_format(32)}
+            {compress_custom_bits(32,bits_len as usize)}
+            {0x7fffffff}
+            OP_EQUAL
+        };
+        let res = execute_script(script);
+        assert_eq!(res.success, true);
+
+        let script = script! {
+            {-3} // 0xFFFFFFFE
+            {value_to_32_bits_format(32)}
+            {compress_custom_bits(32,bits_len as usize)}
+            {0x7ffffffe}
+            OP_EQUAL
+        };
+
+        let res = execute_script(script);
+        assert_eq!(res.success, true);
+
     }
 
     #[test]

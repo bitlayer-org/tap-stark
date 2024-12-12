@@ -21,7 +21,6 @@ impl CompleteTaptree {
     }
 
     pub fn root(&self) -> &NodeInfo {
-        
         (&self.root_node) as _
     }
 
@@ -155,7 +154,6 @@ impl TaptreeConcater for CompleteTaptree {
 #[cfg(test)]
 mod tests {
 
-    
     use bitcoin::ScriptBuf;
     use bitcoin_script::{define_pushable, script};
 

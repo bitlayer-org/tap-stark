@@ -3,6 +3,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use basic::bf_pcs::{Pcs, PcsExpr};
+use basic::challenger;
 use basic::field::BfField;
 use bitcoin_script_stack::stack::StackTracker;
 use itertools::Itertools;
@@ -76,17 +77,20 @@ where
     // values. It's not clear if failing to include other instance data could enable a transcript
     // collision, since most such changes would completely change the set of satisfying witnesses.
 
+    let mut challenger_check_dsls = vec![];
     challenger.observe(commitments.trace.clone());
     challenger_dsl.observe(commitments.trace.clone());
     // challenger.observe_slice(public_values);
     let alpha: SC::Challenge = challenger.sample();
-    let alpha_dsl = challenger_dsl.sample();
+    let check_alpha_dsl = challenger_dsl.sample().equal_for_f(alpha.clone());
+    challenger_check_dsls.push(check_alpha_dsl);
 
     challenger.observe(commitments.quotient_chunks.clone());
     challenger_dsl.observe(commitments.quotient_chunks.clone());
 
     let zeta: SC::Challenge = challenger.sample();
     let zeta_dsl = challenger_dsl.sample();
+    challenger_check_dsls.push(zeta_dsl.clone().equal_for_f(zeta.clone()));
 
     let zeta_next = trace_domain.next_point(zeta).unwrap();
 
@@ -94,8 +98,9 @@ where
         1,
         (*degree_bits).try_into().unwrap(),
     ));
+    challenger_check_dsls.push(zeta_next_dsl.equal_for_f(zeta_next.clone()));
 
-    let mut manager_assign = pcs
+    let (mut manager_assign, mut pcs_challenger_check_dsl) = pcs
         .generate_verify_expr(
             vec![
                 (
@@ -119,6 +124,7 @@ where
             ],
             opening_proof,
             challenger,
+            challenger_dsl,
         )
         .map_err(VerificationError::InvalidOpeningArgument)?;
 
@@ -178,11 +184,7 @@ where
                 .iter()
                 .enumerate()
                 .filter(|(j, _)| *j != i)
-                .map(|(_, other_domain)| {
-                    other_domain
-                        .zp_at_point(domain.first_point())
-                        .inverse()
-                })
+                .map(|(_, other_domain)| other_domain.zp_at_point(domain.first_point()).inverse())
                 .product::<Val<SC>>()
         })
         .collect_vec();
@@ -206,16 +208,28 @@ where
         );
     }
 
+    challenger_check_dsls.append(&mut pcs_challenger_check_dsl);
     //verify hint of challenger equal to challenger_dsl
-    let manager_for_challenger = manager_assign.next_manager();
+    let manager_for_challenger = manager_assign.next_manager_with_name("[challenger]".to_string());
     {
         let mut manager = manager_for_challenger.lock().unwrap();
-        let hint_zeta = zeta_dsl.equal_for_f(zeta);
-        let hint_zeta_next = zeta_next_dsl.equal_for_f(zeta_next);
-        manager.add_hint_verify(hint_zeta.into());
-        manager.add_hint_verify(hint_zeta_next.into());
-        manager.set_exec_dsl(alpha_dsl.equal_for_f(alpha).into());
+        // let hint_zeta = zeta_dsl.equal_for_f(zeta);
+        // let hint_zeta_next = zeta_next_dsl.equal_for_f(zeta_next);
+        let final_index = challenger_check_dsls.len() - 1;
+        challenger_check_dsls
+            .into_iter()
+            .enumerate()
+            .for_each(|(index, to_check_dsl)| {
+                if index == final_index {
+                    manager.set_exec_dsl(to_check_dsl.into());
+                } else {
+                    manager.add_hint_verify(to_check_dsl.into());
+                }
+            });
+        // manager.add_hint_verify(hint_zeta.into());
+        // manager.add_hint_verify(hint_zeta_next.into());
     }
+
     let total_script_len =
         manager_assign
             .managers()

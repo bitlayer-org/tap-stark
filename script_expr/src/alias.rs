@@ -40,6 +40,10 @@ impl<F: BfField> Deref for Dsl<F> {
     }
 }
 
+unsafe impl<F: BfField> Send for Dsl<F> {}
+
+unsafe impl<F: BfField> Sync for Dsl<F> {}
+
 impl<F: BfField> DerefMut for Dsl<F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -72,6 +76,20 @@ impl<F: BfField> Dsl<F> {
                 vec![lhs.into(), rhs.into()],
                 1, // the var size must be 1 for equal op_code
                 StandardOpcodeId::Equal,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
+    pub(crate) fn extract_high_bits(lhs: Self, output_bits_len: u32) -> Dsl<F> {
+        let var_size = lhs.read().unwrap().var_size();
+        Self(
+            Arc::new(RwLock::new(Box::new(CustomOpcode::<1, 1, F>::new(
+                get_opid(),
+                vec![vec![output_bits_len]],
+                vec![lhs.into()],
+                var_size, // the var size must be 1 for equal op_code
+                StandardOpcodeId::ExtractHighBits,
             )))),
             PhantomData::<F>,
         )
@@ -198,6 +216,33 @@ impl<F: BfField> Dsl<F> {
                 StandardOpcodeId::NumToField,
             )))),
             PhantomData::<F>,
+        )
+    }
+
+    pub fn field_to_num(self) -> Self {
+        let var_size = self.get_var_size();
+        assert_eq!(var_size, 1); // only suuport F now, beacuse the EF will cause the multi-output
+        Self(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 1>::new(
+                get_opid(),
+                vec![self.into()],
+                var_size,
+                StandardOpcodeId::NumToField,
+            )))),
+            PhantomData::<F>,
+        )
+    }
+
+    pub fn four_u32_to_u32<Base: BfField>(self) -> Dsl<Base> {
+        assert_eq!(self.get_var_size(), 4); // only suuport F now, beacuse the EF will cause the multi-output
+        Dsl::<Base>(
+            Arc::new(RwLock::new(Box::new(StandardOpcode::<1, 1>::new(
+                get_opid(),
+                vec![self.into()],
+                1 as u32,
+                StandardOpcodeId::FourU32ToU32,
+            )))),
+            PhantomData::<Base>,
         )
     }
 
@@ -343,6 +388,10 @@ impl<F: BfField> Dsl<F> {
         Self::new_equal(self, Self::constant(other.as_u32_vec()))
     }
 
+    pub fn equal_for_u32_vec(self, other: Vec<u32>) -> Self {
+        Self::new_equal(self, Self::constant(other))
+    }
+
     pub fn equal_verify(self, other: Self) -> Self {
         Self::new_equal_verify(self, other)
     }
@@ -407,6 +456,10 @@ impl<F: BfField> Dsl<F> {
             )))),
             PhantomData,
         )
+    }
+
+    pub fn extract_bits(self, output_bits_len: usize) -> Self {
+        Self::extract_high_bits(self, output_bits_len as u32)
     }
 
     pub fn sample_ext(self) -> Self {
@@ -779,6 +832,7 @@ mod tests {
     use alloc::collections::BTreeMap;
 
     use basic::field::BfField;
+    use bitcoin::key::rand::{thread_rng, Rng};
     use bitcoin_script_stack::stack::StackTracker;
     use common::{AbstractField, BabyBear, BinomialExtensionField};
     use p3_field::TwoAdicField;
@@ -926,9 +980,31 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_bits() {
+        for i in 0..100 {
+            let mut rng = thread_rng();
+            let num = rng.gen::<EF>();
+
+            let output_bits_len = i % 30 + 1;
+            {
+                let bmap = BTreeMap::new();
+                let mut stack = StackTracker::new();
+                let a = Dsl::constant_f(num);
+                let b = a.four_u32_to_u32::<EF>().extract_bits(output_bits_len);
+
+                let res = num.as_u32_vec()[0] >> (32 - output_bits_len);
+
+                let equal = b.equal_for_u32_vec(vec![res]);
+                equal.express(&mut stack, &bmap);
+                let res = stack.run();
+                assert!(res.success);
+            }
+        }
+    }
+
+    #[test]
     fn test_num_to_field() {
         let num = 182712u32;
-
         {
             let bmap = BTreeMap::new();
             let mut stack = StackTracker::new();
@@ -938,6 +1014,39 @@ mod tests {
             let equal = b.equal_verify_for_f(res);
             equal.express(&mut stack, &bmap);
             stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
+    }
+
+    #[test]
+    fn test_field_to_num() {
+        let num = BabyBear::two();
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a = Dsl::constant_f(num);
+            let b = a.field_to_num();
+            let res = num.as_u32_vec();
+            let equal = b.equal_for_u32_vec(res);
+            equal.express(&mut stack, &bmap);
+            // stack.op_true();
+            let res = stack.run();
+            assert!(res.success);
+        }
+    }
+
+    #[test]
+    fn test_four_u32_to_u32() {
+        let num = EF::two();
+        {
+            let bmap = BTreeMap::new();
+            let mut stack = StackTracker::new();
+            let a = Dsl::constant_f(num);
+            let b = a.four_u32_to_u32::<BabyBear>();
+            let res = num.as_u32_vec()[0];
+            let equal = b.equal_for_u32_vec(vec![res]);
+            equal.express(&mut stack, &bmap);
             let res = stack.run();
             assert!(res.success);
         }

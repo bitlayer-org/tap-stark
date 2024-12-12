@@ -2,12 +2,15 @@
 
 use core::fmt::Debug;
 
+use common::AbstractField;
 use p3_commit::PolynomialSpace;
 use p3_field::ExtensionField;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
+use crate::challenger;
 
 pub type Val<D> = <D as PolynomialSpace>::Val;
 
@@ -84,10 +87,12 @@ where
     ) -> Result<(), Self::Error>;
 }
 
-pub trait PcsExpr<Challenge, Challenger, ManagerAssign>: Pcs<Challenge, Challenger>
+pub trait PcsExpr<Challenge, Challenger, ChallenegrDsl, ManagerAssign>:
+    Pcs<Challenge, Challenger>
 where
     Challenge: ExtensionField<Val<Self::Domain>>,
 {
+    type DslRep: AbstractField;
     fn generate_verify_expr(
         &self,
         // For each round:
@@ -108,7 +113,8 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-    ) -> Result<ManagerAssign, Self::Error>;
+        challenger_dsl: &mut ChallenegrDsl,
+    ) -> Result<(ManagerAssign, Vec<Self::DslRep>), Self::Error>;
 }
 pub type OpenedValues<F> = Vec<OpenedValuesForRound<F>>;
 pub type OpenedValuesForRound<F> = Vec<OpenedValuesForMatrix<F>>;

@@ -12,9 +12,7 @@ use super::bf_mmcs::BFMmcs;
 use super::error::BfError;
 use crate::challenger::chan_field::{u256_to_u32, u32_to_u256, U32};
 use crate::field::BfField;
-use crate::tcs::{
-    CommitedData, CommitedProof, DefaultSyncBcManager, PolyTCS, B, BM, BO, SG, TCS,
-};
+use crate::tcs::{CommitedData, CommitedProof, DefaultSyncBcManager, PolyTCS, B, BM, BO, SG, TCS};
 
 pub type TreeRoot = [U32; ROOT_WIDTH];
 // Commit two adjacent points to a leaf node
@@ -107,11 +105,7 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
         let commitments: Vec<[U32; 8]> = commited_data
             .iter()
             .map(|data| {
-                let root = *data
-                    .commit_taptree
-                    .root()
-                    .hash
-                    .as_byte_array();
+                let root = *data.commit_taptree.root().hash.as_byte_array();
                 u256_to_u32(root)
             })
             .collect();
@@ -126,11 +120,10 @@ impl<F: BfField> BFMmcs<F> for TapTreeMmcs<F> {
 
 #[cfg(test)]
 mod test {
-    
+
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
-    
 
     use super::TapTreeMmcs;
     use crate::mmcs::bf_mmcs::BFMmcs;

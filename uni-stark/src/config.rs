@@ -7,7 +7,7 @@ use basic::field::BfField;
 use p3_challenger::{CanObserve, CanSample};
 use p3_commit::PolynomialSpace;
 use p3_field::{ExtensionField, Field};
-use script_expr::{Dsl, ManagerAssign};
+use script_expr::{BfCheckGrindingChallenger, Dsl, ManagerAssign};
 
 pub type PcsError<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
@@ -32,7 +32,13 @@ pub type PackedChallenge<SC> =
 
 pub trait StarkGenericConfig {
     /// The PCS used to commit to trace polynomials.
-    type Pcs: PcsExpr<Self::Challenge, Self::Challenger, ManagerAssign>;
+    type Pcs: PcsExpr<
+        Self::Challenge,
+        Self::Challenger,
+        Self::ChallengerDsl,
+        ManagerAssign,
+        DslRep = Dsl<Self::Challenge>,
+    >;
 
     /// The field from which most random challenges are drawn.
     type Challenge: ExtensionField<Val<Self>> + BfField;
@@ -48,7 +54,8 @@ pub trait StarkGenericConfig {
         + CanSample<Self::Challenge>;
 
     type ChallengerDsl: CanObserve<<Self::Pcs as Pcs<Self::Challenge, Self::Challenger>>::Commitment>
-        + CanSample<Dsl<Self::Challenge>>;
+        + CanSample<Dsl<Self::Challenge>>
+        + BfCheckGrindingChallenger<Self::Challenge>;
     // + CanObserve<<<Self::Pcs as Pcs<Self::Challenge, Self::Challenger>>::Domain as PolynomialSpace>::Val>
 
     fn pcs(&self) -> &Self::Pcs;
@@ -75,12 +82,13 @@ impl<Pcs, Challenge, Challenger, ChallengerDsl> StarkGenericConfig
     for StarkConfig<Pcs, Challenge, Challenger, ChallengerDsl>
 where
     Challenge: ExtensionField<<Pcs::Domain as PolynomialSpace>::Val> + BfField,
-    Pcs: PcsExpr<Challenge, Challenger, ManagerAssign>,
+    Pcs: PcsExpr<Challenge, Challenger, ChallengerDsl, ManagerAssign, DslRep = Dsl<Challenge>>,
     Challenger: BfGrindingChallenger
         + CanObserve<<Pcs as bf_pcs::Pcs<Challenge, Challenger>>::Commitment>
         + CanSample<Challenge>,
     ChallengerDsl: CanObserve<<Pcs as bf_pcs::Pcs<Challenge, Challenger>>::Commitment>
-        + CanSample<Dsl<Challenge>>,
+        + CanSample<Dsl<Challenge>>
+        + BfCheckGrindingChallenger<Challenge>,
 {
     type Pcs = Pcs;
     type Challenge = Challenge;
