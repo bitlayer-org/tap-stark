@@ -9,12 +9,16 @@ use scripts::pseudo::{OP_4DROP, OP_4FROMALTSTACK, OP_4ROLL, OP_4TOALTSTACK};
 use scripts::treepp::*;
 use scripts::u31_lib::{
     u31_add, u31_double, u31_mul, u31_neg, u31_square, u31_sub, u31_sub_u31ext, u31_to_u31ext,
-    u31ext_add, u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul, u31ext_mul_u31,
-    u31ext_neg, u31ext_square, u31ext_sub, u31ext_sub_u31, u32_to_u31, BabyBear4, BabyBearU31,
+    u31ext_add, u31ext_add_u31, u31ext_double, u31ext_equalverify, u31ext_mul,
+    u31ext_mul_u31, u31ext_neg, u31ext_square, u31ext_sub, u31ext_sub_u31, u32_to_u31, BabyBear4,
+    BabyBearU31,
 };
 use scripts::u32_std::u32_compress;
 
-use crate::script_helper::{index_to_reverse_index, index_to_rou, value_exp_n};
+use crate::script_helper::{
+    compress_custom_bits, index_to_reverse_index, index_to_rou, value_exp_n,
+    value_to_32_bits_format, 
+};
 use crate::{StackVariable, Variable};
 
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +30,8 @@ pub(crate) enum StandardOpcodeId {
     Equal,
     EqualVerify,
     NumToField,
+    FieldToNum,
+    ExtractHighBits,
     Constant,
     ExpConst,
     IndexToRou,
@@ -40,6 +46,7 @@ pub(crate) enum StandardOpcodeId {
     SampleBase,
     SampleExt,
     ReverseBitslen,
+    FourU32ToU32,
 }
 
 pub(crate) type StandardOpScriptGen = dyn Fn(Vec<u32>, &mut StackTracker, &BTreeMap<Variable, StackVariable>) -> Vec<StackVariable>
@@ -54,12 +61,14 @@ pub(crate) fn standard_script_genreator(opid: StandardOpcodeId) -> Box<StandardO
         StandardOpcodeId::EqualVerify => Box::new(op_euqalverify),
         StandardOpcodeId::Equal => Box::new(op_euqal),
         StandardOpcodeId::NumToField => Box::new(op_num_to_field),
+        StandardOpcodeId::FieldToNum => Box::new(op_field_to_num),
         StandardOpcodeId::Square => Box::new(op_square),
         StandardOpcodeId::Double => Box::new(op_double),
         StandardOpcodeId::Blake3Perm => Box::new(op_blake3),
         StandardOpcodeId::ToSample => Box::new(op_tosample),
         StandardOpcodeId::SampleBase => Box::new(op_samplebase),
         StandardOpcodeId::SampleExt => Box::new(op_sampleext),
+        StandardOpcodeId::FourU32ToU32 => Box::new(op_4_u32_to_u32),
         _ => panic!("not support"),
     }
 }
@@ -74,6 +83,13 @@ pub(crate) fn custom_script_generator<F: BfField>(
                   stack: &mut StackTracker,
                   var_getter: &BTreeMap<Variable, StackVariable>| {
                 op_expconst::<F>(custom_data.clone(), vars_size, stack, var_getter)
+            },
+        ),
+        StandardOpcodeId::ExtractHighBits => Box::new(
+            move |vars_size: Vec<u32>,
+                  stack: &mut StackTracker,
+                  var_getter: &BTreeMap<Variable, StackVariable>| {
+                op_extract_high_bits(custom_data.clone(), vars_size, stack, var_getter)
             },
         ),
         StandardOpcodeId::IndexToRou => Box::new(
@@ -163,10 +179,11 @@ pub(crate) fn op_inputvar_move(
     vec![var]
 }
 
+// u32 to F or EF
 pub(crate) fn op_num_to_field(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let vars = stack
@@ -190,16 +207,92 @@ pub(crate) fn op_num_to_field(
     vars
 }
 
+// F to u32 or EF to 4 u32
+pub(crate) fn op_field_to_num(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 1);
+    let vars = if vars_size[0] == 1 {
+        assert_eq!(vars_size[0], 1);
+        stack
+            .custom1(script! {}, 1, 1, 0, vars_size[0], "FieldExpr::FieldToNum")
+            .unwrap()
+    } else {
+        assert_eq!(vars_size[0], 4);
+        stack
+            .custom1(
+                script! {},
+                1,
+                4, // output 4 u32
+                0,
+                1, // the output var size should be 1
+                "FieldExpr::FieldToNum",
+            )
+            .unwrap()
+    };
+    vars
+}
+
+pub(crate) fn op_4_u32_to_u32(
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 1);
+    assert_eq!(vars_size[0], 4);
+
+    stack
+        .custom1(
+            script! {
+                OP_TOALTSTACK
+                OP_DROP
+                OP_DROP
+                OP_DROP
+                OP_FROMALTSTACK
+            },
+            1,
+            1,
+            0,
+            1,
+            "FieldExpr::4_u32_to_u32",
+        )
+        .unwrap()
+}
+
+pub(crate) fn op_extract_high_bits(
+    len: Vec<Vec<u32>>,
+    vars_size: Vec<u32>,
+    stack: &mut StackTracker,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
+) -> Vec<StackVariable> {
+    assert_eq!(vars_size.len(), 1);
+    assert_eq!(vars_size[0], 1);
+    stack
+        .custom1(
+            script! {
+                {value_to_32_bits_format(32)}
+                {compress_custom_bits(32,len[0][0] as usize)}
+            },
+            1,
+            1,
+            0,
+            vars_size[0],
+            "FieldExpr::ExtractBits",
+        )
+        .unwrap()
+}
 pub(crate) fn op_lookup<F: BfField>(
     len: Vec<Vec<u32>>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(len[0].len(), 1);
     assert_eq!(vars_size[0], 1); // the size of index is must 1
     assert!(F::U32_SIZE != 4); // no support extension
-    let vars = stack.custom1(
+    let _vars = stack.custom1(
         script! {
             OP_PICK
         },
@@ -222,7 +315,7 @@ pub(crate) fn op_table(
     table: Vec<Vec<u32>>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     //push table
     let mut vars = vec![];
@@ -237,7 +330,7 @@ pub(crate) fn op_indextorou<F: BfField>(
     sub_group_bits: Vec<Vec<u32>>,
     _vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(sub_group_bits[0].len(), 1);
     let vars = stack
@@ -257,7 +350,7 @@ pub(crate) fn op_reversebitslen<F: BfField>(
     bits_len: Vec<Vec<u32>>,
     _vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     //assert_eq!(indexandbits[0].len(), 1);
     let vars = stack
@@ -277,7 +370,7 @@ pub(crate) fn op_expconst<F: BfField>(
     const_exp_power: Vec<Vec<u32>>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(const_exp_power[0].len(), 1);
     let vars = stack
@@ -299,7 +392,7 @@ pub(crate) fn op_constant(
     value: Vec<Vec<u32>>,
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(value.len(), 1);
     let var = stack.bignumber(value[0].clone());
@@ -309,7 +402,7 @@ pub(crate) fn op_constant(
 pub(crate) fn op_euqal(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], vars_size[1]);
     assert_eq!(vars_size.len(), 2);
@@ -333,7 +426,7 @@ pub(crate) fn op_euqal(
 pub(crate) fn op_euqalverify(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], vars_size[1]);
     assert_eq!(vars_size.len(), 2);
@@ -354,7 +447,7 @@ pub(crate) fn op_euqalverify(
 pub(crate) fn op_neg(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let vars = stack
@@ -379,7 +472,7 @@ pub(crate) fn op_neg(
 pub(crate) fn op_sub(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
@@ -431,7 +524,7 @@ pub(crate) fn op_sub(
 pub(crate) fn op_add(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
@@ -483,7 +576,7 @@ pub(crate) fn op_add(
 pub(crate) fn op_double(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let mut vars = vec![];
@@ -521,7 +614,7 @@ pub(crate) fn op_double(
 pub(crate) fn op_square(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let mut vars = vec![];
@@ -559,7 +652,7 @@ pub(crate) fn op_square(
 pub(crate) fn op_mul(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 2);
     let mut vars = vec![];
@@ -611,7 +704,7 @@ pub(crate) fn op_mul(
 pub(crate) fn op_blake3(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 33);
     let mut vars = vec![];
@@ -636,7 +729,7 @@ pub(crate) fn op_blake3(
 pub(crate) fn op_samplebase(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size[0], 1);
     let mut vars = vec![];
@@ -662,7 +755,7 @@ pub(crate) fn op_samplebase(
 pub(crate) fn op_sampleext(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     let mut vars = vec![];
     vars = stack
@@ -685,7 +778,7 @@ pub(crate) fn op_sampleext(
 pub(crate) fn op_tosample(
     vars_size: Vec<u32>,
     stack: &mut StackTracker,
-    var_getter: &BTreeMap<Variable, StackVariable>,
+    _var_getter: &BTreeMap<Variable, StackVariable>,
 ) -> Vec<StackVariable> {
     assert_eq!(vars_size.len(), 1);
     let mut vars = vec![];

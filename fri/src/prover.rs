@@ -82,7 +82,6 @@ where
         .map(|(i, commit)| {
             let index_i = query_index >> i >> 1;
 
-            
             config.mmcs.open_batch(query_times_index, index_i, commit)
         })
         .collect();

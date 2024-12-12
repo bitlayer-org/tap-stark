@@ -25,7 +25,7 @@ use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_util::linear_map::LinearMap;
 use p3_util::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits, VecExt};
-use script_expr::{Dsl, InputManager, ManagerAssign};
+use script_expr::{BfCheckGrindingChallenger, Dsl, InputManager, ManagerAssign};
 use serde::{Deserialize, Serialize};
 use tracing::{info_span, instrument};
 
@@ -161,7 +161,7 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
         beta: Dsl<F>,
         mut manager: MutexGuard<Box<InputManager>>,
     ) -> Dsl<F> {
-        let arity = 2;
+        let _arity = 2;
         let log_arity = 1;
         // If performance critical, make this API stateful to avoid this
         // This is a bit more math than is necessary, but leaving it here
@@ -471,7 +471,7 @@ where
                     let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
                     let log_batch_max_height = log2_strict_usize(*batch_max_height);
                     let bits_reduced = log_global_max_height - log_batch_max_height;
-                    let reduced_index = index >> bits_reduced;
+                    let _reduced_index = index >> bits_reduced;
 
                     self.mmcs.verify_batch(
                         query_times_index,
@@ -534,8 +534,9 @@ where
     }
 }
 
-impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger>
-    PcsExpr<Challenge, Challenger, ManagerAssign> for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
+impl<Val, Dft, InputMmcs, FriMmcs, Challenge, Challenger, ChallengerDsl>
+    PcsExpr<Challenge, Challenger, ChallengerDsl, ManagerAssign>
+    for TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs>
 where
     Val: BfField + TwoAdicField,
     Dft: TwoAdicSubgroupDft<Val>,
@@ -543,7 +544,11 @@ where
     FriMmcs: BFMmcs<Challenge, Proof = CommitedProof<BO, B>>,
     Challenge: BfField + ExtensionField<Val>,
     Challenger: CanObserve<FriMmcs::Commitment> + CanSample<Challenge> + BfGrindingChallenger,
+    ChallengerDsl: CanObserve<FriMmcs::Commitment>
+        + CanSample<Dsl<Challenge>>
+        + BfCheckGrindingChallenger<Challenge, Witness = Challenger::Witness>,
 {
+    type DslRep = Dsl<Challenge>;
     fn generate_verify_expr(
         &self,
         // For each round:
@@ -564,7 +569,8 @@ where
         )>,
         proof: &Self::Proof,
         challenger: &mut Challenger,
-    ) -> Result<ManagerAssign, Self::Error> {
+        challenger_dsl: &mut ChallengerDsl,
+    ) -> Result<(ManagerAssign, Vec<Dsl<Challenge>>), Self::Error> {
         // Batch combination challenge
         let alpha: Challenge = challenger.sample();
 
@@ -573,8 +579,8 @@ where
         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
             TwoAdicFriGenericConfig(PhantomData);
 
-        let fri_challenges =
-            verifier::verify_shape_and_sample_challenges(&g, &self.fri, proof, challenger)
+        let (fri_challenges, to_check_dsls) =
+            script_verifier::bf_sample_challenges(&g, &self.fri, proof, challenger, challenger_dsl)
                 .expect("failed verify shape and sample");
 
         let manager_assign = script_verifier::bf_verify_challenges(
@@ -664,7 +670,7 @@ where
         )
         .expect("fri err");
 
-        Ok(manager_assign)
+        Ok((manager_assign, to_check_dsls))
     }
 }
 

@@ -45,7 +45,9 @@ pub struct SyncBcManager<
     _marker: PhantomData<(SG, BC, B)>,
 }
 
-impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommitWithSecret> Default for SyncBcManager<BM, SG, BC, B> {
+impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommitWithSecret> Default
+    for SyncBcManager<BM, SG, BC, B>
+{
     fn default() -> Self {
         Self::new()
     }
@@ -232,7 +234,6 @@ impl<BM: BCManager<SG, B, BC>, SG: SecretGen, BC: BCommitOperator<B>, B: BCommit
             _marker: PhantomData,
         }
     }
-
 
     fn commit_polys<F: BfField>(&self, leaves: Vec<RowMajorMatrix<F>>) -> CommitedData<F, BC, B> {
         let commit_type = match F::U32_SIZE {

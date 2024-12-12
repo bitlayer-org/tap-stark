@@ -144,8 +144,7 @@ impl Winternitz {
 
         let mut signature: Vec<Vec<u8>> = Vec::new();
         for i in 0..N {
-            let (hash, digit) =
-                self.digit_signature(i as u32, checksum_digits[N - 1 - i]);
+            let (hash, digit) = self.digit_signature(i as u32, checksum_digits[N - 1 - i]);
             signature.push(hash); // The reason why reverse order is used here is because it needs to be pushed onto the stack
             signature.push(vec![digit]);
         }

@@ -15,7 +15,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use rand::distributions::{Distribution, Standard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use script_expr::ManagerAssign;
+use script_expr::{Dsl, ManagerAssign};
 
 extern crate alloc;
 
@@ -23,21 +23,23 @@ fn seeded_rng() -> impl Rng {
     ChaCha20Rng::seed_from_u64(0)
 }
 
-fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
-    (pcs, challenger): &(P, Challenger),
+fn do_test_fri_pcs<Val, Challenge, Challenger, ChallengerDsl, P>(
+    (pcs, challenger, challenger_dsl): &(P, Challenger, ChallengerDsl),
     log_degrees_by_round: &[&[usize]],
 ) where
-    P: PcsExpr<Challenge, Challenger, ManagerAssign>,
+    P: PcsExpr<Challenge, Challenger, ChallengerDsl, ManagerAssign>,
     P::Domain: PolynomialSpace<Val = Val>,
     Val: Field + BfField,
     Standard: Distribution<Val>,
     Challenge: BfField + ExtensionField<Val>,
     Challenger: Clone + CanObserve<P::Commitment> + CanSample<Challenge>,
+    ChallengerDsl: Clone + CanObserve<P::Commitment> + CanSample<Dsl<Challenge>>,
 {
     let num_rounds = log_degrees_by_round.len();
     let mut rng = seeded_rng();
 
     let mut p_challenger = challenger.clone();
+    let mut p_challenger_dsl = challenger_dsl.clone();
 
     let domains_and_polys_by_round = log_degrees_by_round
         .iter()
@@ -64,8 +66,10 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     assert_eq!(commits_by_round.len(), num_rounds);
     assert_eq!(data_by_round.len(), num_rounds);
     p_challenger.observe_slice(&commits_by_round);
+    p_challenger_dsl.observe_slice(&commits_by_round);
 
     let zeta: Challenge = p_challenger.sample();
+    let zeta_dsl: Dsl<Challenge> = p_challenger_dsl.sample();
 
     let points_by_round = log_degrees_by_round
         .iter()
@@ -77,8 +81,14 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
 
     // Verify the proof.
     let mut v_challenger = challenger.clone();
+    let mut v_challenger_dsl = challenger_dsl.clone();
+
     v_challenger.observe_slice(&commits_by_round);
+    v_challenger_dsl.observe_slice(&commits_by_round);
+
     let verifier_zeta: Challenge = v_challenger.sample();
+    let verifier_zeta_dsl: Dsl<Challenge> = v_challenger_dsl.sample();
+
     assert_eq!(verifier_zeta, zeta);
 
     let commits_and_claims_by_round = izip!(
@@ -97,11 +107,16 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     .collect_vec();
     assert_eq!(commits_and_claims_by_round.len(), num_rounds);
 
-    let manager_assign =
-        pcs.generate_verify_expr(commits_and_claims_by_round, &proof, &mut v_challenger);
+    let (manager_assign, to_check_dsls) = pcs
+        .generate_verify_expr(
+            commits_and_claims_by_round,
+            &proof,
+            &mut v_challenger,
+            &mut v_challenger_dsl,
+        )
+        .unwrap();
 
     manager_assign
-        .unwrap()
         .managers()
         .iter()
         .enumerate()
@@ -168,6 +183,7 @@ macro_rules! make_tests_for_pcs {
 
 mod babybear_fri_pcs {
     use basic::tcs::DefaultSyncBcManager;
+    use script_expr::BfChallengerExpr;
 
     use super::*;
 
@@ -180,9 +196,10 @@ mod babybear_fri_pcs {
     type ChallengeMmcs = TapTreeMmcs<Challenge>;
     type Dft = Radix2DitParallel;
     type Challenger = BfChallenger<Challenge, PF, Blake3Permutation, WIDTH>;
+    type ChallengerDsl = BfChallengerExpr<Challenge, PF, 64>; // 64 = 4 x width
     type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
 
-    fn get_pcs(log_blowup: usize) -> (MyPcs, Challenger) {
+    fn get_pcs(log_blowup: usize) -> (MyPcs, Challenger, ChallengerDsl) {
         let num_queries = 2;
         let val_mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
         let challenge_mmscs = ChallengeMmcs::new(DefaultSyncBcManager::new(), num_queries);
@@ -195,8 +212,9 @@ mod babybear_fri_pcs {
 
         let permutation = Blake3Permutation {};
         let challenger = Challenger::new(permutation).unwrap();
+        let challenger_dsl = ChallengerDsl::new().unwrap();
         let pcs = MyPcs::new(Dft {}, val_mmcs, fri_config);
-        (pcs, challenger)
+        (pcs, challenger, challenger_dsl)
     }
 
     mod blowup_1 {

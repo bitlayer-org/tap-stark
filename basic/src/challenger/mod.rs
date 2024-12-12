@@ -325,7 +325,8 @@ impl BitExtractor for BabyBear {
 
 impl BitExtractor for BinomialExtensionField<BabyBear, 4> {
     fn as_usize(&self) -> usize {
-        let s: BabyBear = *<Self as AbstractExtensionField<BabyBear>>::as_base_slice(self).first()
+        let s: BabyBear = *<Self as AbstractExtensionField<BabyBear>>::as_base_slice(self)
+            .first()
             .unwrap();
         s.as_canonical_u32() as usize
     }

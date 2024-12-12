@@ -1,19 +1,86 @@
 use alloc::vec::Vec;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use basic::challenger::BfGrindingChallenger;
 use basic::field::BfField;
 use basic::mmcs::bf_mmcs::BFMmcs;
 use basic::tcs::{CommitedProof, B, BO};
 use itertools::izip;
+use p3_challenger::{CanObserve, CanSample};
 use p3_field::AbstractField;
 use p3_util::reverse_bits_len;
-use script_expr::{Dsl, InputManager, ManagerAssign};
+use script_expr::{BfCheckGrindingChallenger, Dsl, InputManager, ManagerAssign};
 use scripts::BabyBear;
 use tracing::trace;
 
 use crate::error::FriError;
 use crate::verifier::*;
-use crate::{BfQueryProof, FriConfig, FriGenericConfigWithExpr, FriProof};
+use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriGenericConfigWithExpr, FriProof};
+
+pub fn bf_sample_challenges<G, F, M, Challenger, ChallengerDsl>(
+    _g: &G,
+    config: &FriConfig<M>,
+    proof: &FriProof<F, M, Challenger::Witness, G::InputProof>,
+    challenger: &mut Challenger,
+    challenger_dsl: &mut ChallengerDsl,
+) -> Result<(FriChallenges<F>, Vec<Dsl<F>>), FriError<M::Error, G::InputError>>
+where
+    F: BfField,
+    M: BFMmcs<F, Proof = CommitedProof<BO, B>>,
+    Challenger: BfGrindingChallenger + CanObserve<M::Commitment> + CanSample<F>,
+    ChallengerDsl: CanObserve<M::Commitment>
+        + CanSample<Dsl<F>>
+        + BfCheckGrindingChallenger<F, Witness = Challenger::Witness>,
+    G: FriGenericConfig<F>,
+{
+    let mut to_check_dsls = vec![];
+    let betas: Vec<F> = proof
+        .commit_phase_commits
+        .iter()
+        .map(|comm| {
+            challenger.observe(comm.clone());
+            let sample_point = challenger.sample();
+            challenger_dsl.observe(comm.clone());
+            let check_sample_dsl = challenger_dsl.sample().equal_for_f(sample_point.clone());
+            to_check_dsls.push(check_sample_dsl);
+            sample_point
+        })
+        .collect();
+
+    if proof.query_proofs.len() != config.num_queries {
+        return Err(FriError::InvalidProofShape);
+    }
+
+    // Check PoW.
+    if !challenger.check_witness(config.proof_of_work_bits, proof.pow_witness) {
+        return Err(FriError::InvalidPowWitness);
+    }
+
+    let check_witness_dsl =
+        challenger_dsl.check_witness(config.proof_of_work_bits, proof.pow_witness);
+    to_check_dsls.push(check_witness_dsl);
+
+    let log_max_height = proof.commit_phase_commits.len() + config.log_blowup;
+
+    let query_indices: Vec<(usize, usize)> = (0..config.num_queries)
+        .map(|query_times_index| {
+            let sample_index = challenger.sample_bits(log_max_height);
+            let check_index_dsl = challenger_dsl
+                .sample_bits(log_max_height)
+                .equal_for_u32_vec(vec![sample_index as u32]);
+            to_check_dsls.push(check_index_dsl);
+            (query_times_index, sample_index)
+        })
+        .collect();
+
+    Ok((
+        FriChallenges {
+            query_indices,
+            betas,
+        },
+        to_check_dsls,
+    ))
+}
 
 pub fn bf_verify_challenges<G, F, M, Witness>(
     g: &G,

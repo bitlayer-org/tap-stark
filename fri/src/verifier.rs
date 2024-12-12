@@ -18,7 +18,7 @@ pub struct FriChallenges<F> {
 }
 
 pub fn verify_shape_and_sample_challenges<G, F, M, Challenger>(
-    g: &G,
+    _g: &G,
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Challenger::Witness, G::InputProof>,
     challenger: &mut Challenger,

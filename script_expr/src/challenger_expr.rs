@@ -6,7 +6,7 @@ use basic::challenger::BitExtractor;
 use basic::field::BfField;
 use common::BinomialExtensionField;
 use p3_baby_bear::BabyBear;
-use p3_challenger::{CanObserve, CanSample};
+use p3_challenger::{CanObserve, CanSample, CanSampleBits};
 use p3_symmetric::Hash;
 
 use crate::Dsl;
@@ -28,6 +28,30 @@ where
     pub sample_input: Vec<Vec<Dsl<F>>>,
     pub sample_output: Vec<Dsl<F>>,
     phantom_data: PhantomData<PF>,
+}
+
+pub trait BfCheckGrindingChallenger<F: BfField>:
+    CanObserve<Self::Witness> + CanSampleBits<Dsl<F>> + Sync + Clone
+{
+    type Witness: PermutationField<4>;
+
+    #[must_use]
+    fn check_witness(&mut self, bits: usize, witness: Self::Witness) -> Dsl<F>;
+}
+
+impl<F, PF, const WIDTH: usize> BfCheckGrindingChallenger<F> for BfChallengerExpr<F, PF, WIDTH>
+where
+    F: BfField,
+    PF: PermutationField<4>,
+{
+    type Witness = PF;
+    fn check_witness(&mut self, bits: usize, witness: Self::Witness) -> Dsl<F> {
+        self.observe(witness);
+        for _ in 0..7 {
+            self.observe(PF::from_u64(0));
+        }
+        self.sample_bits(bits).equal_for_u32_vec(vec![0])
+    }
 }
 
 impl<F, PF, const WIDTH: usize> BfChallengerExpr<F, PF, WIDTH>
@@ -215,6 +239,21 @@ where
     }
 }
 
+impl<F, PF, const WIDTH: usize> CanSampleBits<Dsl<F>> for BfChallengerExpr<F, PF, WIDTH>
+where
+    F: BfField,
+    PF: PermutationField<4>,
+{
+    fn sample_bits(&mut self, bits: usize) -> Dsl<F> {
+        let mut rand_f = self.sample();
+        if rand_f.get_var_size() == 4 {
+            rand_f = rand_f.four_u32_to_u32::<F>();
+        }
+
+        rand_f.extract_bits(bits)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -224,9 +263,10 @@ mod tests {
     use bitcoin_script_stack::stack::StackTracker;
     use common::BinomialExtensionField;
     use p3_baby_bear::BabyBear;
-    use p3_challenger::{CanObserve, CanSample};
+    use p3_challenger::{CanObserve, CanSample, CanSampleBits};
 
     use crate::challenger_expr::BfChallengerExpr;
+    use crate::Dsl;
 
     #[test]
     fn test_challenger_expr() {
@@ -242,9 +282,6 @@ mod tests {
 
             let t = challenger.sample();
 
-            // t.simulate_express(&mut optimize);
-            // t.express_to_script(&mut stack, &mut var_getter, &mut optimize, true);
-
             challenger.observe(value.clone());
 
             let t1 = challenger.sample();
@@ -253,10 +290,8 @@ mod tests {
             t1.express_to_script(&mut stack, &mut var_getter, &mut optimize, true);
 
             stack.number(1103171332 as u32);
-            stack.debug();
             stack.op_equal();
 
-            stack.debug();
             let res = stack.run();
             assert!(res.success);
         }
@@ -271,14 +306,13 @@ mod tests {
 
             let value = [1 as u8, 2 as u8, 3 as u8, 4 as u8];
             challenger.observe(value.clone());
-
             let _t = challenger.sample();
 
             challenger.observe(value.clone());
-
             let t1 = challenger.sample();
 
-            //t1.express_to_script(&mut stack, &bmap);
+            challenger.observe(value.clone());
+            let t2_index = challenger.sample_bits(31);
 
             let permutation = Blake3Permutation {};
             let mut challenger = BfChallenger::<
@@ -293,17 +327,20 @@ mod tests {
             challenger.observe(value.clone());
             let _t_value = challenger.sample();
 
-            challenger.observe(value);
+            challenger.observe(value.clone());
             let t1_value = challenger.sample();
 
-            let equal = t1.equal_for_f(t1_value);
+            challenger.observe(value.clone());
+            let t2_index_value = challenger.sample_bits(31);
+            println!("sample_value {:?}", t2_index_value);
+
+            let equal = t2_index.equal(Dsl::constant(vec![t2_index_value as u32]));
 
             equal.simulate_express(&mut optimize);
             equal.express_to_script(&mut stack, &mut var_getter, &mut optimize, true);
 
-            stack.debug();
-
             let res = stack.run();
+            println!("{:?},{:?}", res.error, res.error_msg);
             assert!(res.success);
         }
     }
