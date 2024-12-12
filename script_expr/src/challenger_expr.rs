@@ -2,7 +2,7 @@ use std::any::TypeId;
 use std::marker::PhantomData;
 
 use basic::challenger::chan_field::PermutationField;
-use basic::challenger::{BfGrindingChallenger, BitExtractor};
+use basic::challenger::BitExtractor;
 use basic::field::BfField;
 use common::BinomialExtensionField;
 use p3_baby_bear::BabyBear;

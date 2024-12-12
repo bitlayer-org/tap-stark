@@ -2,7 +2,6 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use basic::field::BfField;
-use bitcoin::opcodes::all::{OP_DROP, OP_FROMALTSTACK, OP_LESSTHAN, OP_SUB, OP_TOALTSTACK};
 use scripts::pseudo::{OP_4DUP, OP_4FROMALTSTACK, OP_4MUL, OP_4PICK, OP_4TOALTSTACK};
 use scripts::treepp::*;
 use scripts::u31_lib::{u31_mul, u31ext_mul, BabyBear4, BabyBearU31};
@@ -10,7 +9,6 @@ use scripts::u31_lib::{u31_mul, u31ext_mul, BabyBear4, BabyBearU31};
 /// constraint: bits <= 31
 /// input: [b_{0}, b_{1}, ..., b_{bits-1}]
 pub fn compress_bits(bits: usize) -> Script {
-    println!("bits len{:?}", bits);
     assert!(bits <= 31);
     let script = script! {
         for _ in 0..bits-1 {
@@ -24,7 +22,6 @@ pub fn compress_bits(bits: usize) -> Script {
 /// constraint: bits <= 31
 /// input: [b_{0}, b_{1}, ..., b_{bits-1}]
 pub fn compress_custom_bits(input_bits_len: usize, output_bits_len: usize) -> Script {
-    println!("bits len{:?}", output_bits_len);
     assert!(output_bits_len <= 31);
     let script = script! {
         for _ in 0..output_bits_len-1 {

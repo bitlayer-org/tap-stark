@@ -227,7 +227,7 @@ impl<F: BfField> Dsl<F> {
                 get_opid(),
                 vec![self.into()],
                 var_size,
-                StandardOpcodeId::NumToField,
+                StandardOpcodeId::FieldToNum,
             )))),
             PhantomData::<F>,
         )

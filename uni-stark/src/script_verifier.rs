@@ -3,7 +3,6 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use basic::bf_pcs::{Pcs, PcsExpr};
-use basic::challenger;
 use basic::field::BfField;
 use bitcoin_script_stack::stack::StackTracker;
 use itertools::Itertools;

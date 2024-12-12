@@ -6,7 +6,7 @@ use basic::field::BfField;
 use basic::mmcs::bf_mmcs::BFMmcs;
 use basic::tcs::{CommitedProof, B, BO};
 use itertools::izip;
-use p3_challenger::{CanObserve, CanSample, CanSampleBits};
+use p3_challenger::{CanObserve, CanSample};
 use p3_field::AbstractField;
 use p3_util::reverse_bits_len;
 use script_expr::{BfCheckGrindingChallenger, Dsl, InputManager, ManagerAssign};
@@ -18,7 +18,7 @@ use crate::verifier::*;
 use crate::{BfQueryProof, FriConfig, FriGenericConfig, FriGenericConfigWithExpr, FriProof};
 
 pub fn bf_sample_challenges<G, F, M, Challenger, ChallengerDsl>(
-    g: &G,
+    _g: &G,
     config: &FriConfig<M>,
     proof: &FriProof<F, M, Challenger::Witness, G::InputProof>,
     challenger: &mut Challenger,

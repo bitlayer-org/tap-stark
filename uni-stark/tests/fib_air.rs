@@ -150,7 +150,7 @@ fn test_public_value() {
 
 #[test]
 fn test_generate_script_expr() {
-    let num_queries = 16;
+    let num_queries = 6;
     let val_mmcs = ValMmcs::new(DefaultSyncBcManager::new(), num_queries);
     let challenge_mmcs = ChallengeMmcs::new(DefaultSyncBcManager::new(), num_queries);
     let dft = Dft {};

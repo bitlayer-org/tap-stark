@@ -161,7 +161,7 @@ impl<F: BfField, InputProof, InputError: Debug> FriGenericConfigWithExpr<F>
         beta: Dsl<F>,
         mut manager: MutexGuard<Box<InputManager>>,
     ) -> Dsl<F> {
-        let arity = 2;
+        let _arity = 2;
         let log_arity = 1;
         // If performance critical, make this API stateful to avoid this
         // This is a bit more math than is necessary, but leaving it here
@@ -471,7 +471,7 @@ where
                     let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
                     let log_batch_max_height = log2_strict_usize(*batch_max_height);
                     let bits_reduced = log_global_max_height - log_batch_max_height;
-                    let reduced_index = index >> bits_reduced;
+                    let _reduced_index = index >> bits_reduced;
 
                     self.mmcs.verify_batch(
                         query_times_index,
